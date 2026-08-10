@@ -4,6 +4,7 @@ import {
   Sparkles, Settings, X, Trash2, Pin, MessageSquare, User, LogIn
 } from 'lucide-react';
 import { ChatSession, UserAccount } from '../types';
+import { MijlaiLogo } from './MijlaiLogo';
 
 interface MijlaiSidebarProps {
   isHistoryOpen: boolean;
@@ -60,19 +61,10 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
           <button
             id="logo_btn"
             onClick={onNewChat}
-            className="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity mb-1"
-            title="Mijlai Home"
+            className="w-12 h-10 flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity mb-1"
+            title="MijlAI الرئيسية"
           >
-            <div
-              className="w-[32px] h-[32px] rounded-[10px] flex items-center justify-center relative overflow-hidden shadow-sm"
-              style={{
-                background: 'conic-gradient(from 180deg at 50% 50%, #FBBC05 0deg, #EA4335 110deg, #8E44AD 200deg, #4285F4 320deg, #34A853 360deg)'
-              }}
-            >
-              <span className="text-white font-bold text-[18px] tracking-tighter leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.2)]" style={{ fontFamily: 'Google Sans, sans-serif' }}>
-                M
-              </span>
-            </div>
+            <MijlaiLogo size="sm" />
           </button>
 
           {/* Icon 2 - Toggle History */}

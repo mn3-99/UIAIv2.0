@@ -3,6 +3,7 @@ import { Menu, Plus, Settings, Sparkles, Wifi, WifiOff, RefreshCw } from 'lucide
 import { APP_CONFIG } from '../config';
 import { AppSettings, ProviderConfig } from '../types';
 import { ConnectionStatus } from '../utils/connectionManager';
+import { MijlaiLogo } from './MijlaiLogo';
 
 interface HeaderProps {
   settings: AppSettings;
@@ -41,27 +42,12 @@ export const Header: React.FC<HeaderProps> = ({
           <Menu className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-2.5 cursor-pointer select-none" onClick={onNewChat}>
-          {/* MijlAi Inline SVG Icon */}
-          <div className="w-9 h-9 rounded-xl bg-slate-950 border border-slate-700/60 p-1.5 flex items-center justify-center shadow-md shadow-emerald-950/20 group hover:border-emerald-500/50 transition-colors">
-            <svg viewBox="0 0 100 100" fill="none" className="w-full h-full">
-              <rect width="100" height="100" rx="20" fill="#0f172a" />
-              <path d="M25 65V35L45 50L65 35V65" stroke="#10b981" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx="75" cy="40" r="6" fill="#38bdf8" />
-              <circle cx="75" cy="60" r="4" fill="#10b981" />
-            </svg>
-          </div>
-
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-lg tracking-tight text-white font-sans">
-                {APP_CONFIG.name}
-              </span>
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                v{APP_CONFIG.version}
-              </span>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 cursor-pointer select-none" onClick={onNewChat}>
+          {/* MijlAi Custom Brand Logo */}
+          <MijlaiLogo size="sm" />
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            v{APP_CONFIG.version}
+          </span>
         </div>
       </div>
 

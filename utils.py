@@ -4,18 +4,10 @@ import asyncio
 import base64
 import os
 
-# Encrypted Grok API Key payload (Base64 encrypted for secure storage)
-_ENCRYPTED_GROK_KEY = "Z3NrX3R2Tlo3aU13cUk4QUtXZjIxcDBXR2R5YjNGWWRPSWFOcENOMFRQMVVLeU5MdUgzZ2U0Qg=="
-
+# Grok API Key helper
 def decrypt_grok_key() -> str:
-    """Decrypts and returns the secure Grok API key for MijlAI backend operations."""
-    env_key = os.environ.get("GROK_API_KEY")
-    if env_key and env_key.startswith("gsk_"):
-        return env_key
-    try:
-        return base64.b64decode(_ENCRYPTED_GROK_KEY).decode("utf-8")
-    except Exception:
-        return ""
+    """Gets the Grok API key from environment for MijlAI backend operations."""
+    return os.environ.get("GROK_API_KEY", "")
 
 # System prompt enforcing MijlAI identity
 MIJLAI_SYSTEM_PROMPT = {

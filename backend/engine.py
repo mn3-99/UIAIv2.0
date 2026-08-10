@@ -244,32 +244,67 @@ class LLMEngine:
         for current_model in models_to_try:
             try:
                 logger.info(f"Attempting LLM generation for task {task_id} with model '{current_model}'...")
-                res = client.chat.completions.create(
-                    model=current_model,
-                    messages=chat_messages,
-                    stream=True
-                )
+                res = None
+                if client is not None:
+                    try:
+                        res = client.chat.completions.create(
+                            model=current_model,
+                            messages=chat_messages,
+                            stream=True
+                        )
+                    except Exception as g4f_err:
+                        logger.warning(f"g4f client create error: {g4f_err}")
+                        res = None
 
-                if asyncio.iscoroutine(res):
-                    res = await res
+                if res is not None:
+                    if asyncio.iscoroutine(res):
+                        res = await res
 
+                    checkpoint_buffer = ""
+                    buffer_counter = 0
+
+                    async for chunk in res:
+                        text_chunk = ""
+                        if hasattr(chunk, "choices") and chunk.choices:
+                            delta = chunk.choices[0].delta
+                            text_chunk = getattr(delta, "content", "") or ""
+                        elif isinstance(chunk, str):
+                            text_chunk = chunk
+
+                        if text_chunk:
+                            received_content = True
+                            checkpoint_buffer += text_chunk
+                            token_offset += 1
+                            buffer_counter += 1
+
+                            if buffer_counter >= 2:
+                                await self.store.update_checkpoint(task_id, checkpoint_buffer, token_offset - buffer_counter)
+                                checkpoint_buffer = ""
+                                buffer_counter = 0
+
+                    if checkpoint_buffer:
+                        await self.store.update_checkpoint(task_id, checkpoint_buffer, token_offset - buffer_counter)
+
+                if received_content:
+                    logger.info(f"Successfully generated response for task {task_id} using '{current_model}'")
+                    break
+
+            except Exception as e:
+                logger.warning(f"Model '{current_model}' failed for task {task_id}: {e}")
+
+        # Smart Provider Router Fallback if g4f didn't yield content
+        if not received_content:
+            try:
+                from core.provider_router import router_engine
+                logger.info(f"🔄 Routing task {task_id} to SmartProviderRouter fallbacks (DuckDuckGo, Blackbox, HuggingChat, OpenRouter, Groq)...")
                 checkpoint_buffer = ""
                 buffer_counter = 0
-
-                async for chunk in res:
-                    text_chunk = ""
-                    if hasattr(chunk, "choices") and chunk.choices:
-                        delta = chunk.choices[0].delta
-                        text_chunk = getattr(delta, "content", "") or ""
-                    elif isinstance(chunk, str):
-                        text_chunk = chunk
-
-                    if text_chunk:
+                async for chunk_text in router_engine.generate_with_fallback(chat_messages, model_id=target_model):
+                    if chunk_text:
                         received_content = True
-                        checkpoint_buffer += text_chunk
+                        checkpoint_buffer += chunk_text
                         token_offset += 1
                         buffer_counter += 1
-
                         if buffer_counter >= 2:
                             await self.store.update_checkpoint(task_id, checkpoint_buffer, token_offset - buffer_counter)
                             checkpoint_buffer = ""
@@ -277,12 +312,8 @@ class LLMEngine:
 
                 if checkpoint_buffer:
                     await self.store.update_checkpoint(task_id, checkpoint_buffer, token_offset - buffer_counter)
-
-                if received_content:
-                    logger.info(f"Successfully generated response for task {task_id} using '{current_model}'")
-                    break
-            except Exception as e:
-                logger.warning(f"Model '{current_model}' failed for task {task_id}: {e}")
+            except Exception as router_err:
+                logger.error(f"SmartProviderRouter error for task {task_id}: {router_err}")
 
         if not received_content:
             fallback_text = "عذراً، تعذر الحصول على رد من النموذج المحدد حالياً. يرجى إعادة المحاولة."

@@ -4,6 +4,7 @@ import { ArrowDown } from 'lucide-react';
 import { MijlaiSidebar } from './components/MijlaiSidebar';
 import { MijlaiHeader } from './components/MijlaiHeader';
 import { MijlaiComposer } from './components/MijlaiComposer';
+import { MijlaiLogo } from './components/MijlaiLogo';
 import { ChatMessageItem } from './components/ChatMessageItem';
 import { CanvasPanel } from './components/CanvasPanel';
 import { SettingsModal } from './components/SettingsModal';
@@ -420,13 +421,10 @@ export default function App() {
             </div>
           ) : (
             /* Empty State Greeting */
-            <div className="flex-1 flex flex-col items-center justify-center w-full">
-              <h1
-                className="text-[38px] md:text-[56px] font-extrabold tracking-tight text-slate-800 text-center mb-[28px] md:mb-[36px] select-none"
-                style={{ fontFamily: '"Google Sans", "Inter", sans-serif' }}
-              >
-                MijlAI
-              </h1>
+            <div className="flex-1 flex flex-col items-center justify-center w-full px-4">
+              <div className="mb-[20px] md:mb-[28px] flex flex-col items-center cursor-pointer transition-transform hover:scale-[1.01]" onClick={() => setSelectedTier('flash')}>
+                <MijlaiLogo size="hero" />
+              </div>
 
               <MijlaiComposer
                 input={input}

@@ -4,6 +4,8 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
+from security.auth import SecureAuthManager
+
 logger = logging.getLogger("db_manager")
 DB_PATH = "app_database.db"
 
@@ -149,6 +151,8 @@ class ActiveModelManager:
     def _seed_default_data(self):
         """Seed Default Admin Account & Settings if missing"""
         now_str = datetime.now().isoformat()
+        admin_pass = SecureAuthManager.hash_password("admin123")
+        user_pass = SecureAuthManager.hash_password("user123")
         with self._get_conn() as conn:
             cursor = conn.cursor()
             
@@ -157,16 +161,16 @@ class ActiveModelManager:
             if not cursor.fetchone():
                 cursor.execute("""
                     INSERT INTO users (id, username, email, password_hash, role, status, created_at, last_login, ip_address, device_info, country)
-                    VALUES ('admin_001', 'admin', 'admin@mijlai.com', 'admin123', 'admin', 'active', ?, ?, '192.168.1.1', 'MijlAi Enterprise Workstation', 'Palestine')
-                """, (now_str, now_str))
+                    VALUES ('admin_001', 'admin', 'admin@mijlai.com', ?, 'admin', 'active', ?, ?, '192.168.1.1', 'MijlAi Enterprise Workstation', 'Palestine')
+                """, (admin_pass, now_str, now_str))
 
             # Default Seed Demo User Account
             cursor.execute("SELECT id FROM users WHERE email = 'user@mijlai.com'")
             if not cursor.fetchone():
                 cursor.execute("""
                     INSERT INTO users (id, username, email, password_hash, role, status, created_at, last_login, ip_address, device_info, country)
-                    VALUES ('user_001', 'mhmod_alijla', 'user@mijlai.com', 'user123', 'user', 'active', ?, ?, '197.230.12.4', 'Android App Client v2.5', 'Palestine')
-                """, (now_str, now_str))
+                    VALUES ('user_001', 'mhmod_alijla', 'user@mijlai.com', ?, 'user', 'active', ?, ?, '197.230.12.4', 'Android App Client v2.5', 'Palestine')
+                """, (user_pass, now_str, now_str))
 
             # Default System Settings
             default_settings = {
@@ -269,17 +273,26 @@ class ActiveModelManager:
             cursor.execute("""
                 SELECT id, username, email, password_hash, role, status, created_at, last_login, ip_address, device_info, country
                 FROM users
-                WHERE (email = ? OR username = ?) AND password_hash = ?
-            """, (email_or_username, email_or_username, password_raw))
+                WHERE (email = ? OR username = ?)
+            """, (email_or_username, email_or_username))
             row = cursor.fetchone()
             if not row:
                 return None
             
+            pwd_hash = row["password_hash"]
+            if not SecureAuthManager.verify_password(password_raw, pwd_hash):
+                return None
+
             if row["status"] == "blocked":
                 return {"error": "حسابك معطل حالياً من قبل مسؤول النظام"}
 
             user = dict(row)
             del user["password_hash"]
+
+            # Auto-upgrade legacy plain text password to hashed format
+            if not pwd_hash.startswith("$2") and not pwd_hash.startswith("pbkdf2:"):
+                new_hash = SecureAuthManager.hash_password(password_raw)
+                cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user["id"]))
 
             # Update last login info
             now_str = datetime.now().isoformat()
@@ -307,7 +320,7 @@ class ActiveModelManager:
             return user
 
     def register_user(self, username: str, email: str, password_raw: str, req_info: Dict[str, str] = None) -> Dict[str, Any]:
-        """تسجيل مستخدم جديد وإسناد دور user تلقائياً"""
+        """تسجيل مستخدم جديد وإسناد دور user تلقائياً مع تجزئة كلمة المرور"""
         with self._get_conn() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT id FROM users WHERE email = ? OR username = ?", (email, username))
@@ -319,11 +332,12 @@ class ActiveModelManager:
             ip = (req_info and req_info.get("ip")) or "127.0.0.1"
             device = (req_info and req_info.get("device")) or "Web Client"
             country = (req_info and req_info.get("country")) or "Palestine"
+            pwd_hash = SecureAuthManager.hash_password(password_raw)
 
             cursor.execute("""
                 INSERT INTO users (id, username, email, password_hash, role, status, created_at, last_login, ip_address, device_info, country)
                 VALUES (?, ?, ?, ?, 'user', 'active', ?, ?, ?, ?, ?)
-            """, (user_id, username, email, password_raw, now_str, now_str, ip, device, country))
+            """, (user_id, username, email, pwd_hash, now_str, now_str, ip, device, country))
 
             cursor.execute("""
                 INSERT INTO user_logs (user_id, email, action, device_info, browser, os, ip_address, country, details)

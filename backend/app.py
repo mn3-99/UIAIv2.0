@@ -41,12 +41,22 @@ if FASTAPI_AVAILABLE:
 else:
     app = None
 
-# Enable CORS for all local & preview origins
+ALLOWED_ORIGINS = [
+    "https://ai.mhmodijla.com",
+    "https://mijlai.com",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "tauri://localhost"
+]
+
+# Enable CORS restricted to trusted domains and local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.run\.app",  # Allow Cloud Run preview containers
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -224,6 +234,8 @@ async def stream_task_events(
 # ==========================================
 # Auth & Open WebUI Role Management Routes
 # ==========================================
+from security.auth import SecureAuthManager
+
 @app.post("/api/auth/login")
 async def login(req: LoginRequest):
     req_info = {
@@ -238,6 +250,10 @@ async def login(req: LoginRequest):
         raise HTTPException(status_code=401, detail="اسم المستخدم أو كلمة المرور غير صحيحة")
     if "error" in res:
         raise HTTPException(status_code=403, detail=res["error"])
+    
+    # Generate JWT token
+    token = SecureAuthManager.generate_token(res["id"], res.get("role", "user"), res.get("email", ""))
+    res["token"] = token
     return res
 
 @app.post("/api/auth/register")
@@ -246,6 +262,9 @@ async def register(req: RegisterRequest):
     res = db_mgr.register_user(req.username, req.email, req.password, req_info)
     if "error" in res:
         raise HTTPException(status_code=400, detail=res["error"])
+    
+    token = SecureAuthManager.generate_token(res["id"], res.get("role", "user"), res.get("email", ""))
+    res["token"] = token
     return res
 
 # ==========================================
