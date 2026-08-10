@@ -1,0 +1,25 @@
+[package]
+name = "mijlai-desktop"
+version = "1.0.0"
+description = "MijlAi Ultra-Fast Native AI Chat Application"
+authors = ["Mhmod Nemr Alijla <mhmodijla3@gmail.com>"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.1.0", features = ["tray-icon"] }
+tauri-plugin-http = "2.0.0"
+tauri-plugin-sql = { version = "2.0.0", features = ["sqlite"] }
+tauri-plugin-notification = "2.0.0"
+tauri-plugin-dialog = "2.0.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.38", features = ["full"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

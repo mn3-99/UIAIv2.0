@@ -1,0 +1,17 @@
+{
+  "name": "MijlAi Chat",
+  "short_name": "MijlAi",
+  "description": "تطبيق دردشة ويب خفيف وسريع يعمل على Cloudflare",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#10b981",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

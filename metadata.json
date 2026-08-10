@@ -1,0 +1,6 @@
+{
+  "name": "MijlAi",
+  "description": "تطبيق دردشة ويب خفيف وسريع وذكي — MijlAi Chat Application",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

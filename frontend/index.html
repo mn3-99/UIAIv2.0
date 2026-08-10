@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>MijlAi — Zero-Latency Chat</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    :root {
+      --bg-primary: #f8fafc;
+      --bg-surface: rgba(255, 255, 255, 0.85);
+      --bg-card: #ffffff;
+      --bg-user-msg: #2563eb;
+      --text-user-msg: #ffffff;
+      --bg-ai-msg: #f1f5f9;
+      --text-primary: #0f172a;
+      --text-secondary: #64748b;
+      --border-color: rgba(226, 232, 240, 0.8);
+      --accent-glow: rgba(37, 99, 235, 0.25);
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --font-stack: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-primary: #090d16;
+        --bg-surface: rgba(15, 23, 42, 0.82);
+        --bg-card: #1e293b;
+        --bg-user-msg: #3b82f6;
+        --text-user-msg: #ffffff;
+        --bg-ai-msg: #131c2e;
+        --text-primary: #f8fafc;
+        --text-secondary: #94a3b8;
+        --border-color: rgba(30, 41, 59, 0.7);
+        --accent-glow: rgba(59, 130, 246, 0.3);
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: var(--font-stack);
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      height: 100vh;
+      height: -webkit-fill-available;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      overscroll-behavior-y: none;
+    }
+
+    /* Glassmorphic Header */
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-surface);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-color);
+      z-index: 50;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 1.1rem;
+      letter-spacing: -0.02em;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      transition: background-color 0.3s ease;
+    }
+
+    .status-dot.reconnecting {
+      background-color: #f59e0b;
+      box-shadow: 0 0 8px #f59e0b;
+    }
+
+    .status-dot.offline {
+      background-color: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+    }
+
+    /* Chat Messages Container */
+    #chat-container {
+      flex: 1;
+      padding: 80px 16px 120px 16px;
+      overflow-y: auto;
+      scroll-behavior: smooth;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      max-width: 800px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .msg-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      opacity: 0;
+      transform: translateY(10px);
+      animation: fadeInUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes fadeInUp {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .msg-bubble {
+      max-width: 85%;
+      padding: 14px 18px;
+      font-size: 1rem;
+      line-height: 1.55;
+      letter-spacing: -0.01em;
+      border-radius: var(--radius-lg);
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
+    .msg-user {
+      align-self: flex-end;
+      background-color: var(--bg-user-msg);
+      color: var(--text-user-msg);
+      border-bottom-right-radius: 4px;
+      box-shadow: 0 2px 10px var(--accent-glow);
+    }
+
+    .msg-ai {
+      align-self: flex-start;
+      background-color: var(--bg-ai-msg);
+      color: var(--text-primary);
+      border-bottom-left-radius: 4px;
+      border: 1px solid var(--border-color);
+    }
+
+    /* Invisible UX: Subtle Pulse Cursor instead of Spinners */
+    .pulse-cursor::after {
+      content: "▋";
+      display: inline-block;
+      margin-left: 3px;
+      color: var(--bg-user-msg);
+      animation: pulseCursor 0.8s infinite alternate;
+    }
+
+    @keyframes pulseCursor {
+      0% { opacity: 0.2; transform: scale(0.95); }
+      100% { opacity: 1; transform: scale(1.05); }
+    }
+
+    /* Floating Input Bar */
+    .input-wrapper {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 12px 16px max(16px, env(safe-area-inset-bottom));
+      background: linear-gradient(180deg, rgba(9, 13, 22, 0) 0%, var(--bg-primary) 40%);
+      z-index: 50;
+      display: flex;
+      justify-content: center;
+    }
+
+    .input-card {
+      width: 100%;
+      max-width: 800px;
+      background: var(--bg-surface);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border-color);
+      border-radius: 28px;
+      padding: 8px 12px 8px 18px;
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .input-card:focus-within {
+      border-color: var(--bg-user-msg);
+      box-shadow: 0 10px 35px var(--accent-glow);
+    }
+
+    textarea {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text-primary);
+      font-family: var(--font-stack);
+      font-size: 1rem;
+      line-height: 1.45;
+      resize: none;
+      max-height: 160px;
+      min-height: 24px;
+      padding: 6px 0;
+    }
+
+    textarea::placeholder {
+      color: var(--text-secondary);
+      transition: opacity 0.2s ease;
+    }
+
+    .send-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background-color: var(--bg-user-msg);
+      color: #ffffff;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      transform: scale(0.8);
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease, background-color 0.2s ease;
+    }
+
+    .send-btn.active {
+      opacity: 1;
+      transform: scale(1);
+      pointer-events: auto;
+    }
+
+    .send-btn:active {
+      transform: scale(0.92);
+    }
+
+    .send-btn svg {
+      width: 18px;
+      height: 18px;
+      fill: currentColor;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div id="status-dot" class="status-dot" title="Connection Status"></div>
+      <span>MijlAi Zero-Latency</span>
+    </div>
+  </header>
+
+  <main id="chat-container">
+    <div class="msg-group">
+      <div class="msg-bubble msg-ai">
+        Welcome! Ask anything to test zero-latency decoupled streaming, offset resumption, and predictive preview.
+      </div>
+    </div>
+  </main>
+
+  <div class="input-wrapper">
+    <div class="input-card">
+      <textarea id="user-input" rows="1" placeholder="Type a message..." aria-label="Message"></textarea>
+      <button id="send-btn" class="send-btn" aria-label="Send">
+        <svg viewBox="0 0 24 24">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(err => {
+          console.warn('SW registration failed:', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "MijlAi Zero-Latency Chat",
+  "short_name": "MijlAi",
+  "description": "High-Performance, Zero-Latency Decoupled Chat Interface with Offset Resumption",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/public/icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/public/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
