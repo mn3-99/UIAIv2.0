@@ -7,6 +7,8 @@ import { ChatSession, UserAccount } from '../types';
 import { MijlaiLogo } from './MijlaiLogo';
 
 interface MijlaiSidebarProps {
+  isOpen: boolean;
+  onCloseSidebar: () => void;
   isHistoryOpen: boolean;
   onToggleHistory: () => void;
   onNewChat: () => void;
@@ -27,6 +29,8 @@ interface MijlaiSidebarProps {
 }
 
 export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
+  isOpen,
+  onCloseSidebar,
   isHistoryOpen,
   onToggleHistory,
   onNewChat,
@@ -53,9 +57,32 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
   );
 
   return (
-    <aside className="h-full flex z-30 select-none">
-      {/* 1. Left Vertical Icon Strip */}
-      <div className="w-[72px] min-w-[72px] h-full bg-white flex flex-col items-center justify-between py-5 border-r border-slate-100 shadow-sm">
+    <>
+      {/* Scrim — semi-transparent blurred backdrop that closes the drawer on click */}
+      <div
+        aria-hidden="true"
+        onClick={onCloseSidebar}
+        className={`fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm transition-opacity duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      />
+
+      {/* Sliding drawer — fixed above the content, so opening it never causes
+          layout shift / reflow of the chat area. Inert when closed keeps it out
+          of the accessibility tree and keyboard tab order. */}
+      <aside
+        id="mijlai_sidebar"
+        role="dialog"
+        aria-modal={isOpen}
+        aria-label="الشريط الجانبي"
+        tabIndex={-1}
+        inert={!isOpen}
+        className={`fixed top-0 bottom-0 right-0 z-50 h-full flex select-none max-w-[92vw] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* 1. Right Vertical Icon Strip (RTL) — fixed 72px rail */}
+        <div className="w-[72px] min-w-[72px] h-full bg-white flex flex-col items-center justify-between py-5 border-l border-slate-100 shadow-sm">
         <div className="flex flex-col items-center gap-[14px] w-full">
           {/* Logo button -> returns to main view / new chat */}
           <button
@@ -183,7 +210,7 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
 
       {/* 2. Expandable History Drawer */}
       {isHistoryOpen && (
-        <div className="w-72 h-full bg-[#f8fafc] border-r border-slate-200/80 flex flex-col transition-all duration-200 shadow-md">
+        <div className="w-72 max-w-[min(288px,calc(100vw-88px))] h-full bg-[#f8fafc] border-r border-slate-200/80 flex flex-col transition-all duration-200 shadow-md">
           <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-white">
             <span className="font-semibold text-slate-800 text-sm">سجل المحادثات</span>
             <button onClick={onToggleHistory} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100">
@@ -252,5 +279,6 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
         </div>
       )}
     </aside>
+    </>
   );
 };
