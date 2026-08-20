@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { Copy, Check, RotateCcw, Edit3, User, AlertCircle, Sparkles } from 'lucide-react';
 import { ChatMessage } from '../types';
-import { renderSanitizedMarkdown } from '../utils/sanitizer';
+import { RichMarkdown } from './RichMarkdown';
 
 interface ChatMessageItemProps {
   message: ChatMessage;
@@ -24,11 +24,6 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
   const isError = message.status === 'error';
   const isStreaming = message.status === 'streaming';
 
-  const renderedHtml = useMemo(() => {
-    if (isUser || isError || !message.content) return '';
-    return renderSanitizedMarkdown(message.content);
-  }, [message.content, isUser, isError]);
-
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
     setCopied(true);
@@ -46,6 +41,10 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
   // Helper to cleanly format model ID with MijlAI prefix
   const formatModelBadge = (rawModelId?: string) => {
     if (!rawModelId) return 'MijlAI Engine';
+    if (rawModelId.startsWith('local:')) {
+      const name = rawModelId.replace('local:', '').split('/').pop()?.replace(/\.gguf$/i, '') || rawModelId;
+      return `${name} (محلي)`;
+    }
     const cleanName = rawModelId.replace('g4f:', '').replace('MijlAI ', '');
     return `MijlAI ${cleanName}`;
   };
@@ -160,15 +159,14 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                     <div className="mt-1 opacity-90">{message.errorDetails || message.content}</div>
                   </div>
                 </div>
+              ) : message.isImage && !isUser ? (
+                <div className="relative">
+                  <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} />
+                </div>
               ) : isUser ? (
                 <div className="whitespace-pre-wrap font-normal text-white text-[15px] leading-relaxed">{message.content}</div>
               ) : (
-                <div
-                  className="markdown-body text-slate-800 text-[15px] leading-relaxed"
-                  dangerouslySetInnerHTML={{
-                    __html: renderedHtml
-                  }}
-                />
+                <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} />
               )}
 
               {/* Smooth Pulse Streaming Indicator */}

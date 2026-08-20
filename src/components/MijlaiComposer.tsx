@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Plus, Mic, MicOff, ChevronDown, FileText, Image,
   HardDrive, Camera, Send, Sparkles, Brain, Zap, Square,
-  Globe, SlidersHorizontal, ArrowUpRight, GripHorizontal
+  Globe, SlidersHorizontal, ArrowUpRight, GripHorizontal, Cpu, Code, CornerDownLeft, Wand2
 } from 'lucide-react';
+import { generateCompletions } from '../utils/completions';
 
 interface MijlaiComposerProps {
   input: string;
@@ -14,8 +15,10 @@ interface MijlaiComposerProps {
   selectedTier: string;
   onSelectTier: (tier: string) => void;
   onAttachFile: (file: File) => void;
+  onGenerateImage?: (prompt: string) => void;
   webSearchEnabled?: boolean;
   setWebSearchEnabled?: (val: boolean) => void;
+  localModels?: Array<{ id: string; name: string }>;
 }
 
 export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
@@ -28,12 +31,19 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
   onSelectTier,
   onAttachFile,
   webSearchEnabled = false,
-  setWebSearchEnabled
+  setWebSearchEnabled,
+  localModels = []
 }) => {
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [isTierOpen, setIsTierOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
+
+  // Streaming prediction suggestions (shown while typing, accept with Tab or click)
+  const suggestions = useMemo(() => {
+    if (isGenerating || !input.trim()) return [];
+    return generateCompletions(input);
+  }, [input, isGenerating]);
   
   // Custom flexible height state for dragging / manual resizer
   const [composerHeight, setComposerHeight] = useState<number | null>(null);
@@ -55,6 +65,12 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
   }, [input, composerHeight]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Accept first suggestion with Tab (streaming prediction)
+    if (e.key === 'Tab' && suggestions.length > 0) {
+      e.preventDefault();
+      setInput(suggestions[0].text);
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (input.trim() && !isGenerating) {
@@ -181,15 +197,20 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
   };
 
   const verifiedModelsMap: Record<string, { label: string; shortName: string; icon: any; color: string; desc: string }> = {
-    'flash': { label: 'MijlAI Flash (Gemini 2.5)', shortName: 'Flash', icon: Zap, color: 'text-amber-500', desc: 'سريع وموفر للردود اليومية الفورية' },
-    'pro': { label: 'MijlAI Pro (GPT-4o)', shortName: 'Pro', icon: Sparkles, color: 'text-blue-600', desc: 'أذكى وأدق للمهام والتحليلات المعقدة' },
-    'thinking': { label: 'MijlAI Thinking (o3-mini)', shortName: 'Thinking', icon: Brain, color: 'text-purple-600', desc: 'تفكير منطقي وعميق خطوة بخطوة' },
-    'claude': { label: 'MijlAI Claude 3.7 Sonnet', shortName: 'Claude 3.7', icon: Sparkles, color: 'text-amber-600', desc: 'ممتاز في الكتابة الأكاديمية وصياغة النصوص' },
-    'deepseek': { label: 'MijlAI DeepSeek R1 Reasoning', shortName: 'DeepSeek R1', icon: Brain, color: 'text-emerald-600', desc: 'نموذج استدلال مفتوح متقدم للغاية' },
-    'kimi': { label: 'MijlAI Kimi K3 / Moonshot', shortName: 'Kimi K3', icon: Sparkles, color: 'text-indigo-600', desc: 'كشط ومعالجة مستندات طويلة المدى' }
+    'flash': { label: 'Gemini (Fast)', shortName: 'Flash', icon: Zap, color: 'text-amber-500', desc: 'سريع وموفر للردود اليومية الفورية' },
+    'pro': { label: 'GPT-4', shortName: 'Pro', icon: Sparkles, color: 'text-blue-600', desc: 'أذكى وأدق للمهام والتحليلات المعقدة' },
+    'thinking': { label: 'Gemini 3.5 Flash', shortName: 'Thinking', icon: Brain, color: 'text-purple-600', desc: 'تفكير منطقي وعميق خطوة بخطوة' },
+    'claude': { label: 'Command A', shortName: 'Command', icon: Sparkles, color: 'text-amber-600', desc: 'ممتاز في الكتابة الأكاديمية وصياغة النصوص' },
+    'deepseek': { label: 'Gemini Auto', shortName: 'Auto', icon: Brain, color: 'text-emerald-600', desc: 'اختيار تلقائي لأفضل نموذج' },
+    'kimi': { label: 'Aria', shortName: 'Aria', icon: Sparkles, color: 'text-indigo-600', desc: 'كشط ومعالجة مستندات طويلة المدى' },
+    'qwen': { label: 'Gemini 3.6 Flash', shortName: 'Direct', icon: Code, color: 'text-cyan-600', desc: 'أحدث نسخة مباشرة من جيميني' }
   };
 
-  const currentTier = verifiedModelsMap[selectedTier] || verifiedModelsMap['flash'];
+  const isLocalTier = selectedTier.startsWith('local:');
+  const localModelName = localModels.find((m) => m.id === selectedTier)?.name;
+  const currentTier = isLocalTier
+    ? { label: localModelName || 'نموذج محلي', shortName: 'محلي', icon: Cpu, color: 'text-emerald-600', desc: 'نموذج llama.cpp محلي — خاص وبدون إنترنت' }
+    : (verifiedModelsMap[selectedTier] || verifiedModelsMap['flash']);
 
   return (
     <div className="w-full max-w-[760px] md:w-[75%] mx-auto relative select-none px-2">
@@ -238,7 +259,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
             </button>
 
             {isAttachOpen && (
-              <div className="absolute right-0 bottom-12 w-60 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-xs font-medium text-slate-700 animate-in fade-in zoom-in-95 duration-150">
+              <div className="absolute right-0 bottom-12 w-60 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-xs font-medium text-slate-700 animate-in fade-in zoom-in-95 duration-150">
                 <button
                   id="upload_file"
                   onClick={() => fileInputRef.current?.click()}
@@ -282,6 +303,26 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                   <Camera className="w-4 h-4 text-purple-600" />
                   <span>التقاط صورة مباشرة</span>
                 </button>
+
+                <button
+                  id="generate_image"
+                  onClick={() => {
+                    setIsAttachOpen(false);
+                    if (onGenerateImage && input.trim()) {
+                      onGenerateImage(input.trim());
+                    } else if (onGenerateImage) {
+                      // If no input, prompt user
+                      const prompt = prompt('أدخل وصف الصورة المراد توليدها:');
+                      if (prompt && prompt.trim()) {
+                        onGenerateImage(prompt.trim());
+                      }
+                    }
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-right transition-colors"
+                >
+                  <Wand2 className="w-4 h-4 text-pink-600" />
+                  <span>توليد صورة بالذكاء الاصطناعي</span>
+                </button>
               </div>
             )}
           </div>
@@ -303,6 +344,27 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
             }}
           />
         </div>
+
+        {/* Streaming Prediction Suggestions Bar */}
+        {suggestions.length > 0 && (
+          <div className="mx-3 mb-1 flex flex-wrap items-center gap-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+            {suggestions.map((s, i) => (
+              <button
+                key={`${s.text}-${i}`}
+                onClick={() => setInput(s.text)}
+                className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all bg-blue-50/70 text-blue-700 border-blue-200/70 hover:bg-blue-600 hover:text-white hover:border-blue-600"
+                title={`${s.reason} — انقر للقبول`}
+              >
+                {i === 0 && (
+                  <kbd className="hidden sm:flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold bg-blue-600/10 group-hover:bg-white/20">
+                    <CornerDownLeft className="w-2.5 h-2.5" />
+                  </kbd>
+                )}
+                <span className="max-w-[260px] truncate" dir="auto">{s.text}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Live Voice Recording Soundwave Bar (Shows when mic active) */}
         {isRecording && (
@@ -372,7 +434,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               </button>
 
               {isTierOpen && (
-                <div className="absolute left-0 bottom-10 w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-right animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute left-0 bottom-10 w-72 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-right animate-in fade-in zoom-in-95 duration-150">
                   <div className="px-2 py-1 text-[11px] font-bold text-slate-400">نماذج MijlAI المتاحة بضمان 100%</div>
                   {Object.entries(verifiedModelsMap).map(([key, item]) => {
                     const Icon = item.icon;
@@ -396,6 +458,34 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                       </button>
                     );
                   })}
+                  {localModels.length > 0 && (
+                    <>
+                      <div className="px-2 py-1 text-[11px] font-bold text-slate-400 border-t border-slate-100 mt-1 pt-2 flex items-center gap-1">
+                        <Cpu className="w-3 h-3" /> نماذج محلية (llama.cpp)
+                      </div>
+                      {localModels.map((m) => {
+                        const isSelected = selectedTier === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              onSelectTier(m.id);
+                              setIsTierOpen(false);
+                            }}
+                            className={`w-full text-right p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${
+                              isSelected ? 'bg-emerald-50 text-emerald-700 font-semibold' : 'hover:bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            <Cpu className={`w-4 h-4 mt-0.5 shrink-0 ${isSelected ? 'text-emerald-600' : 'text-emerald-500'}`} />
+                            <div>
+                              <div className="text-xs font-bold">{m.name}</div>
+                              <div className="text-[10px] text-slate-500 font-normal">يعمل محلياً على جهازك — خصوصية كاملة</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
               )}
             </div>

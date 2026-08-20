@@ -1,8 +1,36 @@
 @import "tailwindcss";
+@import "highlight.js/styles/github-dark.css";
+@import "katex/dist/katex.min.css";
 
 @layer base {
   :root {
     font-family: 'Cairo', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  html, body, #root {
+    overflow-x: clip;
+    overscroll-behavior-y: none;
+  }
+
+  /* Default light design tokens — always present so components can reference
+     one consistent scale (colors, radii, shadows) regardless of theme. */
+  :root, body[data-theme="light"] {
+    --bg-primary: #f8fafc;
+    --bg-surface: #ffffff;
+    --bg-card: #f1f5f9;
+    --accent-color: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-soft: #eff6ff;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --border-color: #e2e8f0;
+    --radius-sm: 0.75rem;
+    --radius-md: 1rem;
+    --radius-lg: 1.25rem;
+    --radius-xl: 1.75rem;
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+    --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
+    --shadow-lg: 0 8px 30px rgba(15, 23, 42, 0.12);
   }
 }
 
@@ -80,7 +108,8 @@ body[data-theme="light"] {
   font-weight: 700;
   margin-top: 1.25em;
   margin-bottom: 0.5em;
-  color: #f1f5f9;
+  /* Inherit bubble text color so headings stay readable on light assistant bubbles */
+  color: inherit;
 }
 
 .markdown-body pre {
@@ -161,4 +190,137 @@ body[data-theme="light"] {
 /* RTL Auto direction support */
 [dir="auto"] {
   text-align: start;
+}
+
+/* ==========================================
+   Rich Markdown: Code Blocks, Mermaid & KaTeX
+   ========================================== */
+
+/* Code block card with header */
+.code-block-wrap {
+  direction: ltr;
+  text-align: left;
+  margin: 0.85em 0;
+  border-radius: 0.9rem;
+  overflow: hidden;
+  border: 1px solid rgba(51, 65, 85, 0.55);
+  background: #0f172a;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
+}
+
+.code-block-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  background: rgba(30, 41, 59, 0.9);
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+.code-dots {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+.code-dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+  display: inline-block;
+}
+.code-dots i:nth-child(1) { background: #f87171; }
+.code-dots i:nth-child(2) { background: #fbbf24; }
+.code-dots i:nth-child(3) { background: #34d399; }
+
+.code-lang {
+  flex: 1;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.code-copy-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  padding: 3px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+  line-height: 0;
+}
+.code-copy-btn:hover {
+  color: #e2e8f0;
+}
+.code-copy-btn.copied {
+  color: #34d399;
+}
+
+.markdown-body pre.code-block {
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  margin: 0;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  direction: ltr;
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.845rem;
+  line-height: 1.6;
+}
+
+.markdown-body pre.code-block code {
+  background: transparent;
+  padding: 0;
+  color: #f8fafc;
+  display: block;
+  direction: ltr;
+  font-size: 0.845rem;
+}
+
+/* Mermaid diagram container */
+.mermaid-wrap {
+  direction: ltr;
+  text-align: center;
+  margin: 1em 0;
+  padding: 1rem;
+  background: #ffffff;
+  border: 1px solid rgba(51, 65, 85, 0.35);
+  border-radius: 0.9rem;
+  overflow-x: auto;
+}
+.mermaid-pre {
+  background: transparent !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* KaTeX sizing & scroll for wide math */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25em 0;
+}
+.katex {
+  font-size: 1.05em;
+}
+
+/* Mobile safe-area bottom padding (for the fixed-bottom composer) */
+.pb-safe {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Guard against horizontal overflow from wide media inside bubbles */
+.markdown-body img,
+.markdown-body table,
+.markdown-body pre {
+  max-width: 100%;
 }

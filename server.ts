@@ -1,18 +1,21 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
+import https from 'https';
 import { spawn, ChildProcess } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 import { handleModelsRequest } from './functions/api/models';
+import { discoverLocalModels, getLocalModelEndpoint, getLocalModelInfo, resolveLocalTarget } from './functions/api/localModels';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT: number = Number(process.env.PORT) || 8082;
 const G4F_SERVICE_URL = 'http://127.0.0.1:5050';
 
-app.use(express.json());
+app.use(express.json({ limit: '200mb' }));
 
 // Security Headers Middleware
 app.use((req, res, next) => {
@@ -25,6 +28,42 @@ app.use((req, res, next) => {
 });
 
 // ==========================================
+// CORS Middleware
+// Allows the production domain, DuckDNS subdomains, local dev origins and the
+// Tauri wrapper. SSE clients (EventSource) also need CORS when called cross-origin.
+// ==========================================
+const ALLOWED_ORIGINS = [
+  'https://mijlai.duckdns.org',
+  'https://ai.mhmodijla.com',
+  'https://mijlai.com',
+  'tauri://localhost'
+];
+
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return false;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  if (/^https:\/\/.*\.duckdns\.org$/.test(origin)) return true;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  return false;
+}
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Last-Event-ID, X-Requested-With');
+    res.setHeader('Access-Control-Max-Age', '86400');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
+// ==========================================
 // Rate Limiter Middleware (Token Bucket / Sliding Window)
 // ==========================================
 interface RateLimiterRecord {
@@ -33,11 +72,28 @@ interface RateLimiterRecord {
 }
 
 const rateLimitStore = new Map<string, RateLimiterRecord>();
-const MAX_TOKENS_PER_WINDOW = 35; // 35 requests per 1 minute window
+const MAX_TOKENS_PER_WINDOW = 300; // 300 requests per 1 minute window (SSE reconnects + streaming)
 const REFILL_WINDOW_MS = 60000;
+
+// Long-lived streaming / polling endpoints must NOT consume tokens — a single
+// chat turn opens several connections (send + SSE stream + status polls) and
+// slow local models multiply them. Only charge for genuine request-heavy routes.
+const RATE_LIMIT_EXEMPT_PREFIXES = [
+  '/api/chat/stream',
+  '/api/chat/status',
+  '/api/chat/abort',
+  '/api/ping',
+  '/api/v1/chat/completions',
+  '/api/chat/completions',
+  '/api/models',
+];
 
 function rateLimiterMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
   if (req.path === '/health' || req.path === '/api/health' || req.path.startsWith('/_vite')) {
+    return next();
+  }
+
+  if (RATE_LIMIT_EXEMPT_PREFIXES.some((p) => req.path.startsWith(p))) {
     return next();
   }
 
@@ -208,6 +264,76 @@ setInterval(() => {
   }
 }, 300000);
 
+// ==========================================
+// Unified SSE Protocol (matches FastAPI backend):
+//   chunk: `data: {"t":"token","d":"<text>","o":<offset>}`
+//   done : `event: done\ndata: {"t":"done","status":"<s>","o":<offset>}`
+// ==========================================
+function writeJobSSEStream(req: express.Request, res: express.Response, job: BackgroundJob, startOffset: number) {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  const heartbeatTimer = setInterval(() => {
+    if (!res.writableEnded) res.write(': ping\n\n');
+  }, 12000);
+
+  let listener: (event: BackgroundJobListenerPayload) => void = () => {};
+
+  const cleanup = () => {
+    clearInterval(heartbeatTimer);
+    job.listeners.delete(listener);
+  };
+
+  req.on('close', cleanup);
+
+  // 1. Catch up on buffered chunks from offset
+  const initialChunks = job.chunks.slice(startOffset);
+  let currentOffset = startOffset;
+  for (const text of initialChunks) {
+    const payload = JSON.stringify({ t: 'token', d: text, o: currentOffset + 1 });
+    res.write(`id: ${currentOffset + 1}\ndata: ${payload}\n\n`);
+    currentOffset += 1;
+  }
+
+  if (job.status === 'completed') {
+    const done = JSON.stringify({ t: 'done', status: 'completed', o: currentOffset });
+    res.write(`event: done\ndata: ${done}\n\n`);
+    cleanup();
+    return res.end();
+  }
+
+  if (job.status === 'failed' || job.status === 'aborted') {
+    const done = JSON.stringify({ t: 'done', status: job.status, o: currentOffset, error: job.error || 'تم إيقاف التوليد' });
+    res.write(`event: done\ndata: ${done}\n\n`);
+    cleanup();
+    return res.end();
+  }
+
+  listener = (event: BackgroundJobListenerPayload) => {
+    if (res.writableEnded) return;
+
+    if (event.type === 'chunk' && event.text) {
+      const payload = JSON.stringify({ t: 'token', d: event.text, o: currentOffset + 1 });
+      res.write(`id: ${currentOffset + 1}\ndata: ${payload}\n\n`);
+      currentOffset += 1;
+    } else if (event.type === 'error') {
+      const done = JSON.stringify({ t: 'done', status: 'failed', o: currentOffset, error: event.error });
+      res.write(`event: done\ndata: ${done}\n\n`);
+      cleanup();
+      res.end();
+    } else if (event.type === 'done') {
+      const done = JSON.stringify({ t: 'done', status: job.status, o: currentOffset, error: job.error || null });
+      res.write(`event: done\ndata: ${done}\n\n`);
+      cleanup();
+      res.end();
+    }
+  };
+
+  job.listeners.add(listener);
+}
+
 async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
   const { messages, modelId, providerId, temperature = 0.7, apiKey, baseURL } = payload;
 
@@ -228,6 +354,8 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
     // ------------------------------------------
     if (providerId === 'g4f' || modelId.startsWith('g4f:')) {
       ensureG4FProviderService();
+
+      const g4fModelId = modelId.startsWith('g4f:') ? modelId.replace('g4f:', '') : modelId;
 
       const mandatorySystemPrompt = {
         role: 'system',
@@ -252,7 +380,7 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
         headers: { 'Content-Type': 'application/json' },
         signal: job.abortController.signal,
         body: JSON.stringify({
-          model: modelId,
+          model: g4fModelId,
           messages: sanitizedMessages,
           temperature: typeof temperature === 'number' ? temperature : 0.7,
           stream: true
@@ -485,8 +613,35 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
     // ------------------------------------------
     // D) Generic OpenAI-Compatible Provider Streaming
     // ------------------------------------------
-    const customBaseURL = baseURL || 'https://api.openai.com/v1';
-    const targetUrl = `${customBaseURL.replace(/\/$/, '')}/chat/completions`;
+    let targetUrl = 'http://127.0.0.1:8080/v1/chat/completions';
+    let targetModel = 'qwen3.8-27b';
+
+    const isLocalProvider = providerId === 'llama'
+      || modelId.startsWith('local:')
+      || modelId.includes('muse')
+      || modelId.includes('glimmer')
+      || !!getLocalModelInfo(modelId);
+
+    if (isLocalProvider) {
+      // Resolve against the discovered llama.cpp / Ollama endpoints (with a
+      // force-refresh fallback so a busy/first probe never loses the model).
+      const resolved = await resolveLocalTarget(modelId);
+      if (resolved) {
+        targetUrl = `${resolved.baseUrl}/v1/chat/completions`;
+        targetModel = resolved.serverModel;
+      } else if (modelId.startsWith('local:')) {
+        // Explicit local model that could not be discovered → fail clearly
+        // instead of silently using whatever is on the default port.
+        console.error(`[LocalModel] No endpoint resolved for '${modelId}'`);
+        job.status = 'failed';
+        job.error = `تعذر العثور على النموذج المحلي '${modelId.replace('local:', '').split('/').pop() || modelId}'. تأكد من تشغيل llama.cpp أو Ollama وأن النموذج محمّل (المنافذ المكتشفة: 8080، 8081، 8083).`;
+        return notifyListeners('error', undefined, job.error);
+      } else {
+        console.warn(`[LocalModel] No endpoint resolved for '${modelId}' — falling back to default 8080.`);
+      }
+    }
+
+    console.log(`[LocalModel] Generating: modelId='${modelId}' provider='${providerId}' -> ${targetUrl} model='${targetModel}'`);
 
     const customHeaders: Record<string, string> = {
       'Content-Type': 'application/json'
@@ -500,7 +655,7 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
       headers: customHeaders,
       signal: job.abortController.signal,
       body: JSON.stringify({
-        model: modelId,
+        model: targetModel,
         messages,
         temperature,
         stream: true
@@ -509,8 +664,9 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
 
     if (!openaiResponse.ok) {
       const errBody = await openaiResponse.text();
+      console.error(`[LocalModel] Chat completion FAILED url=${targetUrl} model=${targetModel} status=${openaiResponse.status} body=${errBody.slice(0, 800)}`);
       job.status = 'failed';
-      job.error = `خطأ من المزود (${openaiResponse.status}): ${errBody}`;
+      job.error = `خطأ من النموذج المحلي (${openaiResponse.status}): ${errBody.slice(0, 500)}`;
       return notifyListeners('error', undefined, job.error);
     }
 
@@ -562,7 +718,7 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
       job.status = 'aborted';
       notifyListeners('done');
     } else {
-      console.error('Background LLM worker error:', err);
+      console.error(`[LocalModel] Worker error for modelId='${modelId}' provider='${providerId}':`, err?.message || err);
       job.status = 'failed';
       job.error = err.message || 'حدث خطأ غير متوقع أثناء المعالجة في الخلفية';
       notifyListeners('error', undefined, job.error);
@@ -619,60 +775,8 @@ app.post('/api/chat', async (req, res) => {
     startLLMGenerationWorker(job, { ...req.body, modelId });
   }
 
-  // Set SSE Headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-
-  // Periodic SSE Heartbeat to keep socket active
-  const heartbeatTimer = setInterval(() => {
-    if (!res.writableEnded) {
-      res.write(': ping\n\n');
-    }
-  }, 12000);
-
-  const cleanup = () => {
-    clearInterval(heartbeatTimer);
-    if (job) job.listeners.delete(listener);
-  };
-
-  req.on('close', cleanup);
-
-  // Send initial state & accumulated text if any
-  res.write(`data: ${JSON.stringify({ jobId, chatId, status: job.status, text: job.fullText, fullText: job.fullText })}\n\n`);
-
-  if (job.status === 'completed') {
-    res.write('data: [DONE]\n\n');
-    cleanup();
-    return res.end();
-  }
-
-  if (job.status === 'failed' || job.status === 'aborted') {
-    res.write(`data: ${JSON.stringify({ error: job.error || 'تم إلغاء التوليد' })}\n\n`);
-    res.write('data: [DONE]\n\n');
-    cleanup();
-    return res.end();
-  }
-
-  const listener = (event: BackgroundJobListenerPayload) => {
-    if (res.writableEnded) return;
-
-    if (event.type === 'chunk' && event.text) {
-      res.write(`data: ${JSON.stringify({ text: event.text, fullText: event.fullText })}\n\n`);
-    } else if (event.type === 'error') {
-      res.write(`data: ${JSON.stringify({ error: event.error })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      cleanup();
-      res.end();
-    } else if (event.type === 'done') {
-      res.write('data: [DONE]\n\n');
-      cleanup();
-      res.end();
-    }
-  };
-
-  job.listeners.add(listener);
+  // Stream back using the unified SSE protocol (compatible with both frontends)
+  return writeJobSSEStream(req, res, job, 0);
 });
 
 // ==========================================
@@ -712,47 +816,123 @@ app.get('/api/chat/status', (req, res) => {
 
 // Proxy decoupled zero-latency FastAPI endpoints if active
 app.post(['/send', '/api/chat/send'], async (req, res) => {
-  ensureFastApiService();
-  try {
-    const fastApiRes = await fetch('http://127.0.0.1:8088/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body)
-    });
-    if (fastApiRes.ok) {
-      const text = await fastApiRes.text();
-      try {
-        const data = JSON.parse(text);
-        return res.json(data);
-      } catch (e) {}
+  const prompt = req.body?.prompt;
+  const reqModel = String(req.body.model || 'gemini');
+  const isLocalModel = reqModel.startsWith('local:') || !!getLocalModelInfo(reqModel);
+
+  if (!isLocalModel) {
+    ensureFastApiService();
+    try {
+      const fastApiRes = await fetch('http://127.0.0.1:8088/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req.body)
+      });
+      if (fastApiRes.ok) {
+        const text = await fastApiRes.text();
+        try {
+          const data = JSON.parse(text);
+          return res.json(data);
+        } catch (e) {}
+      }
+    } catch (err) {
+      // Fallback to Express handler if FastAPI is warming up
     }
-  } catch (err) {
-    // Fallback to Express handler if FastAPI is warming up
+  } else {
+    // Local models: warm discovery cache so section D can route correctly
+    try {
+      await discoverLocalModels();
+      const info = getLocalModelInfo(reqModel);
+      if (!info) {
+        console.warn(`[LocalModel] '${reqModel}' not found in discovery cache — will force refresh during generation.`);
+      }
+    } catch (e) {
+      console.error('[LocalModel] Discovery warm-up failed:', e);
+    }
   }
 
-  // Fallback Express implementation for /send
+  // Fallback Express implementation for /send — actually generates via the background worker
+  if (!prompt || !String(prompt).trim()) {
+    return res.status(400).json({ error: 'Prompt cannot be empty', status: 400 });
+  }
+
   const jobId = `task_${Math.random().toString(36).substring(2, 10)}`;
-  return res.json({ task_id: jobId, chat_id: req.body.chat_id || 'default_chat', status: 'queued', timestamp: Date.now() });
+  const chatId = req.body.chat_id || 'default_chat';
+  const modelId = reqModel;
+
+  const job: BackgroundJob = {
+    jobId,
+    chatId,
+    messageId: `msg_${Date.now()}`,
+    status: 'generating',
+    fullText: '',
+    chunks: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    modelId,
+    providerId: isLocalModel ? 'llama' : 'g4f',
+    listeners: new Set(),
+    abortController: new AbortController()
+  };
+  activeJobs.set(jobId, job);
+
+  const messages = Array.isArray(req.body.messages) && req.body.messages.length
+    ? req.body.messages
+    : [{ role: 'user', content: String(prompt) }];
+
+  // Start background generation without awaiting (decoupled)
+  startLLMGenerationWorker(job, {
+    messages,
+    modelId,
+    providerId: isLocalModel ? 'llama' : 'g4f',
+    temperature: typeof req.body.temperature === 'number' ? req.body.temperature : 0.7
+  });
+
+  return res.json({ task_id: jobId, chat_id: chatId, status: 'queued', timestamp: Date.now() });
 });
 
 app.get(['/preview/:taskId', '/api/chat/preview/:taskId'], async (req, res) => {
+  const taskId = req.params.taskId;
+
+  // 1. Check in-memory Express jobs first
+  const expressJob = activeJobs.get(taskId);
+  if (expressJob) {
+    return res.json({
+      task_id: taskId,
+      status: expressJob.status,
+      full_text: expressJob.fullText,
+      token_count: expressJob.chunks.length,
+      last_chunk: expressJob.chunks[expressJob.chunks.length - 1] || '',
+      error: expressJob.error || null
+    });
+  }
+
+  // 2. Fallback to FastAPI backend
   ensureFastApiService();
   try {
-    const fastApiRes = await fetch(`http://127.0.0.1:8088/preview/${req.params.taskId}`);
+    const fastApiRes = await fetch(`http://127.0.0.1:8088/preview/${taskId}`);
     if (fastApiRes.ok) {
       const data = await fastApiRes.json();
       return res.json(data);
     }
   } catch (err) {}
-  return res.json({ task_id: req.params.taskId, status: 'not_found', full_text: '', token_count: 0 });
+  return res.json({ task_id: taskId, status: 'not_found', full_text: '', token_count: 0 });
 });
 
 app.get(['/stream/:taskId', '/api/chat/stream/:taskId'], async (req, res, next) => {
   const taskId = req.params.taskId || (req.query.job_id || req.query.jobId) as string;
   
   if (taskId && taskId.startsWith('task_')) {
+    const offset = parseInt(String(req.query.offset || '0'), 10) || 0;
+
+    // 1. Check in-memory Express jobs first (unified SSE protocol)
+    const expressJob = activeJobs.get(taskId);
+    if (expressJob) {
+      return writeJobSSEStream(req, res, expressJob, offset);
+    }
+
+    // 2. Fallback to FastAPI backend stream proxy
     ensureFastApiService();
-    const offset = req.query.offset || 0;
     try {
       const fastApiRes = await fetch(`http://127.0.0.1:8088/stream/${taskId}?offset=${offset}`, {
         headers: { 'Accept': 'text/event-stream' }
@@ -794,67 +974,17 @@ app.get(['/stream/:taskId', '/api/chat/stream/:taskId'], async (req, res, next) 
   next();
 });
 
-// Re-subscribe SSE stream for a background job
+// Re-subscribe SSE stream for a background job (unified protocol with offset resumption)
 app.get(['/api/chat/stream/:jobId', '/api/chat/stream'], (req, res) => {
   const jobId = req.params.jobId || (req.query.job_id || req.query.jobId) as string;
+  const offset = parseInt(String(req.query.offset || '0'), 10) || 0;
   const job = activeJobs.get(jobId);
 
   if (!job) {
     return res.status(404).json({ error: 'Job not found' });
   }
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-
-  const heartbeatTimer = setInterval(() => {
-    if (!res.writableEnded) {
-      res.write(': ping\n\n');
-    }
-  }, 12000);
-
-  const cleanup = () => {
-    clearInterval(heartbeatTimer);
-    job.listeners.delete(listener);
-  };
-
-  req.on('close', cleanup);
-
-  // Send initial full text accumulated so far
-  res.write(`data: ${JSON.stringify({ jobId: job.jobId, status: job.status, text: job.fullText, fullText: job.fullText })}\n\n`);
-
-  if (job.status === 'completed') {
-    res.write('data: [DONE]\n\n');
-    cleanup();
-    return res.end();
-  }
-
-  if (job.status === 'failed' || job.status === 'aborted') {
-    res.write(`data: ${JSON.stringify({ error: job.error || 'تم إيقاف التوليد' })}\n\n`);
-    res.write('data: [DONE]\n\n');
-    cleanup();
-    return res.end();
-  }
-
-  const listener = (event: BackgroundJobListenerPayload) => {
-    if (res.writableEnded) return;
-
-    if (event.type === 'chunk' && event.text) {
-      res.write(`data: ${JSON.stringify({ text: event.text, fullText: event.fullText })}\n\n`);
-    } else if (event.type === 'error') {
-      res.write(`data: ${JSON.stringify({ error: event.error })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      cleanup();
-      res.end();
-    } else if (event.type === 'done') {
-      res.write('data: [DONE]\n\n');
-      cleanup();
-      res.end();
-    }
-  };
-
-  job.listeners.add(listener);
+  return writeJobSSEStream(req, res, job, offset);
 });
 
 // Abort background generation job
@@ -920,6 +1050,59 @@ app.use(['/api/auth', '/api/admin'], async (req, res) => {
 });
 
 // ==========================================
+// 1.5) API Routes: Image Generation (Pollinations.ai)
+// ==========================================
+app.post('/api/image/generate', async (req, res) => {
+  try {
+    const { prompt, model = 'flux', width = 1024, height = 1024, seed, nologo = true, isPrivate = true, enhance = true, transparent = false } = req.body;
+    
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    const params = new URLSearchParams({
+      prompt: prompt.trim(),
+      model,
+      width: String(width),
+      height: String(height),
+      nologo: String(nologo),
+      private: String(isPrivate),
+      enhance: String(enhance),
+      transparent: String(transparent),
+    });
+    if (seed !== undefined && seed !== null) params.set('seed', String(seed));
+
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.trim())}?${params.toString()}`;
+    
+    // Return the image URL directly (Pollinations.ai serves the image at this URL)
+    return res.json({
+      success: true,
+      url: pollinationsUrl,
+      prompt: prompt.trim(),
+      model,
+      width,
+      height,
+      seed: seed ?? Math.floor(Math.random() * 1000000),
+      timestamp: Date.now(),
+    });
+  } catch (err: any) {
+    console.error('Image generation error:', err);
+    return res.status(500).json({ error: err.message || 'Image generation failed' });
+  }
+});
+
+app.get('/api/image/models', (req, res) => {
+  return res.json({
+    models: [
+      { id: 'flux', name: 'Flux', description: 'High-quality general purpose', default: true },
+      { id: 'gptimage', name: 'GPT-Image', description: 'OpenAI style images' },
+      { id: 'midjourney', name: 'Midjourney', description: 'Artistic style' },
+      { id: 'dall-e-3', name: 'DALL-E 3', description: 'OpenAI DALL-E 3' },
+    ]
+  });
+});
+
+// ==========================================
 // 2) API Routes: Models Discovery & Chat Completions Proxy
 // ==========================================
 app.get(['/api/models', '/api/v1/chat/models'], (req, res) => {
@@ -927,11 +1110,41 @@ app.get(['/api/models', '/api/v1/chat/models'], (req, res) => {
   return handleModelsRequest(req, res);
 });
 
+// Health check for a specific local model (used by the frontend so it never has
+// to fetch llama.cpp/Ollama directly from the browser, avoiding CORS issues).
+app.get('/api/local/health', async (req, res) => {
+  const modelId = String(req.query.model || '');
+  if (!modelId) {
+    return res.status(400).json({ ok: false, error: 'model query param required' });
+  }
+  try {
+    const resolved = await resolveLocalTarget(modelId);
+    if (!resolved) {
+      return res.status(404).json({ ok: false, error: 'local model not reachable' });
+    }
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 5000);
+    const up = await fetch(`${resolved.baseUrl}/v1/models`, { signal: abort.signal });
+    clearTimeout(timer);
+    if (!up.ok) {
+      return res.status(502).json({ ok: false, error: `endpoint returned ${up.status}` });
+    }
+    const data = await up.json();
+    const found = (data?.data || data?.models || []).some((m: any) => m?.id === resolved.serverModel || m?.model === resolved.serverModel);
+    return res.json({ ok: found, baseUrl: resolved.baseUrl, serverModel: resolved.serverModel, model: modelId });
+  } catch (err: any) {
+    return res.status(502).json({ ok: false, error: err?.message || 'health check failed' });
+  }
+});
+
 
 // OpenAI-compatible chat completions proxy handler
+// Supports: g4f (cloud-free), local llama.cpp/Ollama models, and any OpenAI-compatible
+// baseURL passed via `baseURL` (e.g. from a custom connection in the frontend).
 app.post(['/api/chat/completions', '/api/v1/chat/completions'], async (req, res) => {
   const { model = '', stream = true } = req.body;
 
+  // 1) g4f (GPT4Free) cloud models
   if (model.startsWith('g4f:') || req.body.provider === 'g4f') {
     ensureG4FProviderService();
     try {
@@ -969,8 +1182,101 @@ app.post(['/api/chat/completions', '/api/v1/chat/completions'], async (req, res)
     }
   }
 
-  // Fallback to Express SSE handler if standard chat route
-  return res.status(400).json({ error: { message: 'Only g4f models are proxied via this endpoint' } });
+  // 2) Local models (llama.cpp / Ollama / vLLM) via discovery
+  if (model.startsWith('local:') || req.body.provider === 'llama' || getLocalModelInfo(model)) {
+    try {
+      const resolved = await resolveLocalTarget(model);
+      if (!resolved) {
+        console.error(`[LocalModel] Proxy: no endpoint resolved for model '${model}'`);
+        return res.status(502).json({ error: { message: 'تعذر الوصول إلى النموذج المحلي. تأكد من أن خادم llama.cpp/Ollama يعمل.', type: 'local_model_unreachable' } });
+      }
+
+      const targetUrl = `${resolved.baseUrl}/v1/chat/completions`;
+      // Override the requested model name with the exact id the llama server exposes
+      const body = { ...req.body, model: resolved.serverModel };
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (req.body.apiKey) headers['Authorization'] = `Bearer ${req.body.apiKey}`;
+
+      console.log(`[LocalModel] Proxy: '${model}' -> ${targetUrl} model='${resolved.serverModel}' stream=${stream}`);
+      const upstream = await fetch(targetUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+      });
+
+      if (!upstream.ok) {
+        const errText = await upstream.text();
+        console.error(`[LocalModel] Proxy upstream error ${upstream.status}: ${errText.slice(0, 500)}`);
+        return res.status(502).json({ error: { message: `فشل النموذج المحلي (${upstream.status}): ${errText.slice(0, 300)}`, type: 'local_model_error' } });
+      }
+
+      res.status(200);
+      res.setHeader('Content-Type', upstream.headers.get('content-type') || (stream ? 'text/event-stream' : 'application/json'));
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('X-Accel-Buffering', 'no');
+
+      if (stream) {
+        const reader = upstream.body?.getReader();
+        if (!reader) return res.status(500).json({ error: { message: 'No stream reader available' } });
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+        return res.end();
+      } else {
+        const data = await upstream.json();
+        return res.json(data);
+      }
+    } catch (err: any) {
+      console.error('[LocalModel] Proxy error:', err?.message || err);
+      return res.status(500).json({
+        error: { message: err?.message || 'خطأ أثناء الاتصال بالنموذج المحلي', type: 'local_model_proxy_error' }
+      });
+    }
+  }
+
+  // 3) Custom OpenAI-compatible baseURL (user-defined connection)
+  if (req.body.baseURL) {
+    try {
+      const upstreamUrl = `${String(req.body.baseURL).replace(/\/$/, '')}/v1/chat/completions`;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (req.body.apiKey) headers['Authorization'] = `Bearer ${req.body.apiKey}`;
+      const upstream = await fetch(upstreamUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(req.body)
+      });
+      if (!upstream.ok) {
+        const errText = await upstream.text();
+        return res.status(502).json({ error: { message: `فشل المزود (${upstream.status}): ${errText.slice(0, 300)}`, type: 'provider_error' } });
+      }
+      res.status(200);
+      res.setHeader('Content-Type', upstream.headers.get('content-type') || (stream ? 'text/event-stream' : 'application/json'));
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('X-Accel-Buffering', 'no');
+      if (stream) {
+        const reader = upstream.body?.getReader();
+        if (!reader) return res.status(500).json({ error: { message: 'No stream reader available' } });
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+        return res.end();
+      } else {
+        const data = await upstream.json();
+        return res.json(data);
+      }
+    } catch (err: any) {
+      return res.status(500).json({
+        error: { message: err?.message || 'خطأ أثناء الاتصال بالمزود', type: 'provider_proxy_error' }
+      });
+    }
+  }
+
+  // Unknown model type
+  return res.status(400).json({ error: { message: 'النموذج غير مدعوم بواسطة هذا العنوان. استخدم نموذج g4f أو local: أو حدد baseURL.', type: 'unsupported_model' } });
 });
 
 // ==========================================
@@ -991,9 +1297,31 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 MijlAi Server running at http://0.0.0.0:${PORT}`);
-  });
+  // HTTPS (self-signed certificate) — enables secure https:// access out of the box
+  const sslDir = path.join(process.cwd(), 'ssl');
+  const certPath = path.join(sslDir, 'mijlai.crt');
+  const keyPath = path.join(sslDir, 'mijlai.key');
+  const certAvailable = fs.existsSync(certPath) && fs.existsSync(keyPath);
+
+  if (certAvailable) {
+    const httpsOptions = {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath)
+    };
+    https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
+      console.log(`🔒 MijlAi HTTPS running at https://0.0.0.0:${PORT} (self-signed certificate)`);
+    });
+
+    // Optional: keep plain HTTP alive on PORT+1 for local/internal access
+    const httpPort = PORT + 2;
+    app.listen(httpPort, '0.0.0.0', () => {
+      console.log(`🌐 MijlAi HTTP fallback running at http://0.0.0.0:${httpPort}`);
+    });
+  } else {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 MijlAi Server running at http://0.0.0.0:${PORT}`);
+    });
+  }
 }
 
 startServer();
