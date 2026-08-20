@@ -13,6 +13,14 @@ export interface LocalModelInfo {
 
 const DISCOVERY_TTL_MS = 30_000;
 
+// Friendly display names for the known local llama.cpp servers, keyed by the
+// model alias reported by each server (see --alias on the llama-server command).
+const DISPLAY_NAMES: Record<string, string> = {
+  'mijlai-mini-flash': 'mijlai mini flash',
+  'mijlai-uncensored': 'mijlai uncensored',
+  'mijlai-pro': 'mijlai pro',
+};
+
 let localModelsCache: LocalModelInfo[] | null = null;
 let localModelsCachedAt = 0;
 let discoveryPromise: Promise<LocalModelInfo[]> | null = null;
@@ -48,7 +56,7 @@ async function probePort(port: number): Promise<LocalModelInfo[]> {
       const shortName = serverModel.split('/').pop()?.replace(/\.gguf$/i, '') || serverModel;
       infos.push({
         id,
-        name: `${shortName} (محلي · llama.cpp)`,
+        name: DISPLAY_NAMES[serverModel] ?? `${shortName} (محلي · llama.cpp)`,
         provider: 'llama',
         icon: 'cpu',
         is_free: true,

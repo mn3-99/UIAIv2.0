@@ -1193,7 +1193,15 @@ app.post(['/api/chat/completions', '/api/v1/chat/completions'], async (req, res)
 
       const targetUrl = `${resolved.baseUrl}/v1/chat/completions`;
       // Override the requested model name with the exact id the llama server exposes
-      const body = { ...req.body, model: resolved.serverModel };
+      const body: any = { ...req.body, model: resolved.serverModel };
+      // "mijlai mini flash": answer directly (disable reasoning) and cap output so
+      // the small context never overflows. Other local models keep their behavior.
+      if (model.includes('mini-flash') || resolved.serverModel.includes('mini-flash')) {
+        if (body.reasoning_effort === undefined) body.reasoning_effort = 'none';
+        if (typeof body.max_tokens !== 'number' && typeof body.n_predict !== 'number') {
+          body.max_tokens = 2048;
+        }
+      }
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (req.body.apiKey) headers['Authorization'] = `Bearer ${req.body.apiKey}`;
 

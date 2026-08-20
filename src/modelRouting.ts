@@ -75,6 +75,30 @@ const MODEL_CONFIGS: Record<string, ModelConfig> = {
   },
 
   // --- Local Llama.cpp models ---
+  'local:mijlai-mini-flash': {
+    id: 'local:mijlai-mini-flash',
+    name: 'mijlai mini flash',
+    provider: 'local',
+    isFree: true,
+    baseUrl: 'http://127.0.0.1:8083',
+    fallbackTo: ['gemini', 'gemini-3.5-flash'],
+  },
+  'local:mijlai-uncensored': {
+    id: 'local:mijlai-uncensored',
+    name: 'mijlai uncensored',
+    provider: 'local',
+    isFree: true,
+    baseUrl: 'http://127.0.0.1:8080',
+    fallbackTo: ['gemini', 'gemini-3.5-flash'],
+  },
+  'local:mijlai-pro': {
+    id: 'local:mijlai-pro',
+    name: 'mijlai pro',
+    provider: 'local',
+    isFree: true,
+    baseUrl: 'http://127.0.0.1:8081',
+    fallbackTo: ['gemini', 'gemini-3.5-flash'],
+  },
   'local:qwen3.8-27b': {
     id: 'local:qwen3.8-27b',
     name: 'qwen3.8-27b (محلي · llama.cpp)',
