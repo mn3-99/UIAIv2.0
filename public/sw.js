@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mijlai-cache-v1';
+const CACHE_NAME = 'mijlai-cache-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -38,7 +38,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stale-while-revalidate for static assets
+  // Network-first for navigations (HTML pages) so new deployments show
+  // immediately; falls back to the cached page when offline.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for hashed static assets (fingerprinted by Vite)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request)
