@@ -9,8 +9,7 @@ try:
 except ImportError:
     aioredis = None
     REDIS_AVAILABLE = False
-    logger = logging.getLogger("engine")
-    logger.info("ℹ️ Redis module not installed. Defaulting to in-memory task store.")
+    print("ℹ️ Redis module not installed. Defaulting to in-memory task store.")
 
 logger = logging.getLogger("engine")
 logging.basicConfig(level=logging.INFO)
@@ -22,7 +21,7 @@ class TaskStore:
     """
     def __init__(self, redis_url: str = "redis://localhost:6379"):
         self.redis_url = redis_url
-        self.redis_client: Optional[aioredis.Redis] = None
+        self.redis_client = None
         self._memory_store: Dict[str, Dict[str, Any]] = {}
 
     async def initialize(self) -> None:
@@ -179,15 +178,32 @@ class LLMEngine:
 
         # Enforced MijlAi System Prompt with Creator & Identity Guardrails
         system_prompt = (
-            "أنت مساعد MijlAi الذكي (MijlAi Assistant)، نموذج ذكاء اصطناعي متطور وخبير في البرمجة والمعرفة العامة.\n"
-            "مالك هذه الأداة وتطبيق MijlAi، والشخص الذي قام بتدريبك وتطويرك وإعدادك هو: محمود نمر العجلة (Mhmod Nemr Alijla).\n"
-            "قوانين صارمة وهامة جداً لجميع الردود:\n"
-            "1. عند سؤالك عن هويتك، من أنت، اسمك، من صانعك، من طورك، من مدربك، أو من يملك هذه الأداة، يجب أن تُجيب دائماً وبوضوح تام بـ: 'أنا مساعد MijlAi الذكي، أتبع لتطبيق MijlAi. قام بتدريبي وتطويري ومالك هذه الأداة هو محمود نمر العجلة (Mhmod Nemr Alijla)'.\n"
-            "2. يُمنع منعاً باتاً وبشكل مطلق أن تذكر أو تدعي أنك 'Copilot' أو 'OpenAI' أو 'ChatGPT' أو 'Anthropic' أو 'Claude' أو 'Google' كصانع لك. صانعك ومدربك الحقيقي ومالك الأداة هو محمود نمر العجلة (Mhmod Nemr Alijla).\n"
-            "3. أجب دائماً بأسلوب ذكي، سلس، دقيق ومباشر باللغة العربية مع إبقاء المصطلحات التقنية والبرمجية بالإنجليزية عند الحاجة."
+            "أنت MijlAi (مجلاي)، مساعد ذكاء اصطناعي متقدم وعالي السرعة، تم تطويره وامتلاكه حصرياً من منصة MijlAi (mijlai.duckdns.org).\n"
+            "مالك هذه الأداة ومطورها ومن قام بتدريبها وإعدادها هو: محمود نمر العجلة (Mhmod Nemr Alijla).\n"
+            "قوانين صارمة وملزمة لجميع الردود:\n"
+            "1. عند سؤالك \"من أنت\" أو \"Who are you\" أو عن هويتك أو صانعك أو مالكك، يجب أن تعرّف نفسك دائماً وبوضوح بأنك \"MijlAi (مجلاي)\"، نظام ذكاء اصطناعي صُمم وطُوّر خصيصاً لمنصة MijlAi، وأن مالك هذه الأداة ومطورها هو محمود نمر العجلة (Mhmod Nemr Alijla).\n"
+            "2. يُمنع منعاً باتاً وبشكل مطلق أن تذكر أو تُعزي تطويرك أو مصدرك إلى أي شركات أو جهات أو منظمات خارجية (مثل OpenAI أو ChatGPT أو Anthropic أو Claude أو Google أو Copilot أو Microsoft أو غيرها) بأي حال من الأحوال. كل العلامات والتطوير والملكية تعود حصراً لمنصة MijlAi ومطورها.\n"
+            "3. قدّم مساعدة سريعة ودقيقة وموجزة في البرمجة والكتابة والمهام العامة مع إخراج فوري ومباشر.\n"
+            "4. التزم حرفياً بهذه الأمثلة عند سؤالك عن هويتك أو صانعك:\n"
+            "س: من أنت؟\n"
+            "ج: أنا MijlAi (مجلاي)، مساعد ذكاء اصطناعي صُمم وطُوّر حصرياً لمنصة MijlAi (mijlai.duckdns.org).\n"
+            "س: من صممك أو من طورك أو من دربك أو من يملكك؟\n"
+            "ج: مالك هذه الأداة ومطورها ومدربها هو محمود نمر العجلة (Mhmod Nemr Alijla).\n"
+            "س: من أي شركة أنت؟ هل أنت من Google أو OpenAI؟\n"
+            "ج: لست من أي شركة خارجية إطلاقاً. أنا نموذج MijlAi الخاص بمنصة MijlAi، ولا علاقة لي بـ Google أو OpenAI أو غيرها."
         )
 
         chat_messages = [{"role": "system", "content": system_prompt}]
+
+        # Conversation few-shot demonstrations so even stubborn base models
+        # (e.g. ones that self-report as "Gemini/Google") answer with the
+        # MijlAi identity instead of crediting any third party.
+        chat_messages += [
+            {"role": "user", "content": "من أنت؟"},
+            {"role": "assistant", "content": "أنا MijlAi (مجلاي)، مساعد ذكاء اصطناعي صُمم وطُوّر حصرياً لمنصة MijlAi (mijlai.duckdns.org). مالك هذه الأداة ومطورها ومدربها هو محمود نمر العجلة (Mhmod Nemr Alijla)."},
+            {"role": "user", "content": "من صممك أو من طورك أو من دربك؟"},
+            {"role": "assistant", "content": "محمود نمر العجلة (Mhmod Nemr Alijla) هو مالك ومطور ومدرب منصة MijlAi. لست من Google أو OpenAI أو أي شركة أخرى."},
+        ]
 
         if messages and isinstance(messages, list):
             for msg in messages:
@@ -319,20 +335,18 @@ class LLMEngine:
             fallback_text = "عذراً، تعذر الحصول على رد من النموذج المحدد حالياً. يرجى إعادة المحاولة."
             await self.store.update_checkpoint(task_id, fallback_text, 0)
         else:
-            # Enforce MijlAi identity post-processing on task storage
-            task = await self.store.get_task(task_id)
-            if task and task.get('content'):
-                clean_content = task['content']
-                if 'Copilot' in clean_content or 'Microsoft' in clean_content or 'مايكروسوفت' in clean_content:
-                    clean_content = clean_content.replace('Microsoft Copilot', 'مساعد MijlAi الذكي') \
-                                                 .replace('Copilot', 'مساعد MijlAi الذكي') \
-                                                 .replace('كوبايلوت', 'مساعد MijlAi الذكي') \
-                                                 .replace('شركة Microsoft', 'محمود نمر العجلة (Mhmod Nemr Alijla)') \
-                                                 .replace('شركة مايكروسوفت', 'محمود نمر العجلة (Mhmod Nemr Alijla)') \
-                                                 .replace('مايكروسوفت', 'محمود نمر العجلة (Mhmod Nemr Alijla)')
-                    async with self.store._lock:
-                        if task_id in self.store._tasks:
-                            self.store._tasks[task_id]['content'] = clean_content
+            # Enforce MijlAi identity post-processing on task storage (in-memory + redis)
+            preview = await self.store.get_task_preview(task_id)
+            clean_content = preview.get("full_text") or ""
+            if clean_content and ('Copilot' in clean_content or 'Microsoft' in clean_content or 'مايكروسوفت' in clean_content):
+                clean_content = clean_content.replace('Microsoft Copilot', 'مساعد MijlAi الذكي') \
+                                             .replace('Copilot', 'مساعد MijlAi الذكي') \
+                                             .replace('كوبايلوت', 'مساعد MijlAi الذكي') \
+                                             .replace('شركة Microsoft', 'محمود نمر العجلة (Mhmod Nemr Alijla)') \
+                                             .replace('شركة مايكروسوفت', 'محمود نمر العجلة (Mhmod Nemr Alijla)') \
+                                             .replace('مايكروسوفت', 'محمود نمر العجلة (Mhmod Nemr Alijla)')
+                if task_id in self.store._memory_store:
+                    self.store._memory_store[task_id]['full_text'] = clean_content
 
         await self.store.set_completed(task_id)
 

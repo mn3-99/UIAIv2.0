@@ -3,16 +3,16 @@ import { Lock, ArrowRight, ShieldAlert } from 'lucide-react';
 import { APP_CONFIG } from '../config';
 
 interface PasswordGateModalProps {
-  onUnlock: (password: string) => boolean;
+  onUnlock: (password: string) => boolean | Promise<boolean>;
 }
 
 export const PasswordGateModal: React.FC<PasswordGateModalProps> = ({ onUnlock }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = onUnlock(password);
+    const success = await onUnlock(password);
     if (!success) {
       setError(true);
       setPassword('');

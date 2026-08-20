@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X, Settings, Key, Palette, Shield, Database, Sparkles, Check,
-  AlertCircle, RefreshCw, Plus, Trash2, HelpCircle
+  AlertCircle, RefreshCw, Plus, Trash2, HelpCircle, Cpu, Bot, Code, Zap, Globe
 } from 'lucide-react';
 import { AppSettings, ProviderConfig, TestConnectionResult, ThemeOption } from '../types';
 import { APP_CONFIG } from '../config';
+import { hashPassword } from '../utils/storage';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -45,6 +46,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Connection testing state
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Record<string, TestConnectionResult>>({});
+
+  // Models state
+  const [availableModels, setAvailableModels] = useState<Array<{id: string; name: string; provider: string; icon?: string; is_free?: boolean}>>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+
+  // Load models from API on mount
+  useEffect(() => {
+    const fetchModels = async () => {
+      setLoadingModels(true);
+      setModelsError(null);
+      try {
+        const res = await fetch('/api/models');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.models && Array.isArray(data.models)) {
+            setAvailableModels(data.models);
+          }
+        } else {
+          setModelsError('فشل تحميل النماذج من الخادم');
+        }
+      } catch (err: any) {
+        setModelsError(`خطأ في الاتصال: ${err.message}`);
+      } finally {
+        setLoadingModels(false);
+      }
+    };
+    fetchModels();
+  }, []);
 
   if (!isOpen) return null;
 
@@ -148,13 +178,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onUpdateSettings({ ...settings, theme });
   };
 
-  const handleSetPassword = (e: React.FormEvent) => {
+  const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (passwordInput.trim()) {
+    const pass = passwordInput.trim();
+    if (pass) {
+      const passwordHash = await hashPassword(pass);
       onUpdateSettings({
         ...settings,
         passwordProtected: true,
-        passwordHash: btoa(passwordInput.trim()) // simple base64 hash for access lock
+        passwordHash
       });
       setPasswordInput('');
     }
@@ -390,6 +422,77 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   إضافة المزود
                 </button>
               </form>
+
+              {/* Available Models from API */}
+              <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-xl space-y-3">
+                <h4 className="font-bold text-xs text-slate-200 flex items-center gap-1.5">
+                  <Cpu className="w-4 h-4 text-emerald-400" />
+                  النماذج المتاحة من الخادم
+                </h4>
+                
+                {loadingModels ? (
+                  <div className="flex items-center justify-center py-4 text-slate-400 text-xs">
+                    <RefreshCw className="w-4 h-4 animate-spin text-emerald-400 mr-2" />
+                    جاري تحميل النماذج...
+                  </div>
+                ) : modelsError ? (
+                  <div className="flex items-center gap-2 text-red-400 text-xs p-2 bg-red-950/30 border border-red-500/20 rounded-lg">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{modelsError}</span>
+                    <button
+                      onClick={() => {
+                        setLoadingModels(true);
+                        setModelsError(null);
+                        fetch('/api/models').then(res => res.json()).then(data => {
+                          if (data.models) setAvailableModels(data.models);
+                          setLoadingModels(false);
+                        }).catch(() => { setModelsError('فشل إعادة التحميل'); setLoadingModels(false); });
+                      }}
+                      className="text-xs underline hover:text-red-300"
+                    >
+                      إعادة المحاولة
+                    </button>
+                  </div>
+                ) : availableModels.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-slate-400">
+                      اختر النموذج الافتراضي للمحادثات الجديدة (يمكن تغييره من شريط الكتابة):
+                    </p>
+                    <select
+                      value={settings.activeModelId}
+                      onChange={(e) => onUpdateSettings({ ...settings, activeModelId: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                    >
+                      {availableModels.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name} {model.is_free ? '✓ مجاني' : ''} ({model.provider})
+                        </option>
+                      ))}
+                    </select>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {availableModels.map((model) => (
+                        <div
+                          key={model.id}
+                          className={`p-2 rounded-lg text-[10px] text-center transition-all ${
+                            settings.activeModelId === model.id
+                              ? 'bg-emerald-950/50 border border-emerald-500/30 text-emerald-300'
+                              : 'bg-slate-900/50 border border-slate-700/50 text-slate-300 hover:border-emerald-500/50'
+                          }`}
+                          onClick={() => onUpdateSettings({ ...settings, activeModelId: model.id })}
+                        >
+                          <div className="font-medium truncate">{model.name}</div>
+                          <div className="flex items-center justify-center gap-1 text-[9px] text-slate-500">
+                            {model.is_free && <span className="text-emerald-400">✓ مجاني</span>}
+                            <span>{model.provider}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500 text-center py-2">لا توجد نماذج متاحة</p>
+                )}
+              </div>
             </div>
           )}
 

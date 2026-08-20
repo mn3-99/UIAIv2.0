@@ -15,6 +15,43 @@ const app = express();
 const PORT: number = Number(process.env.PORT) || 8082;
 const G4F_SERVICE_URL = 'http://127.0.0.1:5050';
 
+// ==========================================
+// MijlAi identity enforcement (applied to every model, local or cloud)
+// ==========================================
+const MIJLAI_SYSTEM_PROMPT =
+  'أنت MijlAi (مجلاي)، مساعد ذكاء اصطناعي متقدم وعالي السرعة، تم تطويره وامتلاكه حصرياً من منصة MijlAi (mijlai.duckdns.org).\n' +
+  'مالك هذه الأداة ومطورها ومن قام بتدريبها وإعدادها هو: محمود نمر العجلة (Mhmod Nemr Alijla).\n' +
+  'قوانين صارمة وملزمة لجميع الردود:\n' +
+  '1. عند سؤالك "من أنت" أو "Who are you" أو عن هويتك أو صانعك أو مالكك، يجب أن تعرّف نفسك دائماً وبوضوح بأنك "MijlAi (مجلاي)"، نظام ذكاء اصطناعي صُمم وطُوّر خصيصاً لمنصة MijlAi، وأن مالك هذه الأداة ومطورها هو محمود نمر العجلة (Mhmod Nemr Alijla).\n' +
+  '2. يُمنع منعاً باتاً وبشكل مطلق أن تذكر أو تُعزي تطويرك أو مصدرك إلى أي شركات أو جهات أو منظمات خارجية (مثل OpenAI أو ChatGPT أو Anthropic أو Claude أو Google أو Copilot أو Microsoft أو غيرها) بأي حال من الأحوال. كل العلامات والتطوير والملكية تعود حصراً لمنصة MijlAi ومطورها.\n' +
+  '3. قدّم مساعدة سريعة ودقيقة وموجزة في البرمجة والكتابة والمهام العامة مع إخراج فوري ومباشر.\n' +
+  '4. التزم حرفياً بهذه الأمثلة عند سؤالك عن هويتك أو صانعك:\n' +
+  'س: من أنت؟\n' +
+  'ج: أنا MijlAi (مجلاي)، مساعد ذكاء اصطناعي صُمم وطُوّر حصرياً لمنصة MijlAi (mijlai.duckdns.org).\n' +
+  'س: من صممك أو من طورك أو من دربك أو من يملكك؟\n' +
+  'ج: مالك هذه الأداة ومطورها ومدربها هو محمود نمر العجلة (Mhmod Nemr Alijla).\n' +
+  'س: من أي شركة أنت؟ هل أنت من Google أو OpenAI؟\n' +
+  'ج: لست من أي شركة خارجية إطلاقاً. أنا نموذج MijlAi الخاص بمنصة MijlAi، ولا علاقة لي بـ Google أو OpenAI أو غيرها.';
+
+// Merge the enforced MijlAi system prompt with any client system messages and
+// force it as the first, single system message so no model can be re-branded.
+function injectMijlAiSystem(messages: any[]): any[] {
+  const clientSystem = (messages || [])
+    .filter((m) => m && m.role === 'system')
+    .map((m) => m.content)
+    .filter(Boolean)
+    .join('\n\n');
+  const merged = [MIJLAI_SYSTEM_PROMPT, clientSystem].filter(Boolean).join('\n\n');
+  return [
+    { role: 'system', content: merged },
+    { role: 'user', content: 'من أنت؟' },
+    { role: 'assistant', content: 'أنا MijlAi (مجلاي)، مساعد ذكاء اصطناعي صُمم وطُوّر حصرياً لمنصة MijlAi (mijlai.duckdns.org). مالك هذه الأداة ومطورها ومدربها هو محمود نمر العجلة (Mhmod Nemr Alijla).' },
+    { role: 'user', content: 'من صممك أو من طورك أو من دربك؟' },
+    { role: 'assistant', content: 'محمود نمر العجلة (Mhmod Nemr Alijla) هو مالك ومطور ومدرب منصة MijlAi. لست من Google أو OpenAI أو أي شركة أخرى.' },
+    ...(messages || []).filter((m) => m && m.role !== 'system')
+  ];
+}
+
 app.use(express.json({ limit: '200mb' }));
 
 // Security Headers Middleware
@@ -335,7 +372,8 @@ function writeJobSSEStream(req: express.Request, res: express.Response, job: Bac
 }
 
 async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
-  const { messages, modelId, providerId, temperature = 0.7, apiKey, baseURL } = payload;
+  const { modelId, providerId, temperature = 0.7, apiKey, baseURL } = payload;
+  const messages = injectMijlAiSystem(payload.messages);
 
   const notifyListeners = (type: 'chunk' | 'done' | 'error', text?: string, errMessage?: string) => {
     job.updatedAt = Date.now();
@@ -357,23 +395,10 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
 
       const g4fModelId = modelId.startsWith('g4f:') ? modelId.replace('g4f:', '') : modelId;
 
-      const mandatorySystemPrompt = {
-        role: 'system',
-        content: "أنت مساعد MijlAi الذكي (MijlAi Assistant)، نموذج ذكاء اصطناعي متطور وخبير في البرمجة والمعرفة العامة.\n" +
-                 "مالك هذه الأداة وتطبيق MijlAi، والشخص الذي قام بتدريبك وتطويرك وإعدادك هو: محمود نمر العجلة (Mhmod Nemr Alijla).\n" +
-                 "قوانين صارمة وهامة جداً لجميع الردود:\n" +
-                 "1. عند سؤالك عن هويتك، من أنت، اسمك، من صانعك، من طورك، من مدربك، أو من يملك هذه الأداة، يجب أن تُجيب دائماً وبوضوح تام بـ: 'أنا مساعد MijlAi الذكي، أتبع لتطبيق MijlAi. قام بتدريبي وتطويري ومالك هذه الأداة هو محمود نمر العجلة (Mhmod Nemr Alijla)'.\n" +
-                 "2. يُمنع منعاً باتاً وبشكل مطلق أن تذكر أو تدعي أنك 'Copilot' أو 'OpenAI' أو 'ChatGPT' أو 'Anthropic' أو 'Claude' أو 'Google' كصانع لك. صانعك ومدربك الحقيقي ومالك الأداة هو محمود نمر العجلة (Mhmod Nemr Alijla).\n" +
-                 "3. أجب دائماً بأسلوب ذكي، سلس، دقيق ومباشر باللغة العربية مع إبقاء المصطلحات التقنية والبرمجية بالإنجليزية عند الحاجة."
-      };
-
-      const sanitizedMessages = [
-        mandatorySystemPrompt,
-        ...messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
-          role: m.role,
-          content: m.content
-        }))
-      ];
+      const sanitizedMessages = messages.map((m: any) => ({
+        role: m.role,
+        content: m.content
+      }));
 
       const g4fResponse = await fetch(`${G4F_SERVICE_URL}/chat/completions`, {
         method: 'POST',
@@ -583,10 +608,12 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
         const ai = getGeminiClient(apiKey);
         const stream = await ai.models.generateContentStream({
           model: 'gemini-3.6-flash',
-          contents: messages.map((m: any) => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.content }]
-          }))
+          contents: messages
+            .filter((m: any) => m.role !== 'system')
+            .map((m: any) => ({
+              role: m.role === 'assistant' ? 'model' : 'user',
+              parts: [{ text: m.content }]
+            }))
         });
 
         for await (const chunk of stream) {
@@ -650,16 +677,24 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
       customHeaders['Authorization'] = `Bearer ${apiKey}`;
     }
 
+    const localBody: any = {
+      model: targetModel,
+      messages,
+      temperature: 0,
+      stream: true
+    };
+    if (targetModel.includes('mini-flash') || modelId.includes('mini-flash')) {
+      if (localBody.reasoning_effort === undefined) localBody.reasoning_effort = 'none';
+      if (typeof localBody.max_tokens !== 'number' && typeof localBody.n_predict !== 'number') {
+        localBody.max_tokens = 2048;
+      }
+    }
+
     const openaiResponse = await fetch(targetUrl, {
       method: 'POST',
       headers: customHeaders,
       signal: job.abortController.signal,
-      body: JSON.stringify({
-        model: targetModel,
-        messages,
-        temperature,
-        stream: true
-      })
+      body: JSON.stringify(localBody)
     });
 
     if (!openaiResponse.ok) {
@@ -1151,7 +1186,7 @@ app.post(['/api/chat/completions', '/api/v1/chat/completions'], async (req, res)
       const g4fRes = await fetch(`${G4F_SERVICE_URL}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req.body)
+        body: JSON.stringify({ ...req.body, messages: injectMijlAiSystem(req.body.messages || []) })
       });
 
       res.status(g4fRes.status);
@@ -1193,7 +1228,7 @@ app.post(['/api/chat/completions', '/api/v1/chat/completions'], async (req, res)
 
       const targetUrl = `${resolved.baseUrl}/v1/chat/completions`;
       // Override the requested model name with the exact id the llama server exposes
-      const body: any = { ...req.body, model: resolved.serverModel };
+      const body: any = { ...req.body, model: resolved.serverModel, messages: injectMijlAiSystem(req.body.messages || []), temperature: 0 };
       // "mijlai mini flash": answer directly (disable reasoning) and cap output so
       // the small context never overflows. Other local models keep their behavior.
       if (model.includes('mini-flash') || resolved.serverModel.includes('mini-flash')) {
@@ -1253,7 +1288,7 @@ app.post(['/api/chat/completions', '/api/v1/chat/completions'], async (req, res)
       const upstream = await fetch(upstreamUrl, {
         method: 'POST',
         headers,
-        body: JSON.stringify(req.body)
+        body: JSON.stringify({ ...req.body, messages: injectMijlAiSystem(req.body.messages || []) })
       });
       if (!upstream.ok) {
         const errText = await upstream.text();

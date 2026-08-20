@@ -17,7 +17,7 @@ pub struct AppDatabaseState {
 }
 
 #[tauri::command]
-pub fn trigger_haptic_feedback(app: AppHandle, level: String) -> Result<(), String> {
+fn trigger_haptic_feedback(app: AppHandle, level: String) -> Result<(), String> {
     #[cfg(mobile)]
     {
         println!("Mobile haptic trigger level: {}", level);
@@ -27,7 +27,7 @@ pub fn trigger_haptic_feedback(app: AppHandle, level: String) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub async fn save_local_message(
+async fn save_local_message(
     message: ChatMessagePayload,
     state: State<'_, Mutex<AppDatabaseState>>,
 ) -> Result<bool, String> {
@@ -65,7 +65,7 @@ pub async fn save_local_message(
 }
 
 #[tauri::command]
-pub async fn get_local_chat_history(
+async fn get_local_chat_history(
     chat_id: String,
     state: State<'_, Mutex<AppDatabaseState>>,
 ) -> Result<Vec<ChatMessagePayload>, String> {

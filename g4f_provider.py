@@ -5,6 +5,8 @@ Provides model discovery with health checking, OpenAI-compatible chat completion
 and SSE streaming using g4f.AsyncClient.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging

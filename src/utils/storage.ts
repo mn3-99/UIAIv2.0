@@ -11,7 +11,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   temperature: 0.7,
   systemPrompt: APP_CONFIG.defaultSystemPrompt,
   activeProviderId: 'g4f',
-  activeModelId: 'g4f:gpt-4o',
+  activeModelId: 'gemini',
   customProviders: [],
   apiKeys: {},
   passwordProtected: false,
@@ -29,15 +29,34 @@ export function loadSettings(): AppSettings {
     
     const parsed = JSON.parse(raw);
     
+    // Migrate old provider/model IDs to new ones
+    const oldProviderModelMap: Record<string, string> = {
+      'g4f:gpt-4o': 'gpt-4o',
+      'g4f:gemini': 'gemini',
+      'g4f:o3-mini': 'o3-mini',
+      'g4f:deepseek-r1': 'deepseek-r1',
+      'g4f:claude-3.5-sonnet': 'claude-3.5-sonnet',
+      'g4f:kimi-k3': 'kimi-k3',
+      'local': 'g4f'
+    };
+    
+    if (parsed.activeProviderId && oldProviderModelMap[parsed.activeProviderId]) {
+      parsed.activeProviderId = 'g4f';
+    }
+    
+    if (parsed.activeModelId && oldProviderModelMap[parsed.activeModelId]) {
+      parsed.activeModelId = oldProviderModelMap[parsed.activeModelId];
+    }
+    
     // Ensure active provider is g4f if it was set to an old non-g4f default
     if (parsed.activeProviderId && parsed.activeProviderId !== 'g4f' && !parsed.activeProviderId.startsWith('custom-')) {
       parsed.activeProviderId = 'g4f';
-      parsed.activeModelId = 'g4f:gpt-4o';
+      parsed.activeModelId = 'gemini';
     }
 
-    if (!parsed.activeModelId || !parsed.activeModelId.startsWith('g4f:')) {
+    if (!parsed.activeModelId || (parsed.activeProviderId === 'g4f' && parsed.activeModelId.startsWith('g4f:'))) {
       if (parsed.activeProviderId === 'g4f') {
-        parsed.activeModelId = 'g4f:gpt-4o';
+        parsed.activeModelId = 'gemini';
       }
     }
     
@@ -160,4 +179,27 @@ export function generateTitleFromMessage(message: string): string {
   const clean = message.trim().replace(/[\r\n]+/g, ' ');
   if (clean.length <= 35) return clean;
   return clean.substring(0, 35) + '...';
+}
+
+/**
+ * Secure async SHA-256 password hashing (replaces insecure base64 encoding)
+ */
+export async function hashPassword(password: string): Promise<string> {
+  const data = new TextEncoder().encode(password);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Constant-time string comparison to avoid timing side-channels
+ */
+export function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
 }

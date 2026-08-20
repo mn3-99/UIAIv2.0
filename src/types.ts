@@ -9,6 +9,7 @@ export interface ChatMessage {
   providerId?: string;
   status?: 'streaming' | 'complete' | 'error';
   errorDetails?: string;
+  isImage?: boolean;
 }
 
 export interface ChatSession {

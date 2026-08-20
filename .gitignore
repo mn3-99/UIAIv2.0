@@ -9,3 +9,10 @@ coverage/
 __pycache__/
 *.pyc
 *.db
+ssl/
+models/
+*.apk
+server.cjs
+server.cjs.map
+src-tauri/target/
+src-tauri/gen/
