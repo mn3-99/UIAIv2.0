@@ -2,6 +2,19 @@
 @import "highlight.js/styles/github-dark.css";
 @import "katex/dist/katex.min.css";
 
+/* Restore Tailwind v4 CSS-variable registrations that the build minifier drops.
+   Without these, `translate-*` / `scale-*` / `rotate-*` utilities silently no-op
+   (e.g. `--tw-translate-y` is undefined, making `translate: var(--tw-translate-x)
+   var(--tw-translate-y)` invalid → `translate: none`). Declaring them here keeps
+   the drawer slide and button press animations working. */
+@property --tw-translate-x { syntax: "<length-percentage>"; inherits: false; initial-value: 0px; }
+@property --tw-translate-y { syntax: "<length-percentage>"; inherits: false; initial-value: 0px; }
+@property --tw-rotate { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@property --tw-scale-x { syntax: "<number>"; inherits: false; initial-value: 1; }
+@property --tw-scale-y { syntax: "<number>"; inherits: false; initial-value: 1; }
+@property --tw-skew-x { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@property --tw-skew-y { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+
 @layer base {
   :root {
     font-family: 'Cairo', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;

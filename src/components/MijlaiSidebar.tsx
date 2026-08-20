@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Menu, SquarePen, Search, Brush, Folder, LayoutGrid,
-  Sparkles, Settings, X, Trash2, Pin, MessageSquare, User, LogIn
+  Sparkles, Settings, X, Trash2, Pin, MessageSquare, User, LogIn, ChevronDown
 } from 'lucide-react';
 import { ChatSession, UserAccount } from '../types';
 import { MijlaiLogo } from './MijlaiLogo';
@@ -28,6 +28,42 @@ interface MijlaiSidebarProps {
   userName: string;
 }
 
+interface NavItemProps {
+  id: string;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  badge?: number;
+}
+
+const NavItem: React.FC<NavItemProps> = ({ id, icon: Icon, label, onClick, active, badge }) => (
+  <button
+    id={id}
+    onClick={onClick}
+    role="menuitem"
+    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[0.98] cursor-pointer ${
+      active
+        ? 'bg-blue-50 text-blue-700'
+        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+    }`}
+  >
+    <span
+      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+        active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+      }`}
+    >
+      <Icon className="w-4 h-4" strokeWidth={2} />
+    </span>
+    <span className="truncate">{label}</span>
+    {typeof badge === 'number' && badge > 0 && (
+      <span className="ms-auto text-[10px] font-bold bg-slate-200 text-slate-600 rounded-full px-1.5 py-0.5">
+        {badge}
+      </span>
+    )}
+  </button>
+);
+
 export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
   isOpen,
   onCloseSidebar,
@@ -46,8 +82,7 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
   activeChatId,
   onSelectChat,
   onDeleteChat,
-  onTogglePin,
-  userName
+  onTogglePin
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -58,227 +93,160 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
 
   return (
     <>
-      {/* Scrim — semi-transparent blurred backdrop that closes the drawer on click */}
+      {/* Scrim — light blurred backdrop that closes the drawer on click */}
       <div
         aria-hidden="true"
         onClick={onCloseSidebar}
-        className={`fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm transition-opacity duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+        className={`fixed inset-0 z-40 bg-slate-900/25 backdrop-blur-sm transition-opacity duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
           isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       />
 
-      {/* Sliding drawer — fixed above the content, so opening it never causes
-          layout shift / reflow of the chat area. Inert when closed keeps it out
-          of the accessibility tree and keyboard tab order. */}
+      {/* Drawer — single full panel with every function; slides in from the right.
+          Fixed over the content so opening it never shifts the layout. */}
       <aside
         id="mijlai_sidebar"
         role="dialog"
         aria-modal={isOpen}
-        aria-label="الشريط الجانبي"
+        aria-label="القائمة والشريط الجانبي"
+        aria-hidden={!isOpen}
         tabIndex={-1}
         inert={!isOpen}
-        className={`fixed top-0 bottom-0 right-0 z-50 h-full flex select-none max-w-[92vw] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        style={{ transform: isOpen ? 'translateX(0)' : 'translateX(100%)' }}
+        className={`fixed top-0 bottom-0 right-0 z-50 flex h-full w-[300px] max-w-[85vw] flex-col bg-white shadow-2xl select-none transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]`}
       >
-        {/* 1. Right Vertical Icon Strip (RTL) — fixed 72px rail */}
-        <div className="w-[72px] min-w-[72px] h-full bg-white flex flex-col items-center justify-between py-5 border-l border-slate-100 shadow-sm">
-        <div className="flex flex-col items-center gap-[14px] w-full">
-          {/* Logo button -> returns to main view / new chat */}
+        {/* Header — logo + close */}
+        <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-4">
           <button
             id="logo_btn"
             onClick={onNewChat}
-            className="w-12 h-10 flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity mb-1"
+            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
             title="MijlAI الرئيسية"
           >
             <MijlaiLogo size="sm" />
+            <span className="text-lg font-extrabold text-slate-800">MijlAi</span>
           </button>
-
-          {/* Icon 2 - Toggle History */}
           <button
-            id="history_toggle"
-            onClick={onToggleHistory}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-              isHistoryOpen ? 'bg-[#e8eaed] text-[#202124]' : 'text-[#5f6368] hover:bg-[#f1f3f4]'
-            }`}
-            title="سجل المحادثات"
+            id="sidebar_close_btn"
+            onClick={onCloseSidebar}
+            aria-label="إغلاق الشريط الجانبي"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors active:scale-95 cursor-pointer"
           >
-            <Menu className="w-5 h-5" strokeWidth={2} />
-          </button>
-
-          {/* Icon 3 - New Chat */}
-          <button
-            id="new_chat"
-            onClick={onNewChat}
-            className="w-10 h-10 rounded-full bg-[#e8eaed] flex items-center justify-center text-[#202124] hover:bg-[#dadce0] transition-colors shadow-none"
-            title="محادثة جديدة"
-          >
-            <SquarePen className="w-5 h-5" strokeWidth={2} />
-          </button>
-
-          {/* Icon 4 - Search */}
-          <button
-            id="search_chats"
-            onClick={onToggleHistory}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-[#5f6368] hover:bg-[#f1f3f4] transition-colors"
-            title="البحث في المحادثات"
-          >
-            <Search className="w-5 h-5" strokeWidth={2} />
-          </button>
-
-          {/* Icon 5 - Canvas */}
-          <button
-            id="canvas_tool"
-            onClick={onOpenCanvas}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-[#5f6368] hover:bg-[#f1f3f4] transition-colors"
-            title="مساحة الكتابة والكود (Canvas)"
-          >
-            <Brush className="w-5 h-5" strokeWidth={2} />
-          </button>
-
-          {/* Icon 6 - Files */}
-          <button
-            id="file_manager"
-            onClick={onOpenFiles}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-[#5f6368] hover:bg-[#f1f3f4] transition-colors"
-            title="إدارة الملفات"
-          >
-            <Folder className="w-5 h-5" strokeWidth={2} />
-          </button>
-
-          {/* Icon 7 - Gems */}
-          <button
-            id="gems_store"
-            onClick={onOpenGems}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-[#5f6368] hover:bg-[#f1f3f4] transition-colors"
-            title="Gems / المساعدين المخصصين"
-          >
-            <LayoutGrid className="w-5 h-5" strokeWidth={2} />
-          </button>
-
-          {/* Icon 8 - Pro Diamond */}
-          <button
-            id="upgrade_btn"
-            onClick={onOpenUpgrade}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-[#5f6368] hover:bg-[#f1f3f4] transition-colors"
-            title="ترقية إلى Mijlai Pro"
-          >
-            <Sparkles className="w-[18px] h-[18px]" strokeWidth={2} />
+            <X className="w-4 h-4" strokeWidth={2} />
           </button>
         </div>
 
-        {/* Bottom Icons (Settings & Account / User Profile) */}
-        <div className="flex flex-col items-center gap-3">
-          {/* Settings */}
-          <button
-            id="settings_btn"
-            onClick={onOpenSettings}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-[#5f6368] hover:bg-[#f1f3f4] transition-colors relative"
-            title="الإعدادات"
-          >
-            <Settings className="w-5 h-5" strokeWidth={2} />
-            <span className="absolute top-[7px] right-[7px] w-[6px] h-[6px] bg-[#1a73e8] rounded-full" />
-          </button>
+        {/* Scrollable body — navigation + history */}
+        <div className="flex-1 overflow-y-auto px-3 py-3">
+          <nav role="menu" aria-label="الأدوات" className="space-y-1">
+            <NavItem id="new_chat" icon={SquarePen} label="محادثة جديدة" onClick={onNewChat} active />
+            <NavItem
+              id="history_toggle"
+              icon={Menu}
+              label="سجل المحادثات"
+              onClick={onToggleHistory}
+              active={isHistoryOpen}
+              badge={chats.length}
+            />
+            <NavItem id="canvas_tool" icon={Brush} label="مساحة الكتابة (Canvas)" onClick={onOpenCanvas} />
+            <NavItem id="file_manager" icon={Folder} label="إدارة الملفات" onClick={onOpenFiles} />
+            <NavItem id="gems_store" icon={LayoutGrid} label="Gems / المساعدون" onClick={onOpenGems} />
+            <NavItem id="upgrade_btn" icon={Sparkles} label="ترقية Mijlai Pro" onClick={onOpenUpgrade} />
+          </nav>
 
-          {/* User Account / Sign In Icon in Sidebar */}
-          {currentUser ? (
-            <button
-              id="user_profile_sidebar"
-              onClick={onOpenProfile}
-              className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all shadow-sm"
-              title={`الحساب الشخصي (${currentUser.username})`}
-            >
-              <User className="w-5 h-5 text-white" />
-            </button>
-          ) : (
-            <button
-              id="auth_signin_sidebar"
-              onClick={onOpenAuthModal}
-              className="w-9 h-9 rounded-full bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 border border-slate-200 flex items-center justify-center cursor-pointer transition-all shadow-xs"
-              title="تسجيل الدخول / Sign In"
-            >
-              <div
-                className="w-6 h-6 rounded-md bg-gradient-to-br from-amber-400 via-rose-500 to-blue-600 flex items-center justify-center text-white font-extrabold text-[12px] leading-none"
-                style={{ fontFamily: 'Google Sans, sans-serif' }}
-              >
-                M
+          {/* History section — expands inside the drawer */}
+          {isHistoryOpen && (
+            <section aria-label="سجل المحادثات" className="mt-3 border-t border-slate-100 pt-3">
+              <div className="relative mb-2">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="بحث في السجل..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500"
+                />
               </div>
-            </button>
+
+              <div className="space-y-1 max-h-[38vh] overflow-y-auto pl-1">
+                {filteredChats.length === 0 ? (
+                  <div className="text-center py-6 text-slate-400 text-xs">
+                    {searchQuery ? 'لا توجد نتائج' : 'لا توجد محادثات مسجلة'}
+                  </div>
+                ) : (
+                  filteredChats.map(chat => (
+                    <div
+                      key={chat.id}
+                      onClick={() => onSelectChat(chat.id)}
+                      className={`group flex items-center justify-between p-2.5 rounded-xl cursor-pointer text-xs transition-colors ${
+                        activeChatId === chat.id
+                          ? 'bg-blue-50 text-blue-700 font-medium'
+                          : 'hover:bg-slate-200/60 text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <MessageSquare className="w-4 h-4 shrink-0 text-slate-400 group-hover:text-blue-600" />
+                        <span className="truncate">{chat.title || 'محادثة جديدة'}</span>
+                      </div>
+
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onTogglePin(chat.id);
+                          }}
+                          className="p-1 hover:text-blue-600"
+                          title="تثبيت"
+                        >
+                          <Pin className={`w-3.5 h-3.5 ${chat.pinned ? 'text-blue-600 fill-current' : ''}`} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteChat(chat.id);
+                          }}
+                          className="p-1 hover:text-red-600"
+                          title="حذف"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <button
+                onClick={onToggleHistory}
+                className="w-full mt-1 flex items-center justify-center gap-1 py-1.5 text-[11px] text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+                إغلاق السجل
+              </button>
+            </section>
           )}
         </div>
-      </div>
 
-      {/* 2. Expandable History Drawer */}
-      {isHistoryOpen && (
-        <div className="w-72 max-w-[min(288px,calc(100vw-88px))] h-full bg-[#f8fafc] border-r border-slate-200/80 flex flex-col transition-all duration-200 shadow-md">
-          <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-white">
-            <span className="font-semibold text-slate-800 text-sm">سجل المحادثات</span>
-            <button onClick={onToggleHistory} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="p-3 bg-white border-b border-slate-100">
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="بحث في السجل..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-3 py-1.5 text-xs text-slate-700 outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {filteredChats.length === 0 ? (
-              <div className="text-center py-8 text-slate-400 text-xs">لا توجد محادثات مسجلة</div>
-            ) : (
-              filteredChats.map(chat => (
-                <div
-                  key={chat.id}
-                  onClick={() => onSelectChat(chat.id)}
-                  className={`group flex items-center justify-between p-2.5 rounded-xl cursor-pointer text-xs transition-colors ${
-                    activeChatId === chat.id
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'hover:bg-slate-200/60 text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <MessageSquare className="w-4 h-4 shrink-0 text-slate-400 group-hover:text-blue-600" />
-                    <span className="truncate">{chat.title || 'محادثة جديدة'}</span>
-                  </div>
-
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onTogglePin(chat.id);
-                      }}
-                      className="p-1 hover:text-blue-600"
-                      title="تثبيت"
-                    >
-                      <Pin className={`w-3.5 h-3.5 ${chat.pinned ? 'text-blue-600 fill-current' : ''}`} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteChat(chat.id);
-                      }}
-                      className="p-1 hover:text-red-600"
-                      title="حذف"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+        {/* Footer — settings + account */}
+        <div className="border-t border-slate-100 px-3 py-3 space-y-1">
+          <NavItem id="settings_btn" icon={Settings} label="الإعدادات" onClick={onOpenSettings} />
+          {currentUser ? (
+            <NavItem
+              id="user_profile_sidebar"
+              icon={User}
+              label={`الحساب: ${currentUser.username}`}
+              onClick={onOpenProfile}
+            />
+          ) : (
+            <NavItem
+              id="auth_signin_sidebar"
+              icon={LogIn}
+              label="تسجيل الدخول / Sign In"
+              onClick={onOpenAuthModal}
+            />
+          )}
         </div>
-      )}
-    </aside>
+      </aside>
     </>
   );
 };
