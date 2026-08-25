@@ -1,19 +1,19 @@
 {
-  "timestamp": "2026-08-20T14:28:31.001045+00:00",
+  "timestamp": "2026-08-25T00:34:24.585374+00:00",
   "summary": {
     "total_providers_discovered": 45,
     "total_healthy_providers": 1,
-    "total_demoted_providers": 20,
-    "overall_health_rate_percentage": 4.8
+    "total_demoted_providers": 24,
+    "overall_health_rate_percentage": 4.0
   },
   "top_10_stable_providers": [
     {
       "provider_name": "g4f-AutoRouter (gpt-4)",
       "model_id": "gpt-4",
-      "total_checks_24h": 31,
-      "success_checks_24h": 26,
-      "success_rate_24h": 83.87,
-      "avg_latency_ms_24h": 3580.56,
+      "total_checks_24h": 15,
+      "success_checks_24h": 15,
+      "success_rate_24h": 100.0,
+      "avg_latency_ms_24h": 1752.85,
       "is_demoted": false
     }
   ],
@@ -22,181 +22,217 @@
     {
       "provider_name": "AIBadgr",
       "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 155,
+      "total_checks_24h": 5,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 0.19,
+      "avg_latency_ms_24h": 0.21,
       "is_demoted": true
     },
     {
       "provider_name": "Anthropic",
       "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 155,
+      "total_checks_24h": 5,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 0.18,
+      "avg_latency_ms_24h": 0.22,
       "is_demoted": true
     },
     {
       "provider_name": "Antigravity",
       "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 155,
+      "total_checks_24h": 5,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 0.35,
+      "avg_latency_ms_24h": 0.44,
       "is_demoted": true
     },
     {
       "provider_name": "AnyProvider",
       "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 155,
+      "total_checks_24h": 75,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 712.05,
+      "avg_latency_ms_24h": 609.21,
       "is_demoted": true
     },
     {
       "provider_name": "BingCreateImages",
       "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 155,
+      "total_checks_24h": 5,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 0.2,
+      "avg_latency_ms_24h": 0.24,
       "is_demoted": true
     },
     {
       "provider_name": "BlackForestLabs_Flux1Dev",
-      "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 155,
+      "model_id": "claude-3.5-sonnet",
+      "total_checks_24h": 75,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 494.18,
+      "avg_latency_ms_24h": 1475.78,
+      "is_demoted": true
+    },
+    {
+      "provider_name": "BlackForestLabs_Flux1KontextDev",
+      "model_id": "claude-3.7-sonnet",
+      "total_checks_24h": 70,
+      "success_checks_24h": 0,
+      "success_rate_24h": 0.0,
+      "avg_latency_ms_24h": 0.38,
+      "is_demoted": true
+    },
+    {
+      "provider_name": "CachedSearch",
+      "model_id": "claude-3.7-sonnet",
+      "total_checks_24h": 70,
+      "success_checks_24h": 0,
+      "success_rate_24h": 0.0,
+      "avg_latency_ms_24h": 0.46,
+      "is_demoted": true
+    },
+    {
+      "provider_name": "Claude",
+      "model_id": "claude-3.7-sonnet",
+      "total_checks_24h": 70,
+      "success_checks_24h": 0,
+      "success_rate_24h": 0.0,
+      "avg_latency_ms_24h": 0.23,
+      "is_demoted": true
+    },
+    {
+      "provider_name": "CohereForAI_C4AI_Command",
+      "model_id": "claude-3.7-sonnet",
+      "total_checks_24h": 70,
+      "success_checks_24h": 0,
+      "success_rate_24h": 0.0,
+      "avg_latency_ms_24h": 0.26,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (claude-3-opus)",
       "model_id": "claude-3-opus",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 519.15,
+      "avg_latency_ms_24h": 767.37,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (claude-3.5-haiku)",
       "model_id": "claude-3.5-haiku",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 911.2,
+      "avg_latency_ms_24h": 744.79,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (claude-3.5-sonnet)",
       "model_id": "claude-3.5-sonnet",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 893.09,
+      "avg_latency_ms_24h": 702.48,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (claude-3.7-sonnet)",
       "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 748.15,
+      "avg_latency_ms_24h": 783.69,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (deepseek-r1)",
       "model_id": "deepseek-r1",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 1624.19,
+      "avg_latency_ms_24h": 20.76,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (deepseek-v3)",
       "model_id": "deepseek-v3",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 598.52,
+      "avg_latency_ms_24h": 615.81,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (gpt-4o)",
       "model_id": "gpt-4o",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 256.13,
+      "avg_latency_ms_24h": 37.11,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (gpt-4o-mini)",
       "model_id": "gpt-4o-mini",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 0.59,
+      "avg_latency_ms_24h": 69.71,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (kimi)",
       "model_id": "kimi",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 5737.93,
+      "avg_latency_ms_24h": 334.81,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (kimi-k1.5)",
       "model_id": "kimi-k1.5",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 893.51,
+      "avg_latency_ms_24h": 824.0,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (kimi-k3)",
       "model_id": "kimi-k3",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 3393.58,
+      "avg_latency_ms_24h": 693.29,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (moonshot)",
       "model_id": "moonshot",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 850.36,
+      "avg_latency_ms_24h": 729.47,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (o3-mini)",
       "model_id": "o3-mini",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 410.09,
+      "avg_latency_ms_24h": 2.38,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (qwen-2.5-coder-32b)",
       "model_id": "qwen-2.5-coder-32b",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 1546.56,
+      "avg_latency_ms_24h": 49.34,
       "is_demoted": true
     }
   ],
@@ -204,190 +240,226 @@
     {
       "provider_name": "AIBadgr",
       "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 155,
+      "total_checks_24h": 5,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 0.19,
+      "avg_latency_ms_24h": 0.21,
       "is_demoted": true
     },
     {
       "provider_name": "Anthropic",
       "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 155,
+      "total_checks_24h": 5,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 0.18,
+      "avg_latency_ms_24h": 0.22,
       "is_demoted": true
     },
     {
       "provider_name": "Antigravity",
       "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 155,
+      "total_checks_24h": 5,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 0.35,
+      "avg_latency_ms_24h": 0.44,
       "is_demoted": true
     },
     {
       "provider_name": "AnyProvider",
       "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 155,
+      "total_checks_24h": 75,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 712.05,
+      "avg_latency_ms_24h": 609.21,
       "is_demoted": true
     },
     {
       "provider_name": "BingCreateImages",
       "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 155,
+      "total_checks_24h": 5,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 0.2,
+      "avg_latency_ms_24h": 0.24,
       "is_demoted": true
     },
     {
       "provider_name": "BlackForestLabs_Flux1Dev",
-      "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 155,
+      "model_id": "claude-3.5-sonnet",
+      "total_checks_24h": 75,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 494.18,
+      "avg_latency_ms_24h": 1475.78,
+      "is_demoted": true
+    },
+    {
+      "provider_name": "BlackForestLabs_Flux1KontextDev",
+      "model_id": "claude-3.7-sonnet",
+      "total_checks_24h": 70,
+      "success_checks_24h": 0,
+      "success_rate_24h": 0.0,
+      "avg_latency_ms_24h": 0.38,
+      "is_demoted": true
+    },
+    {
+      "provider_name": "CachedSearch",
+      "model_id": "claude-3.7-sonnet",
+      "total_checks_24h": 70,
+      "success_checks_24h": 0,
+      "success_rate_24h": 0.0,
+      "avg_latency_ms_24h": 0.46,
+      "is_demoted": true
+    },
+    {
+      "provider_name": "Claude",
+      "model_id": "claude-3.7-sonnet",
+      "total_checks_24h": 70,
+      "success_checks_24h": 0,
+      "success_rate_24h": 0.0,
+      "avg_latency_ms_24h": 0.23,
+      "is_demoted": true
+    },
+    {
+      "provider_name": "CohereForAI_C4AI_Command",
+      "model_id": "claude-3.7-sonnet",
+      "total_checks_24h": 70,
+      "success_checks_24h": 0,
+      "success_rate_24h": 0.0,
+      "avg_latency_ms_24h": 0.26,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (claude-3-opus)",
       "model_id": "claude-3-opus",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 519.15,
+      "avg_latency_ms_24h": 767.37,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (claude-3.5-haiku)",
       "model_id": "claude-3.5-haiku",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 911.2,
+      "avg_latency_ms_24h": 744.79,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (claude-3.5-sonnet)",
       "model_id": "claude-3.5-sonnet",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 893.09,
+      "avg_latency_ms_24h": 702.48,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (claude-3.7-sonnet)",
       "model_id": "claude-3.7-sonnet",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 748.15,
+      "avg_latency_ms_24h": 783.69,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (deepseek-r1)",
       "model_id": "deepseek-r1",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 1624.19,
+      "avg_latency_ms_24h": 20.76,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (deepseek-v3)",
       "model_id": "deepseek-v3",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 598.52,
+      "avg_latency_ms_24h": 615.81,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (gpt-4)",
       "model_id": "gpt-4",
-      "total_checks_24h": 31,
-      "success_checks_24h": 26,
-      "success_rate_24h": 83.87,
-      "avg_latency_ms_24h": 3580.56,
+      "total_checks_24h": 15,
+      "success_checks_24h": 15,
+      "success_rate_24h": 100.0,
+      "avg_latency_ms_24h": 1752.85,
       "is_demoted": false
     },
     {
       "provider_name": "g4f-AutoRouter (gpt-4o)",
       "model_id": "gpt-4o",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 256.13,
+      "avg_latency_ms_24h": 37.11,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (gpt-4o-mini)",
       "model_id": "gpt-4o-mini",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 0.59,
+      "avg_latency_ms_24h": 69.71,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (kimi)",
       "model_id": "kimi",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 5737.93,
+      "avg_latency_ms_24h": 334.81,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (kimi-k1.5)",
       "model_id": "kimi-k1.5",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 893.51,
+      "avg_latency_ms_24h": 824.0,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (kimi-k3)",
       "model_id": "kimi-k3",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 3393.58,
+      "avg_latency_ms_24h": 693.29,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (moonshot)",
       "model_id": "moonshot",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 850.36,
+      "avg_latency_ms_24h": 729.47,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (o3-mini)",
       "model_id": "o3-mini",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 410.09,
+      "avg_latency_ms_24h": 2.38,
       "is_demoted": true
     },
     {
       "provider_name": "g4f-AutoRouter (qwen-2.5-coder-32b)",
       "model_id": "qwen-2.5-coder-32b",
-      "total_checks_24h": 31,
+      "total_checks_24h": 15,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 1546.56,
+      "avg_latency_ms_24h": 49.34,
       "is_demoted": true
     }
   ]

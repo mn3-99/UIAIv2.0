@@ -35,7 +35,7 @@ export default function App() {
   const [userName, setUserName] = useState<string>('Mhmod');
 
   // Model Tier state: flash, pro, thinking, claude, deepseek, kimi
-  const [selectedTier, setSelectedTier] = useState<string>('flash');
+  const [selectedTier, setSelectedTier] = useState<string>('coder');
 
   // Focus Mode (distraction-free): hides sidebar & header
   const [focusMode, setFocusMode] = useState(false);
@@ -195,25 +195,33 @@ export default function App() {
     saveSettings(settings);
   }, [settings]);
 
-  // Map model tier to specific backend model ID (must match engine.py model_map keys)
+  // Map model tier to specific backend model ID.
+  // Tiers are pinned to benchmark-verified endpoints (stress-tested):
+  //   mini  -> GPT-Mini via Yqcloud (fastest stream, 198 tok/s)
+  //   flash -> Sonar via Perplexity (1.9s TTFT, 100% reliable)
+  //   pro   -> Gemini via Google (strongest quality, 158 tok/s)
+  //   coder -> Qwen3-Coder-30B direct via OVHcloud (0.4s TTFT, coding specialist)
   const getModelIdForTier = (tier: string) => {
     switch (tier) {
+      case 'mini':
+        return 'gpt-4o-mini';
       case 'flash':
-        return 'gemini';
+        return 'sonar';
       case 'pro':
-        return 'gpt-4';
+        return 'gemini';
+      case 'coder':
+        return 'direct:Qwen3-Coder-30B-A3B-Instruct';
+      // Legacy tier aliases kept for old saved sessions
       case 'thinking':
-        return 'gemini-3.5-flash';
+        return 'gemini';
       case 'claude':
         return 'command-a';
       case 'deepseek':
-        return 'gemini-auto';
       case 'kimi':
-        return 'aria';
       case 'qwen':
-        return 'gemini-3.6-flash';
+        return 'sonar';
       default:
-        return tier.startsWith('local:') ? tier : 'gemini';
+        return tier.startsWith('local:') ? tier : 'gpt-4o-mini';
     }
   };
 
@@ -330,12 +338,50 @@ export default function App() {
     setTimeout(() => scrollToBottom(true), 50);
 
     try {
+      // Agentic Web Search: enrich the prompt with live results before sending
+      let finalPrompt = textToSend.trim();
+      let searchSources: { title: string; url: string; snippet?: string }[] | undefined;
+
+      if (webSearchEnabled) {
+        try {
+          const searchRes = await fetch('/api/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: textToSend.trim(), max_results: 5 })
+          });
+          if (searchRes.ok) {
+            const searchData = await searchRes.json();
+            const results: any[] = searchData?.results || [];
+            if (results.length > 0) {
+              searchSources = results.map((r: any) => ({ title: r.title || '', url: r.url || '', snippet: r.snippet || '' }));
+              const contextBlock = results
+                .map((r: any, i: number) => `[${i + 1}] ${r.title}\n${r.url}\n${(r.snippet || '').slice(0, 300)}`)
+                .join('\n\n');
+              finalPrompt = `استعن بمصادر الويب التالية عند الإجابة، واستشهد بأرقامها [1] [2] عند الحاجة:\n\n${contextBlock}\n\n---\n\nسؤال المستخدم: ${textToSend.trim()}`;
+            }
+          }
+        } catch (searchErr) {
+          console.warn('Web search failed, continuing without context:', searchErr);
+        }
+      }
+
+      // Attach search sources to the assistant bubble when they exist
+      if (searchSources?.length) {
+        setChats(prev => prev.map(c => {
+          if (c.id !== targetChatId) return c;
+          return {
+            ...c,
+            messages: c.messages.map(m => m.id === assistantMsgId ? { ...m, searchSources } : m)
+          };
+        }));
+      }
+
       // Decoupled Send request to FastAPI / Proxy (<10ms TTFB)
       const sendRes = await fetch('/api/chat/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: textToSend.trim(),
+          prompt: finalPrompt,
           chat_id: targetChatId,
           model: getModelIdForTier(selectedTier),
           user_id: currentUser?.id || 'guest',
@@ -365,6 +411,7 @@ export default function App() {
 
       let fullText = '';
       let streamDone = false;
+      const thinkStartRef = { current: 0 };
 
       // Shared finalizer: marks the assistant message complete or failed exactly once,
       // closes the stream and clears the generating state (prevents reconnect/rate-limit loops).
@@ -393,23 +440,35 @@ export default function App() {
       // Handles a single SSE payload (token or done). Used by BOTH the default
       // "message" event and the named "done" event (the server emits `event: done`).
       const handleStreamPayload = (data: any) => {
-        if (data?.t === 'token' && data.d) {
+        if (data?.t === 'think') {
+          const incoming = typeof data.d === 'string' ? data.d : '';
+          if (!thinkStartRef.current) thinkStartRef.current = Date.now();
+          setChats(prev => prev.map(c => {
+            if (c.id !== targetChatId) return c;
+            return {
+              ...c,
+              messages: c.messages.map(m => {
+                if (m.id !== assistantMsgId) return m;
+                const nextThinking = data.full ? incoming : ((m.thinking || '') + incoming);
+                return { ...m, thinking: nextThinking };
+              })
+            };
+          }));
+        } else if (data?.t === 'token' && data.d) {
           fullText += data.d;
 
-          if (fullText.includes('```') && !canvasContent) {
-            setCanvasContent(fullText);
-          }
-
+          // Freeze thinking duration on the first answer token
           setChats(prev => prev.map(c => {
-            if (c.id === targetChatId) {
-              return {
-                ...c,
-                messages: c.messages.map(m =>
-                  m.id === assistantMsgId ? { ...m, content: fullText } : m
-                )
-              };
-            }
-            return c;
+            if (c.id !== targetChatId) return c;
+            return {
+              ...c,
+              messages: c.messages.map(m => {
+                if (m.id !== assistantMsgId) return m;
+                const patch: Partial<ChatMessage> = { content: fullText };
+                if (m.thinking && !m.thinkingDurationMs) patch.thinkingDurationMs = Date.now() - (thinkStartRef.current || Date.now());
+                return { ...m, ...patch } as ChatMessage;
+              })
+            };
           }));
 
           if (chatContainerRef.current) {

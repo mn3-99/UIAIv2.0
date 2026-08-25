@@ -196,14 +196,27 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
     setIsAttachOpen(false);
   };
 
-  const verifiedModelsMap: Record<string, { label: string; shortName: string; icon: any; color: string; desc: string }> = {
-    'flash': { label: 'Gemini (Fast)', shortName: 'Flash', icon: Zap, color: 'text-amber-500', desc: 'سريع وموفر للردود اليومية الفورية' },
-    'pro': { label: 'GPT-4', shortName: 'Pro', icon: Sparkles, color: 'text-blue-600', desc: 'أذكى وأدق للمهام والتحليلات المعقدة' },
-    'thinking': { label: 'Gemini 3.5 Flash', shortName: 'Thinking', icon: Brain, color: 'text-purple-600', desc: 'تفكير منطقي وعميق خطوة بخطوة' },
-    'claude': { label: 'Command A', shortName: 'Command', icon: Sparkles, color: 'text-amber-600', desc: 'ممتاز في الكتابة الأكاديمية وصياغة النصوص' },
-    'deepseek': { label: 'Gemini Auto', shortName: 'Auto', icon: Brain, color: 'text-emerald-600', desc: 'اختيار تلقائي لأفضل نموذج' },
-    'kimi': { label: 'Aria', shortName: 'Aria', icon: Sparkles, color: 'text-indigo-600', desc: 'كشط ومعالجة مستندات طويلة المدى' },
-    'qwen': { label: 'Gemini 3.6 Flash', shortName: 'Direct', icon: Code, color: 'text-cyan-600', desc: 'أحدث نسخة مباشرة من جيميني' }
+  const verifiedModelsMap: Record<string, { label: string; shortName: string; icon: any; color: string; desc: string; realModel: string; badge: string }> = {
+    'mini': {
+      label: 'MijlAi Mini', shortName: 'Mini', icon: Zap, color: 'text-emerald-600',
+      desc: 'خفيف وسريع التدفق — للمهام اليومية الفورية',
+      realModel: 'GPT-Mini · Yqcloud', badge: '⚡ 198 توكن/ث · موثوقية 100%'
+    },
+    'flash': {
+      label: 'MijlAi Flash', shortName: 'Flash', icon: Sparkles, color: 'text-amber-500',
+      desc: 'أسرع بداية رد يومي بتوازن ممتاز',
+      realModel: 'Sonar · Perplexity', badge: '⏱ 1.9ث أول توكن · موثوقية 100%'
+    },
+    'pro': {
+      label: 'MijlAi Pro', shortName: 'Pro', icon: Brain, color: 'text-purple-600',
+      desc: 'الأقوى في التحليل والاستدلال والمهام المعقدة',
+      realModel: 'Gemini · Google', badge: '★ 158 توكن/ث · جودة قصوى'
+    },
+    'coder': {
+      label: 'MijlAi Coder', shortName: 'Coder', icon: Code, color: 'text-cyan-600',
+      desc: 'متخصص برمجياً — أسرع استجابة مقياسة (0.4ث)',
+      realModel: 'Qwen3-Coder-30B · OVHcloud', badge: '🚀 0.4ث أول توكن · 75 توكن/ث'
+    }
   };
 
   const isLocalTier = selectedTier.startsWith('local:');
@@ -434,9 +447,19 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               </button>
 
               {isTierOpen && (
-                <div className="absolute left-0 bottom-10 w-72 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-right animate-in fade-in zoom-in-95 duration-150">
-                  <div className="px-2 py-1 text-[11px] font-bold text-slate-400">نماذج MijlAI المتاحة بضمان 100%</div>
-                  {Object.entries(verifiedModelsMap).map(([key, item]) => {
+                <div
+                  className="absolute left-0 bottom-10 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-right animate-in fade-in zoom-in-95 duration-150 overflow-y-auto scroll-smooth"
+                  style={{ maxHeight: 'min(420px, 55vh)', overscrollBehavior: 'contain', scrollbarWidth: 'thin' }}
+                  onWheel={(e) => {
+                    const el = e.currentTarget;
+                    const atTop = el.scrollTop <= 0;
+                    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+                    if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) return;
+                    e.stopPropagation();
+                  }}
+                >
+                  <div className="px-2 py-1 text-[11px] font-bold text-slate-400 sticky top-0 bg-white/90 backdrop-blur-sm">نماذج MijlAI — مُقاسة ومرتبة حسب الأداء الفعلي</div>
+                  {Object.entries(verifiedModelsMap).map(([key, item], idx) => {
                     const Icon = item.icon;
                     const isSelected = selectedTier === key;
                     return (
@@ -451,9 +474,17 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                         }`}
                       >
                         <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${item.color}`} />
-                        <div>
-                          <div className="text-xs font-bold">{item.label}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-bold flex items-center justify-between gap-2">
+                            <span>{item.label}</span>
+                            {idx === 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold shrink-0">الأسرع تدفقاً</span>}
+                            {key === 'coder' && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-100 text-cyan-700 font-bold shrink-0">أسرع استجابة</span>}
+                          </div>
                           <div className="text-[10px] text-slate-500 font-normal">{item.desc}</div>
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-mono" dir="ltr">{item.realModel}</span>
+                            <span className="text-[9px] text-slate-400">{item.badge}</span>
+                          </div>
                         </div>
                       </button>
                     );

@@ -267,10 +267,11 @@ function getGeminiClient(customApiKey?: string) {
 // Background Generation Job Queue & Memory Store
 // ==========================================
 interface BackgroundJobListenerPayload {
-  type: 'chunk' | 'done' | 'error';
+  type: 'chunk' | 'think' | 'done' | 'error';
   text?: string;
   error?: string;
   fullText?: string;
+  thinkText?: string;
 }
 
 interface BackgroundJob {
@@ -280,6 +281,13 @@ interface BackgroundJob {
   status: 'generating' | 'completed' | 'failed' | 'aborted';
   fullText: string;
   chunks: string[];
+  thinkText: string;
+  thinkChunks: string[];
+  thinkStartedAt?: number;
+  thinkEndedAt?: number;
+  // State machine for <think>...</think> tag parsing across chunk boundaries
+  _inThinkBlock: boolean;
+  _thinkCarry: string;
   error?: string;
   createdAt: number;
   updatedAt: number;
@@ -290,6 +298,89 @@ interface BackgroundJob {
 }
 
 const activeJobs = new Map<string, BackgroundJob>();
+
+// ==========================================
+// Agentic Thinking Extractor
+// Routes reasoning output (<think> tags or delta.reasoning_content fields)
+// into job.thinkText while returning only the visible answer delta.
+// ==========================================
+function processAssistantDelta(job: BackgroundJob, deltaObj: any, rawContent: string | null): { visibleDelta: string } {
+  let visibleDelta = '';
+
+  const pushThink = (text: string) => {
+    if (!text) return;
+    if (!job.thinkStartedAt) job.thinkStartedAt = Date.now();
+    job.thinkText += text;
+    job.thinkChunks.push(text);
+  };
+
+  // 1) Structured reasoning fields (OpenRouter/DeepSeek/Pollinations style)
+  const reasoningField = deltaObj?.delta?.reasoning_content ?? deltaObj?.delta?.reasoning ?? deltaObj?.reasoning_content ?? deltaObj?.reasoning;
+  if (typeof reasoningField === 'string' && reasoningField && !job._inThinkBlock) {
+    pushThink(reasoningField);
+  }
+
+  // 2) Inline <think>...</think> blocks inside content stream
+  if (rawContent) {
+    let buffer = (job._thinkCarry || '') + rawContent;
+    job._thinkCarry = '';
+
+    // Keep a small tail in carry to avoid splitting a tag across chunks
+    while (buffer.length > 0) {
+      if (job._inThinkBlock) {
+        const endIdx = buffer.indexOf('</think>');
+        if (endIdx === -1) {
+          // Hold back a tail that might contain a partial "</think>"
+          const flushLen = Math.max(0, buffer.length - 8);
+          if (flushLen > 0) pushThink(buffer.slice(0, flushLen));
+          job._thinkCarry = buffer.slice(flushLen);
+          break;
+        } else {
+          pushThink(buffer.slice(0, endIdx));
+          job.thinkEndedAt = Date.now();
+          job._inThinkBlock = false;
+          buffer = buffer.slice(endIdx + '</think>'.length);
+        }
+      } else {
+        const startIdx = buffer.indexOf('<think>');
+        if (startIdx === -1) {
+          // Hold back a tail that might contain a partial "<think>"
+          const flushLen = Math.max(0, buffer.length - 8);
+          visibleDelta += buffer.slice(0, flushLen);
+          job._thinkCarry = buffer.slice(flushLen);
+          break;
+        } else {
+          visibleDelta += buffer.slice(0, startIdx);
+          job._inThinkBlock = true;
+          job.thinkStartedAt = job.thinkStartedAt || Date.now();
+          buffer = buffer.slice(startIdx + '<think>'.length);
+        }
+      }
+    }
+  }
+
+  return { visibleDelta };
+}
+
+// Flush any residual carried text once a provider stream has fully ended.
+function flushThinkingCarry(job: BackgroundJob): void {
+  const carry = job._thinkCarry;
+  if (!carry) return;
+  job._thinkCarry = '';
+  if (job._inThinkBlock) {
+    pushFinalThink(job, carry);
+  } else {
+    job.fullText += carry;
+    job.chunks.push(carry);
+  }
+}
+
+function pushFinalThink(job: BackgroundJob, text: string): void {
+  if (!text) return;
+  if (!job.thinkStartedAt) job.thinkStartedAt = Date.now();
+  job.thinkText += text;
+  job.thinkChunks.push(text);
+}
 
 // Cleanup completed jobs older than 1 hour to prevent memory leaks
 setInterval(() => {
@@ -325,6 +416,15 @@ function writeJobSSEStream(req: express.Request, res: express.Response, job: Bac
 
   req.on('close', cleanup);
 
+  // 1. Catch up on buffered think chunks from offset (agentic reasoning replay)
+  let thinkOffset = 0;
+  const initialThink = job.thinkChunks.slice(startOffset);
+  for (const text of initialThink) {
+    const payload = JSON.stringify({ t: 'think', d: text, o: thinkOffset + 1 });
+    res.write(`id: t${thinkOffset + 1}\ndata: ${payload}\n\n`);
+    thinkOffset += 1;
+  }
+
   // 1. Catch up on buffered chunks from offset
   const initialChunks = job.chunks.slice(startOffset);
   let currentOffset = startOffset;
@@ -351,7 +451,11 @@ function writeJobSSEStream(req: express.Request, res: express.Response, job: Bac
   listener = (event: BackgroundJobListenerPayload) => {
     if (res.writableEnded) return;
 
-    if (event.type === 'chunk' && event.text) {
+    if (event.type === 'think') {
+      // Send the full accumulated reasoning (idempotent, avoids offset drift)
+      const payload = JSON.stringify({ t: 'think', d: job.thinkText || '', full: true, o: thinkOffset });
+      res.write(`id: t${thinkOffset}\ndata: ${payload}\n\n`);
+    } else if (event.type === 'chunk' && event.text) {
       const payload = JSON.stringify({ t: 'token', d: event.text, o: currentOffset + 1 });
       res.write(`id: ${currentOffset + 1}\ndata: ${payload}\n\n`);
       currentOffset += 1;
@@ -375,11 +479,11 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
   const { modelId, providerId, temperature = 0.7, apiKey, baseURL } = payload;
   const messages = injectMijlAiSystem(payload.messages);
 
-  const notifyListeners = (type: 'chunk' | 'done' | 'error', text?: string, errMessage?: string) => {
+  const notifyListeners = (type: 'chunk' | 'think' | 'done' | 'error', text?: string, errMessage?: string) => {
     job.updatedAt = Date.now();
     for (const listener of job.listeners) {
       try {
-        listener({ type, text, error: errMessage, fullText: job.fullText });
+        listener({ type, text, error: errMessage, fullText: job.fullText, thinkText: type === 'think' ? job.thinkText : undefined });
       } catch (e) {
         console.error('Error notifying job listener:', e);
       }
@@ -450,11 +554,17 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
                 job.error = json.error.message || 'خطأ في معالجة طلب g4f';
                 return notifyListeners('error', undefined, job.error);
               }
-              const delta = json.choices?.[0]?.delta?.content;
-              if (delta) {
-                job.fullText += delta;
-                job.chunks.push(delta);
-                notifyListeners('chunk', delta);
+              const deltaObj = json.choices?.[0]?.delta;
+              const rawDelta = deltaObj?.content ?? null;
+              const { visibleDelta } = processAssistantDelta(job, json, rawDelta);
+              if (visibleDelta) {
+                job.fullText += visibleDelta;
+                job.chunks.push(visibleDelta);
+                notifyListeners('chunk', visibleDelta);
+              }
+              if (job.thinkChunks.length > (job as any)._notifiedThinkCount) {
+                (job as any)._notifiedThinkCount = job.thinkChunks.length;
+                notifyListeners('think');
               }
             } catch (e) {
               // Ignore non-json SSE frames
@@ -462,6 +572,9 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
           }
         }
       }
+
+      // Flush any residual carried text (partial <think> tag tails) once stream ends
+      flushThinkingCarry(job);
 
       // Post-process sanitization for identity enforcement
       if (job.fullText && (job.fullText.includes('Copilot') || job.fullText.includes('Microsoft') || job.fullText.includes('مايكروسوفت'))) {
@@ -731,11 +844,16 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
           if (contentStr === '[DONE]') break;
           try {
             const json = JSON.parse(contentStr);
-            const delta = json.choices?.[0]?.delta?.content;
-            if (delta) {
-              job.fullText += delta;
-              job.chunks.push(delta);
-              notifyListeners('chunk', delta);
+            const rawDelta = json.choices?.[0]?.delta?.content ?? null;
+            const { visibleDelta } = processAssistantDelta(job, json, rawDelta);
+            if (visibleDelta) {
+              job.fullText += visibleDelta;
+              job.chunks.push(visibleDelta);
+              notifyListeners('chunk', visibleDelta);
+            }
+            if (job.thinkChunks.length > (job as any)._notifiedThinkCount) {
+              (job as any)._notifiedThinkCount = job.thinkChunks.length;
+              notifyListeners('think');
             }
           } catch (e) {
             // ignore non-json chunk parse
@@ -743,6 +861,8 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
         }
       }
     }
+
+    flushThinkingCarry(job);
 
     if (job.status === 'generating') {
       job.status = 'completed';
@@ -798,6 +918,10 @@ app.post('/api/chat', async (req, res) => {
       status: 'generating',
       fullText: '',
       chunks: [],
+      thinkText: '',
+      thinkChunks: [],
+      _inThinkBlock: false,
+      _thinkCarry: '',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       modelId,
@@ -902,6 +1026,10 @@ app.post(['/send', '/api/chat/send'], async (req, res) => {
     status: 'generating',
     fullText: '',
     chunks: [],
+    thinkText: '',
+    thinkChunks: [],
+    _inThinkBlock: false,
+    _thinkCarry: '',
     createdAt: Date.now(),
     updatedAt: Date.now(),
     modelId,
@@ -938,6 +1066,8 @@ app.get(['/preview/:taskId', '/api/chat/preview/:taskId'], async (req, res) => {
       full_text: expressJob.fullText,
       token_count: expressJob.chunks.length,
       last_chunk: expressJob.chunks[expressJob.chunks.length - 1] || '',
+      thinking: expressJob.thinkText || '',
+      think_duration_ms: (expressJob.thinkStartedAt && expressJob.thinkEndedAt) ? (expressJob.thinkEndedAt - expressJob.thinkStartedAt) : null,
       error: expressJob.error || null
     });
   }
@@ -1054,6 +1184,115 @@ app.post('/api/chat/abort', (req, res) => {
 // Lightweight Ping/Health check endpoint for frontend ConnectionManager
 app.get(['/api/ping', '/api/health'], (req, res) => {
   return res.json({ status: 'ok', timestamp: Date.now() });
+});
+
+// ==========================================
+// Agentic Tools: Web Search + Python Workspace
+// ==========================================
+const WORKSPACES_ROOT = path.join(process.cwd(), 'workspaces');
+
+function resolveWorkspace(sessionId: string): string {
+  const safe = (sessionId || 'default').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'default';
+  const dir = path.join(WORKSPACES_ROOT, safe);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+// Internet search via the local g4f provider service (DuckDuckGo backend, keyless)
+app.post('/api/search', async (req, res) => {
+  try {
+    const query = String(req.body?.query || '').trim();
+    if (!query) return res.status(400).json({ error: 'query مطلوب' });
+
+    ensureG4FProviderService();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const upstream = await fetch('http://127.0.0.1:5050/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, max_results: 6 }),
+        signal: controller.signal
+      });
+      if (!upstream.ok) throw new Error(`search upstream ${upstream.status}`);
+      const data = await upstream.json();
+      return res.json(data);
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (err: any) {
+    return res.status(502).json({ error: err?.message || 'فشل البحث في الويب' });
+  }
+});
+
+// Python workspace execution: sandboxed subprocess per run, persistent
+// per-session workspace directory for files/outputs.
+app.post('/api/python/run', async (req, res) => {
+  const sessionId = String(req.body?.sessionId || 'default');
+  const code = String(req.body?.code || '');
+  if (!code.trim()) return res.status(400).json({ error: 'code مطلوب' });
+
+  // Hard limits
+  if (code.length > 60000) return res.status(413).json({ error: 'الكود طويل جداً (الحد 60KB)' });
+
+  const workdir = resolveWorkspace(sessionId);
+  const filePath = path.join(workdir, `cell_${Date.now()}.py`);
+  fs.writeFileSync(filePath, code, 'utf-8');
+
+  const startedAt = Date.now();
+  let child: any;
+  try {
+    child = spawn('python3', ['-u', filePath], {
+      cwd: workdir,
+      env: { PATH: process.env.PATH, HOME: workdir, PYTHONDONTWRITEBYTECODE: '1', PYTHONUNBUFFERED: '1' },
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'فشل تشغيل بايثون' });
+  }
+
+  let stdout = '';
+  let stderr = '';
+  const MAX_OUTPUT = 100000; // 100KB cap
+
+  const timer = setTimeout(() => {
+    try { child.kill('SIGKILL'); } catch (e) {}
+  }, 15000);
+
+  child.stdout.on('data', (d: Buffer) => { if (stdout.length < MAX_OUTPUT) stdout += d.toString(); });
+  child.stderr.on('data', (d: Buffer) => { if (stderr.length < MAX_OUTPUT) stderr += d.toString(); });
+
+  child.on('error', (err: Error) => {
+    clearTimeout(timer);
+    return res.status(500).json({ error: err.message });
+  });
+
+  child.on('close', (exitCode: number | null) => {
+    clearTimeout(timer);
+    const durationMs = Date.now() - startedAt;
+    const timedOut = exitCode === null || durationMs >= 14800;
+    res.json({
+      ok: !timedOut && exitCode === 0,
+      exit_code: exitCode,
+      stdout: stdout.slice(0, MAX_OUTPUT),
+      stderr: stderr.slice(0, MAX_OUTPUT),
+      timed_out: timedOut,
+      duration_ms: durationMs,
+      workspace: path.basename(workdir),
+      files: fs.readdirSync(workdir).filter(f => f !== `cell_${path.basename(filePath, '.py')}` && !f.startsWith('cell_')).slice(0, 50)
+    });
+  });
+});
+
+app.get('/api/python/files/:sessionId', (req, res) => {
+  const workdir = resolveWorkspace(String(req.params.sessionId));
+  const files = fs.readdirSync(workdir)
+    .filter(f => !f.startsWith('cell_'))
+    .map(f => {
+      const st = fs.statSync(path.join(workdir, f));
+      return { name: f, size: st.size, modified: st.mtimeMs };
+    });
+  res.json({ workspace: req.params.sessionId, files });
 });
 
 // ==========================================

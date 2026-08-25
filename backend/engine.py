@@ -250,63 +250,77 @@ class LLMEngine:
         if not target_model:
             target_model = "gpt-4o"
 
-        # Enforce working LLM candidates with instant fallbacks
-        models_to_try = list(dict.fromkeys([target_model, "gpt-4o", "o3-mini", "gemini", "gpt-4"]))
+        # Stream through the hardened g4f_provider service (port 5050):
+        # it owns provider routing, direct keyless endpoints (Kilo/OVH/...),
+        # and the junk/quality guard. This keeps ONE hardened brain.
+        G4F_SERVICE_URL = "http://127.0.0.1:5050/chat/completions"
+        models_to_try = list(dict.fromkeys([
+            target_model, "gpt-4o-mini", "gemini", "sonar", "command-a"
+        ]))
 
-        client = AsyncClient()
         token_offset = 0
         received_content = False
 
-        for current_model in models_to_try:
-            try:
-                logger.info(f"Attempting LLM generation for task {task_id} with model '{current_model}'...")
-                res = None
-                if client is not None:
+        try:
+            import aiohttp as _aio
+            timeout = _aio.ClientTimeout(total=120, connect=10)
+            async with _aio.ClientSession(timeout=timeout) as http:
+                for current_model in models_to_try:
                     try:
-                        res = client.chat.completions.create(
-                            model=current_model,
-                            messages=chat_messages,
-                            stream=True
-                        )
-                    except Exception as g4f_err:
-                        logger.warning(f"g4f client create error: {g4f_err}")
-                        res = None
+                        logger.info(f"Attempting LLM generation for task {task_id} with model '{current_model}' via g4f service...")
+                        checkpoint_buffer = ""
+                        buffer_counter = 0
 
-                if res is not None:
-                    if asyncio.iscoroutine(res):
-                        res = await res
+                        async with http.post(G4F_SERVICE_URL, json={
+                            "model": current_model,
+                            "messages": chat_messages,
+                            "stream": True,
+                            "temperature": 0.7
+                        }) as resp:
+                            if resp.status != 200:
+                                logger.warning(f"g4f service returned {resp.status} for '{current_model}'")
+                                continue
 
-                    checkpoint_buffer = ""
-                    buffer_counter = 0
+                            async for raw in resp.content:
+                                line = raw.decode("utf-8", errors="ignore").strip()
+                                if not line.startswith("data:"):
+                                    continue
+                                data_str = line[5:].strip()
+                                if data_str == "[DONE]":
+                                    break
+                                try:
+                                    obj = json.loads(data_str)
+                                except Exception:
+                                    continue
+                                delta = {}
+                                try:
+                                    delta = obj.get("choices", [{}])[0].get("delta", {})
+                                except Exception:
+                                    pass
+                                text_chunk = delta.get("content") or ""
 
-                    async for chunk in res:
-                        text_chunk = ""
-                        if hasattr(chunk, "choices") and chunk.choices:
-                            delta = chunk.choices[0].delta
-                            text_chunk = getattr(delta, "content", "") or ""
-                        elif isinstance(chunk, str):
-                            text_chunk = chunk
+                                if text_chunk:
+                                    received_content = True
+                                    checkpoint_buffer += text_chunk
+                                    token_offset += 1
+                                    buffer_counter += 1
 
-                        if text_chunk:
-                            received_content = True
-                            checkpoint_buffer += text_chunk
-                            token_offset += 1
-                            buffer_counter += 1
+                                    if buffer_counter >= 2:
+                                        await self.store.update_checkpoint(task_id, checkpoint_buffer, token_offset - buffer_counter)
+                                        checkpoint_buffer = ""
+                                        buffer_counter = 0
 
-                            if buffer_counter >= 2:
-                                await self.store.update_checkpoint(task_id, checkpoint_buffer, token_offset - buffer_counter)
-                                checkpoint_buffer = ""
-                                buffer_counter = 0
+                        if checkpoint_buffer:
+                            await self.store.update_checkpoint(task_id, checkpoint_buffer, token_offset - buffer_counter)
 
-                    if checkpoint_buffer:
-                        await self.store.update_checkpoint(task_id, checkpoint_buffer, token_offset - buffer_counter)
+                        if received_content:
+                            logger.info(f"Successfully generated response for task {task_id} using '{current_model}'")
+                            break
 
-                if received_content:
-                    logger.info(f"Successfully generated response for task {task_id} using '{current_model}'")
-                    break
-
-            except Exception as e:
-                logger.warning(f"Model '{current_model}' failed for task {task_id}: {e}")
+                    except Exception as e:
+                        logger.warning(f"Model '{current_model}' failed for task {task_id}: {e}")
+        except ImportError:
+            logger.warning("aiohttp missing in engine env — falling back to legacy client")
 
         # Smart Provider Router Fallback if g4f didn't yield content
         if not received_content:

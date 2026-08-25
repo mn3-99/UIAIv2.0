@@ -18,9 +18,10 @@ interface RichMarkdownProps {
   content: string;
   isStreaming?: boolean;
   isUser?: boolean;
+  onRunPython?: (code: string, blockIndex: number) => void;
 }
 
-export const RichMarkdown: React.FC<RichMarkdownProps> = React.memo(({ content, isStreaming, isUser }) => {
+export const RichMarkdown: React.FC<RichMarkdownProps> = React.memo(({ content, isStreaming, isUser, onRunPython }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const html = useMemo(() => renderSanitizedMarkdown(content), [content]);
@@ -70,7 +71,32 @@ export const RichMarkdown: React.FC<RichMarkdownProps> = React.memo(({ content, 
         });
       });
     });
-  }, [html, isStreaming]);
+
+    // 4. Python run buttons (agentic code execution)
+    const pythonBlocks = container.querySelectorAll<HTMLElement>('pre code.language-python');
+    pythonBlocks.forEach((el, idx) => {
+      if (!onRunPython || isStreaming) return;
+      const wrap = el.closest('.code-block-wrap');
+      const head = wrap?.querySelector('.code-block-head');
+      if (!head || head.querySelector('.code-run-btn')) return;
+
+      const runBtn = document.createElement('button');
+      runBtn.className = 'code-run-btn';
+      runBtn.type = 'button';
+      runBtn.title = 'تشغيل في مساحة عمل بايثون';
+      runBtn.innerHTML = '▶ تشغيل';
+      runBtn.addEventListener('click', () => {
+        runBtn.classList.add('running');
+        runBtn.innerHTML = '… يعمل';
+        onRunPython(el.textContent || '', idx);
+        setTimeout(() => {
+          runBtn.classList.remove('running');
+          runBtn.innerHTML = '▶ تشغيل';
+        }, 15000);
+      });
+      head.appendChild(runBtn);
+    });
+  }, [html, isStreaming, onRunPython]);
 
   return (
     <div

@@ -10,6 +10,15 @@ export interface ChatMessage {
   status?: 'streaming' | 'complete' | 'error';
   errorDetails?: string;
   isImage?: boolean;
+  thinking?: string;
+  thinkingDurationMs?: number;
+  searchSources?: SearchSource[];
+}
+
+export interface SearchSource {
+  title: string;
+  url: string;
+  snippet?: string;
 }
 
 export interface ChatSession {

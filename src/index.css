@@ -337,3 +337,21 @@ body[data-theme="light"] {
 .markdown-body pre {
   max-width: 100%;
 }
+
+/* Agentic Thinking Panel — animated gradient border */
+@keyframes thinkBorderFlow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
+}
+
+/* Python run button inside code blocks */
+.code-run-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 9999px;
+  font-size: 11px; font-weight: 700;
+  color: #059669; background: rgba(16,185,129,0.1);
+  border: 1px solid rgba(16,185,129,0.3);
+  cursor: pointer; transition: all .2s;
+}
+.code-run-btn:hover { background: rgba(16,185,129,0.22); transform: translateY(-1px); }
+.code-run-btn.running { color: #2563eb; border-color: rgba(37,99,235,.35); background: rgba(37,99,235,.08); pointer-events: none; }

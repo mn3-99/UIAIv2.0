@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
-import { Copy, Check, RotateCcw, Edit3, User, AlertCircle, Sparkles } from 'lucide-react';
+import { Copy, Check, RotateCcw, Edit3, User, AlertCircle, Sparkles, Play, TerminalSquare, Globe, Loader2 } from 'lucide-react';
 import { ChatMessage } from '../types';
 import { RichMarkdown } from './RichMarkdown';
+import { ThinkingPanel } from './ThinkingPanel';
+
+interface PythonRunResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+  timed_out?: boolean;
+  duration_ms?: number;
+  running?: boolean;
+}
 
 interface ChatMessageItemProps {
   message: ChatMessage;
@@ -19,10 +29,27 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
+  const [pyResults, setPyResults] = useState<Record<number, PythonRunResult>>({});
 
   const isUser = message.role === 'user';
   const isError = message.status === 'error';
   const isStreaming = message.status === 'streaming';
+  const isThinkingActive = isStreaming && !!message.thinking && message.content.length === 0;
+
+  const handleRunPython = (code: string, blockIndex: number) => {
+    setPyResults(prev => ({ ...prev, [blockIndex]: { ok: false, stdout: '', stderr: '', running: true } }));
+    fetch('/api/python/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, sessionId: `chat-${message.id}` })
+    })
+      .then(r => r.json())
+      .then((data: PythonRunResult) => setPyResults(prev => ({ ...prev, [blockIndex]: { ...data, running: false } })))
+      .catch(err => setPyResults(prev => ({
+        ...prev,
+        [blockIndex]: { ok: false, stdout: '', stderr: String(err), running: false }
+      })));
+  };
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -151,6 +178,31 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
           ) : (
             /* Rendered Content */
             <div dir="auto" className="relative text-sm leading-relaxed">
+              {/* Agentic Thinking Panel */}
+              {!isUser && message.thinking && (
+                <ThinkingPanel
+                  thinking={message.thinking}
+                  isThinking={isThinkingActive}
+                  durationMs={message.thinkingDurationMs}
+                />
+              )}
+
+              {/* Web search source chips */}
+              {!isUser && !!message.searchSources?.length && (
+                <div className="flex flex-wrap gap-1.5 mb-3" dir="rtl">
+                  <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 w-full mb-0.5">
+                    <Globe className="w-3 h-3" /> مصادر البحث ({message.searchSources.length})
+                  </span>
+                  {message.searchSources.map((s, i) => (
+                    <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
+                      title={s.title}
+                      className="max-w-[220px] truncate text-[10px] px-2.5 py-1 rounded-full bg-sky-50 border border-sky-200/70 text-sky-700 hover:bg-sky-100 transition-colors">
+                      {i + 1}. {s.title || new URL(s.url).hostname}
+                    </a>
+                  ))}
+                </div>
+              )}
+
               {isError ? (
                 <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 border border-red-200 p-3.5 rounded-2xl">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -166,8 +218,37 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
               ) : isUser ? (
                 <div className="whitespace-pre-wrap font-normal text-white text-[15px] leading-relaxed">{message.content}</div>
               ) : (
-                <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} />
+                <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} onRunPython={handleRunPython} />
               )}
+
+              {/* Python execution outputs (agentic terminal) */}
+              {Object.entries(pyResults).map(([idxStr, res]: [string, PythonRunResult]) => {
+                const idx = Number(idxStr);
+                return (
+                <div key={idx} dir="ltr" className="mt-3 rounded-2xl overflow-hidden border border-slate-800 bg-slate-900 text-slate-100 shadow-lg">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-slate-950/70 border-b border-slate-800 text-[10px] font-bold">
+                    <TerminalSquare className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-300">Python</span>
+                    <span className="text-slate-500 font-normal">workspace/{message.id.slice(-6)}</span>
+                    {res.running ? (
+                      <span className="ms-auto flex items-center gap-1.5 text-blue-300"><Loader2 className="w-3 h-3 animate-spin" /> executing…</span>
+                    ) : (
+                      <span className={`ms-auto ${res.ok ? 'text-emerald-300' : 'text-red-300'}`}>
+                        exit {res.ok ? 0 : '?'} · {((res.duration_ms || 0) / 1000).toFixed(1)}s
+                      </span>
+                    )}
+                  </div>
+                  <pre className="max-h-56 overflow-auto px-4 py-3 text-[11.5px] font-mono whitespace-pre-wrap">
+                    {res.running && <span className="text-blue-300">▶ Running…</span>}
+                    {!res.running && res.stdout}
+                    {!res.running && res.stderr && (
+                      <span className="text-red-400">{(res.stdout ? '\n' : '') + res.stderr}</span>
+                    )}
+                    {!res.running && !res.stdout && !res.stderr && <span className="text-slate-500">(no output)</span>}
+                  </pre>
+                </div>
+                );
+              })}
 
               {/* Smooth Pulse Streaming Indicator */}
               {isStreaming && (

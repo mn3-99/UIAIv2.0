@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 import warnings
@@ -54,8 +55,21 @@ logging.getLogger("g4f").setLevel(logging.CRITICAL)
 logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 
 if G4F_AVAILABLE:
-    # Disable known problematic or auth-requiring g4f providers to prevent cloud 403 / auth / requirement errors
-    for provider_name in ["Puter", "CablyAI", "TeachAnything", "Replicate", "OpenRouter", "Airforce", "Grok", "Together", "DeepInfra"]:
+    # Auto-disable every provider that requires credentials/HAR files/cookies
+    for provider_name in dir(g4f.Provider):
+        if provider_name.startswith('_'):
+            continue
+        try:
+            p = getattr(g4f.Provider, provider_name)
+            if getattr(p, 'needs_auth', False):
+                p.working = False
+        except Exception:
+            pass
+    # Disable known problematic or environment-incompatible providers (browser-dependent, PoW-gated, blocked from datacenter IPs)
+    for provider_name in ["Puter", "CablyAI", "TeachAnything", "Replicate", "OpenRouter", "Airforce",
+                          "Grok", "Together", "DeepInfra", "Cloudflare", "Copilot", "CopilotApp",
+                          "OpenaiChat", "Pollinations", "PollinationsAudio", "Groq", "Nvidia",
+                          "Ollama", "GeminiPro", "MetaAI", "OperaAria", "Qwen", "GLM", "PhindAi"]:
         if hasattr(g4f.Provider, provider_name):
             try:
                 getattr(g4f.Provider, provider_name).working = False
@@ -66,6 +80,239 @@ PORT = 5050
 HOST = "127.0.0.1"
 
 db_manager = ActiveModelManager()
+
+# ------------------------------------------------------------------------------
+# Live-verified provider routing (probed from this server on deploy).
+# Ordered by reliability: fast no-auth endpoints first.
+# ------------------------------------------------------------------------------
+DEFAULT_PROVIDER_ORDER = ["Yqcloud", "Gemini", "Perplexity", "CohereForAI_C4AI_Command"]
+
+MODEL_PROVIDER_ROUTES: Dict[str, List[str]] = {
+    "gemini": ["Gemini"],
+    "gemini-2.5-flash": ["Gemini"],
+    "gemini-2.5-pro": ["Gemini"],
+    "gemini-3.6-flash": ["Gemini"],
+    "gemini-auto": ["Gemini"],
+    "command-a": ["CohereForAI_C4AI_Command"],
+    "command-r": ["CohereForAI_C4AI_Command"],
+    "command-r-plus": ["CohereForAI_C4AI_Command"],
+    "c4ai-command": ["CohereForAI_C4AI_Command"],
+    "sonar": ["Perplexity"],
+    "sonar-pro": ["Perplexity"],
+    "r1-1776": ["Perplexity"],
+}
+
+
+def resolve_providers_for_model(model_id: str) -> List[Any]:
+    """Return ordered list of instantiated-capable provider classes for a model."""
+    names = MODEL_PROVIDER_ROUTES.get(model_id, []) + DEFAULT_PROVIDER_ORDER
+    resolved, seen = [], set()
+    for name in names:
+        if name in seen:
+            continue
+        seen.add(name)
+        p = getattr(g4f.Provider, name, None)
+        if p is not None and getattr(p, 'working', False):
+            resolved.append(p)
+    return resolved
+
+
+def build_fallback_chain(model_id: str) -> List[str]:
+    """Requested model first, then DB-verified active models, then static safety nets."""
+    chain = [model_id]
+    try:
+        for m in db_manager.get_active_models():
+            mid = (m.get("id") or "").replace("g4f:", "")
+            if mid and mid not in chain:
+                chain.append(mid)
+    except Exception:
+        pass
+    for fb in ["gpt-4o-mini", "gemini", "command-a", "gpt-4o"]:
+        if fb not in chain:
+            chain.append(fb)
+    return chain
+
+
+# ------------------------------------------------------------------------------
+# Direct OpenAI-compatible free endpoints (sourced from GitHub open-source lists:
+# cheahjs/free-llm-api-resources, 0xzr/freellmpool, tashfeenahmed/freellmapi).
+# These work WITHOUT any API key and are used as an independent fallback layer
+# when g4f web providers fail. Optional keys are read from environment.
+# ------------------------------------------------------------------------------
+DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
+    {
+        "name": "kilo",
+        "url": "https://api.kilo.ai/api/gateway/v1/chat/completions",
+        "api_key": None,
+        # Anonymous tier (~200 req/h per IP). Coding-agent-grade free models,
+        # OpenAI-compatible SSE, several models emit `reasoning` deltas.
+        "models": ["kilo-auto/free", "stepfun/step-3.7-flash:free", "tencent/hy3:free",
+                   "poolside/laguna-s-2.1:free", "meituan/longcat-2.0-free"],
+        "default_model": "kilo-auto/free",
+    },
+    {
+        "name": "pollinations",
+        "url": "https://text.pollinations.ai/openai",
+        "api_key": None,
+        # Keyless GPT-backed endpoint, streams SSE
+        "models": ["openai", "openai-fast", "openai-large", "mistral", "qwen-coder", "llama"],
+        "default_model": "openai-fast",
+    },
+    {
+        "name": "ovhcloud",
+        "url": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1/chat/completions",
+        "api_key": None,
+        # Anonymous EU tier: strong coding models, rate-limited per IP
+        "models": ["Qwen3-Coder-30B-A3B-Instruct", "Qwen3.6-27B", "Meta-Llama-3_3-70B-Instruct", "Qwen3-32B"],
+        "default_model": "Qwen3-Coder-30B-A3B-Instruct",
+    },
+    {
+        "name": "llm7",
+        "url": "https://api.llm7.io/v1/chat/completions",
+        "api_key": os.getenv("LLM7_API_KEY", "unused"),  # anonymous ~60 req/h; free token at token.llm7.io
+        "models": ["DeepSeek-V4-Flash-0731", "gpt-4o-mini", "gemini-flash", "deepseek-r1"],
+        "default_model": "DeepSeek-V4-Flash-0731",
+    },
+]
+
+
+def resolve_direct_endpoint(model_id: str) -> Optional[Dict[str, Any]]:
+    """Pick the best direct endpoint for a model id, else the most reliable one."""
+    low = model_id.lower()
+    for ep in DIRECT_ENDPOINTS:
+        if any(low == m.lower() or low in m.lower() or m.lower() in low for m in ep["models"]):
+            return ep
+    return None
+
+
+async def attempt_direct_chat(request, messages, temperature, stream,
+                              preferred_name: Optional[str] = None,
+                              preferred_model: Optional[str] = None) -> Optional[web.Response]:
+    """
+    Independent fallback layer over keyless OpenAI-compatible endpoints.
+    Returns a ready Response on success, or None if every endpoint failed.
+    Supports both SSE streaming and plain JSON responses.
+    When preferred_name is set, only that endpoint is tried with preferred_model.
+    """
+    import aiohttp
+
+    endpoints = DIRECT_ENDPOINTS
+    if preferred_name:
+        endpoints = [ep for ep in DIRECT_ENDPOINTS if ep["name"] == preferred_name]
+
+    for ep in endpoints:
+        payload_model = preferred_model or ep["default_model"]
+        body = {
+            "model": payload_model,
+            "messages": messages,
+            "temperature": max(0.0, min(temperature, 1.5)),
+            "stream": bool(stream),
+        }
+        headers = {"Content-Type": "application/json"}
+        if ep["api_key"]:
+            headers["Authorization"] = f"Bearer {ep['api_key']}"
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=90, connect=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(ep["url"], json=body, headers=headers) as upstream:
+                    if upstream.status != 200:
+                        logger.debug(f"[direct:{ep['name']}] HTTP {upstream.status}")
+                        continue
+
+                    if not stream:
+                        data = await upstream.json()
+                        msg = {}
+                        try:
+                            msg = data["choices"][0]["message"]
+                        except Exception:
+                            pass
+                        content = (msg.get("content") or "").strip()
+                        # Fall back to reasoning text when the model only reasoned
+                        if not content:
+                            content = (msg.get("reasoning") or "").strip()
+                        if not content:
+                            content = str(data)[:500]
+                        if not content.strip():
+                            continue
+                        return web.json_response({
+                            "id": f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}",
+                            "object": "chat.completion",
+                            "created": int(time.time()),
+                            "model": f"direct:{ep['name']}:{payload_model}",
+                            "choices": [{
+                                "index": 0,
+                                "message": {"role": "assistant", "content": content},
+                                "finish_reason": "stop"
+                            }]
+                        })
+
+                    # Streaming path
+                    response = web.StreamResponse(
+                        status=200,
+                        reason="OK",
+                        headers={
+                            "Content-Type": "text/event-stream",
+                            "Cache-Control": "no-cache",
+                            "Connection": "keep-alive",
+                            "X-Accel-Buffering": "no"
+                        }
+                    )
+                    await response.prepare(request)
+                    chat_id = f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}"
+                    sent_any = False
+
+                    async for raw_line in upstream.content:
+                        line = raw_line.decode("utf-8", errors="ignore").strip()
+                        if not line.startswith("data:"):
+                            continue
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            obj = json.loads(data_str)
+                            delta_obj = obj.get("choices", [{}])[0].get("delta", {})
+                            delta = delta_obj.get("content") or ""
+                            reasoning = delta_obj.get("reasoning") or delta_obj.get("reasoning_content") or ""
+                        except Exception:
+                            continue
+
+                        # Forward model reasoning as agentic thinking frames
+                        if reasoning:
+                            think_payload = {
+                                "id": chat_id,
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": f"direct:{ep['name']}:{payload_model}",
+                                "choices": [{"index": 0, "delta": {"reasoning_content": reasoning}, "finish_reason": None}]
+                            }
+                            await response.write(f"data: {json.dumps({'t': 'think', 'd': reasoning}, ensure_ascii=False)}\n\n".encode("utf-8"))
+
+                        if delta:
+                            sent_any = True
+                            chunk_payload = {
+                                "id": chat_id,
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": f"direct:{ep['name']}:{payload_model}",
+                                "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
+                            }
+                            await response.write(f"data: {json.dumps(chunk_payload, ensure_ascii=False)}\n\n".encode("utf-8"))
+
+                    if not sent_any:
+                        try:
+                            response.force_close()
+                        except Exception:
+                            pass
+                        continue
+                    await response.write(b"data: [DONE]\n\n")
+                    await response.write_eof()
+                    return response
+        except Exception as err:
+            logger.debug(f"[direct:{ep['name']}] failed: {err}")
+            continue
+
+    return None
 
 
 async def discover_active_models(force: bool = False) -> List[Dict[str, Any]]:
@@ -106,7 +353,12 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
         return web.json_response({"error": {"message": f"Invalid JSON payload: {e}"}}, status=400)
 
     raw_model = body.get("model", "gpt-4o")
-    # Strip g4f: prefix
+    # Strip g4f: / direct: prefixes
+    preferred_direct = None
+    if raw_model.startswith("direct:"):
+        raw_model = raw_model.replace("direct:", "", 1)
+        ep = resolve_direct_endpoint(raw_model)
+        preferred_direct = ep["name"] if ep else None
     model_id = raw_model.replace("g4f:", "") if raw_model.startswith("g4f:") else raw_model
     messages = list(body.get("messages", []))
     
@@ -129,11 +381,40 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
     if not messages:
         return web.json_response({"error": {"message": "Field 'messages' is required."}}, status=400)
 
-    # Direct execution without model substitution or fallback chain
-    logger.info(f"Handling g4f chat completion request directly for model '{model_id}' (stream={stream})...")
+    # Routed execution: each attempt uses a live-verified provider
+    logger.info(f"Handling g4f chat completion request for model '{model_id}' (stream={stream})...")
 
-    client = AsyncClient()
     chat_id = f"chatcmpl-g4f-{int(time.time() * 1000)}"
+
+    # Tier "direct:" models go to their pinned endpoint FIRST (e.g., MijlAi Coder -> OVH Qwen3-Coder)
+    if preferred_direct:
+        direct_res = await attempt_direct_chat(request, messages, temperature, stream,
+                                               preferred_name=preferred_direct, preferred_model=model_id)
+        if direct_res is not None:
+            return direct_res
+        logger.info(f"[direct:{preferred_direct}] unavailable for '{model_id}' — falling back to g4f chain")
+
+    def build_attempts() -> List[tuple]:
+        attempts: List[tuple] = []
+        seen = set()
+
+        def add(mid: str, provider: Any):
+            key = (mid, provider.__name__)
+            if key not in seen and getattr(provider, 'working', False):
+                seen.add(key)
+                attempts.append((mid, provider))
+
+        for provider in resolve_providers_for_model(model_id):
+            add(model_id, provider)
+
+        for mid in build_fallback_chain(model_id)[1:]:
+            for provider in resolve_providers_for_model(mid)[:2]:
+                add(mid, provider)
+
+        # Ultimate safety nets (probed working endpoints with their native models)
+        add("gpt-4o-mini", g4f.Provider.Yqcloud)
+        add("command-a", g4f.Provider.CohereForAI_C4AI_Command)
+        return attempts
 
     if stream:
         # Prepare SSE Response
@@ -156,28 +437,25 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
         stream_started = False
         error_message = None
 
-        models_to_try = [model_id]
-        # Include verified fallback models if requested model is not primary
-        for fallback in ["gpt-4o", "gemini-2.5-flash", "gpt-4", "o3-mini", "r1-1776"]:
-            if fallback not in models_to_try:
-                models_to_try.append(fallback)
-
-        stream_started = False
-        error_message = None
-
-        for current_model in models_to_try:
+        for current_model, current_provider in build_attempts():
             try:
+                client = AsyncClient(provider=current_provider)
                 res_coro = client.chat.completions.create(
                     model=current_model,
                     messages=messages,
                     temperature=temperature,
                     stream=True
                 )
-                
+
                 if asyncio.iscoroutine(res_coro):
                     res_stream = await asyncio.wait_for(res_coro, timeout=12.0)
                 else:
                     res_stream = res_coro
+
+                # Guard against rate-limit/ad pages masquerading as answers
+                JUNK_MARKERS = ("aichatos", "限流", "请求过多", "微信", "kelemm220",
+                                "请访问", "付费使用")
+                first_chunk = True
 
                 async for chunk in res_stream:
                     content = ""
@@ -187,6 +465,14 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
                         content = chunk
 
                     if content:
+                        # Reject junk/ad pages BEFORE committing to this provider
+                        if first_chunk:
+                            probe = content.strip()
+                            if any(m in probe for m in JUNK_MARKERS) or (len(probe) > 80 and sum('\u4e00' <= c <= '\u9fff' for c in probe) > len(probe) * 0.3):
+                                logger.info(f"[quality-guard] junk detected from {current_provider.__name__} — skipping provider")
+                                raise ValueError("junk_response_detected")
+                        first_chunk = False
+
                         # Clean identity references
                         clean_content = content.replace("Microsoft Copilot", "مساعد MijlAi الذكي") \
                                                .replace("Copilot", "مساعد MijlAi الذكي") \
@@ -213,10 +499,15 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
                 if stream_started:
                     break
             except Exception as err:
-                logger.debug(f"g4f request attempt failed for model '{current_model}': {err}")
+                logger.debug(f"g4f request attempt failed for model '{current_model}' via {current_provider.__name__}: {err}")
                 error_message = str(err)
 
         if not stream_started:
+            # Layer 2: independent keyless OpenAI-compatible endpoints
+            direct_res = await attempt_direct_chat(request, messages, temperature, stream=True)
+            if direct_res is not None:
+                return direct_res
+
             # Clear notice that THIS exact model failed so the user knows if it works or not
             notice = (
                 f"⚠️ **النموذج المحدد ({model_id}) لم يستجب:**\n"
@@ -243,50 +534,60 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
         return response
 
     else:
-        # Non-streaming direct request
-        try:
-            res_coro = client.chat.completions.create(
-                model=model_id,
-                messages=messages,
-                temperature=temperature,
-                stream=False
-            )
-            
-            if asyncio.iscoroutine(res_coro):
-                response_obj = await asyncio.wait_for(res_coro, timeout=20.0)
-            else:
-                response_obj = res_coro
+        # Non-streaming routed request
+        last_error = None
+        for current_model, current_provider in build_attempts():
+            try:
+                client = AsyncClient(provider=current_provider)
+                res_coro = client.chat.completions.create(
+                    model=current_model,
+                    messages=messages,
+                    temperature=temperature,
+                    stream=False
+                )
 
-            content = ""
-            if hasattr(response_obj, "choices") and response_obj.choices:
-                content = response_obj.choices[0].message.content or ""
-            elif isinstance(response_obj, str):
-                content = response_obj
+                if asyncio.iscoroutine(res_coro):
+                    response_obj = await asyncio.wait_for(res_coro, timeout=20.0)
+                else:
+                    response_obj = res_coro
 
-            if content:
-                return web.json_response({
-                    "id": chat_id,
-                    "object": "chat.completion",
-                    "created": int(time.time()),
-                    "model": f"g4f:{model_id}",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "message": {
-                                "role": "assistant",
-                                "content": content
-                            },
-                            "finish_reason": "stop"
-                        }
-                    ]
-                })
-        except Exception as err:
-            return web.json_response({
-                "error": {
-                    "message": f"النموذج المحدد ({model_id}) غير متاح حالياً: {str(err)}",
-                    "type": "g4f_direct_error"
-                }
-            }, status=500)
+                content = ""
+                if hasattr(response_obj, "choices") and response_obj.choices:
+                    content = response_obj.choices[0].message.content or ""
+                elif isinstance(response_obj, str):
+                    content = response_obj
+
+                if content:
+                    return web.json_response({
+                        "id": chat_id,
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": f"g4f:{current_model}",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": content
+                                },
+                                "finish_reason": "stop"
+                            }
+                        ]
+                    })
+            except Exception as err:
+                logger.debug(f"g4f non-stream attempt failed for '{current_model}' via {current_provider.__name__}: {err}")
+                last_error = err
+
+        direct_res = await attempt_direct_chat(request, messages, temperature, stream=False)
+        if direct_res is not None:
+            return direct_res
+
+        return web.json_response({
+            "error": {
+                "message": f"النموذج المحدد ({model_id}) غير متاح حالياً: {str(last_error)}",
+                "type": "g4f_direct_error"
+            }
+        }, status=500)
 
 
 async def handle_provider_health(request: web.Request) -> web.Response:
@@ -303,11 +604,92 @@ async def handle_provider_health(request: web.Request) -> web.Response:
         })
 
 
+async def handle_search(request: web.Request) -> web.Response:
+    """
+    Keyless internet search endpoint (agentic web tool).
+    Tries the `ddgs` / `duckduckgo_search` library, then falls back to
+    DuckDuckGo HTML scraping. Returns normalized results.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    query = (body.get("query") or "").strip()
+    max_results = min(int(body.get("max_results", 6) or 6), 10)
+    if not query:
+        return web.json_response({"error": "query is required"}, status=400)
+
+    results = []
+
+    # Strategy 1: ddgs library
+    try:
+        from ddgs import DDGS  # new package name
+        with DDGS() as ddgs:
+            for r in ddgs.text(query, max_results=max_results):
+                results.append({
+                    "title": r.get("title", ""),
+                    "url": r.get("href") or r.get("url", ""),
+                    "snippet": r.get("body", "")
+                })
+    except ImportError:
+        try:
+            from duckduckgo_search import DDGS  # legacy package name
+            with DDGS() as ddgs:
+                for r in ddgs.text(query, max_results=max_results):
+                    results.append({
+                        "title": r.get("title", ""),
+                        "url": r.get("href") or r.get("url", ""),
+                        "snippet": r.get("body", "")
+                    })
+        except Exception as e:
+            logger.debug(f"duckduckgo_search failed: {e}")
+    except Exception as e:
+        logger.debug(f"ddgs search failed: {e}")
+
+    # Strategy 2: HTML fallback scrape of duckduckgo.com/html
+    if not results:
+        try:
+            import aiohttp
+            import re as _re
+            headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"}
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+                async with session.post("https://html.duckduckgo.com/html/", data={"q": query}) as resp:
+                    html = await resp.text()
+            items = _re.findall(
+                r'<a rel="nofollow" class="result__a" href="([^"]+)">(.*?)</a>.*?class="result__snippet"[^>]*>(.*?)</a>',
+                html, _re.S)
+            tag_clean = _re.compile(r"<[^>]+>")
+            for href, title, snippet in items[:max_results]:
+                if href.startswith("//duckduckgo.com/l/?uddg="):
+                    from urllib.parse import unquote, urlparse
+                    try:
+                        href = unquote(urlparse("https:" + href).query.split("uddg=")[1].split("&")[0])
+                    except Exception:
+                        pass
+                results.append({
+                    "title": tag_clean.sub("", title),
+                    "url": href,
+                    "snippet": tag_clean.sub("", snippet)[:300]
+                })
+        except Exception as e:
+            logger.debug(f"html fallback search failed: {e}")
+
+    return web.json_response({
+        "query": query,
+        "results": results,
+        "count": len(results),
+        "searched_at": int(time.time())
+    })
+
+
 async def init_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/health", handle_health)
     app.router.add_get("/models", handle_models)
     app.router.add_get("/api/models", handle_models)
+    app.router.add_post("/search", handle_search)
+    app.router.add_post("/api/search", handle_search)
     app.router.add_get("/provider-health", handle_provider_health)
     app.router.add_get("/api/provider-health", handle_provider_health)
     app.router.add_post("/chat/completions", handle_chat_completions)
