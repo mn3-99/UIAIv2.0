@@ -1918,6 +1918,35 @@ app.get('/api/image/models', (req, res) => {
 });
 
 // ==========================================
+// Image Studio v2 — طبقة نماذج الصور الموثقة (المفاتيح على السيرفر فقط)
+// ==========================================
+app.get('/api/image/v2/models', async (_req, res) => {
+  try {
+    const { listVerifiedImageModels } = await import('./functions/api/imageEngine');
+    return res.json({ models: await listVerifiedImageModels() });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'failed to list image models' });
+  }
+});
+
+app.post('/api/image/v2/generate', async (req, res) => {
+  try {
+    const prompt = String(req.body?.prompt || '').trim();
+    if (!prompt) return res.status(400).json({ error: 'وصف الصورة مطلوب' });
+    if (prompt.length > 1500) return res.status(413).json({ error: 'الوصف طويل جداً' });
+    const model = String(req.body?.model || '');
+    const width = Math.min(Math.max(parseInt(req.body?.width) || 1024, 256), 2048);
+    const height = Math.min(Math.max(parseInt(req.body?.height) || 1024, 256), 2048);
+    const { generateImageSmart } = await import('./functions/api/imageEngine');
+    const result = await generateImageSmart(model, prompt, width, height);
+    return res.json({ success: true, ...result, prompt, timestamp: Date.now() });
+  } catch (err: any) {
+    console.error('Image v2 generation error:', err);
+    return res.status(502).json({ error: err?.message || 'فشل توليد الصورة' });
+  }
+});
+
+// ==========================================
 // 2) API Routes: Models Discovery & Chat Completions Proxy
 // ==========================================
 app.get(['/api/models', '/api/v1/chat/models'], (req, res) => {

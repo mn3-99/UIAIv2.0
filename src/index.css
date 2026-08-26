@@ -824,3 +824,140 @@ body[data-theme="obsidian-amber"] .glow-blue {
   animation: ripple 0.6s linear;
   pointer-events: none;
 }
+
+/* ══════════════════════════════════════════════════════════
+   حركات الانتظار — Waiting Animations
+   الثلاث خطوط (3 أشكال) + توقيع EKG MijlAI + مدارات النبض
+   ══════════════════════════════════════════════════════════ */
+
+/* ── 1) الثلاث خطوط ── */
+.waiting-line {
+  background: linear-gradient(90deg, #93c5fd, #6366f1, #22d3ee);
+  background-size: 200% 100%;
+  transform-origin: right center;
+}
+@keyframes wl-pulse {
+  0%, 100% { opacity: 0.25; transform: scaleX(0.92); }
+  50% { opacity: 1; transform: scaleX(1); }
+}
+@keyframes wl-wave {
+  0%, 100% { transform: scaleX(0.6); opacity: 0.35; }
+  50% { transform: scaleX(1); opacity: 1; }
+}
+@keyframes wl-flow {
+  0% { background-position: 200% 0; opacity: 0.55; }
+  50% { opacity: 1; }
+  100% { background-position: -200% 0; opacity: 0.55; }
+}
+.waiting-lines-pulse .waiting-line { animation: wl-pulse 1.5s var(--ease-standard, ease) infinite; }
+.waiting-lines-wave .waiting-line { animation: wl-wave 1.35s var(--ease-standard, ease) infinite; }
+.waiting-lines-flow .waiting-line { animation: wl-flow 1.8s linear infinite; }
+
+/* ── 2) توقيع EKG MijlAI ── */
+.ekg-svg { color: var(--text-faint, #94a3b8); display: block; }
+.ekg-draw {
+  stroke-dasharray: 640;
+  stroke-dashoffset: 640;
+  animation: ekg-draw 3.5s var(--ease-standard, ease) infinite;
+  filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.45));
+}
+@keyframes ekg-draw {
+  0% { stroke-dashoffset: 640; opacity: 1; }
+  72% { stroke-dashoffset: 0; opacity: 1; }
+  85% { stroke-dashoffset: 0; opacity: 0; }
+  100% { stroke-dashoffset: 640; opacity: 0; }
+}
+
+/* ── 3) مدارات النبض ── */
+.orbit-pulse {
+  position: relative;
+  width: 44px;
+  height: 44px;
+}
+.orbit-core {
+  position: absolute;
+  inset: 14px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, #60a5fa, #6366f1);
+  animation: orbit-core-beat 1.6s var(--ease-standard, ease) infinite;
+}
+@keyframes orbit-core-beat {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.35); }
+  50% { transform: scale(1.14); box-shadow: 0 0 0 7px rgba(99, 102, 241, 0); }
+}
+.orbit-dot {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 6px; height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 9999px;
+  background: #22d3ee;
+}
+.orbit-dot-1 { animation: orbit-spin 2.4s linear infinite; transform-origin: 3px 3px; --orbit-r: 18px; }
+.orbit-dot-2 { animation: orbit-spin 3.2s linear infinite reverse; background: #818cf8; --orbit-r: 14px; }
+.orbit-dot-3 { animation: orbit-spin 4s linear infinite; background: #38bdf8; --orbit-r: 21px; }
+@keyframes orbit-spin {
+  from { transform: rotate(0deg) translateX(var(--orbit-r, 18px)); }
+  to { transform: rotate(360deg) translateX(var(--orbit-r, 18px)); }
+}
+
+/* ── 4) خطوات التفكير المرئية (نمط Kimi/MiniMax) ── */
+.thinking-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+  min-width: 200px;
+}
+.thinking-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-faint, #94a3b8);
+  opacity: 0;
+  transform: translateY(4px);
+  animation: step-in 0.3s var(--ease-standard, ease) forwards;
+}
+.thinking-step.active { color: var(--accent-color, #2563eb); }
+.thinking-step.done { color: var(--text-muted, #64748b); }
+@keyframes step-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+.thinking-step .step-spinner {
+  width: 12px; height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 9999px;
+  animation: step-rotate 0.8s linear infinite;
+}
+.thinking-step .step-check {
+  width: 12px; height: 12px;
+  border-radius: 9999px;
+  background: #10b981;
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  line-height: 1;
+}
+@keyframes step-rotate { to { transform: rotate(360deg); } }
+
+/* ── 5) مؤشر العمل الأحمر على زر الإرسال ── */
+@keyframes busy-dot-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
+  50% { opacity: 0.65; box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+}
+.busy-indicator-dot {
+  position: absolute;
+  top: -3px;
+  inset-inline-end: -3px;
+  width: 11px; height: 11px;
+  border-radius: 9999px;
+  background: #ef4444;
+  border: 2px solid white;
+  animation: busy-dot-pulse 1.1s var(--ease-standard, ease) infinite;
+  z-index: 2;
+}

@@ -772,13 +772,15 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               </span>
             )}
 
-            {/* Send / Stop Button */}
+            {/* Send / Stop Button — مؤشر أحمر نابض أثناء عمل النموذج */}
             {isGenerating ? (
               <button
                 onClick={onStop}
                 className="w-8 h-8 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-500 transition-all shadow-sm press-effect pulse-ring relative"
-                title="إيقاف التوليد"
+                title="النموذج يعمل — اضغط للإيقاف"
+                aria-label="النموذج يعمل حالياً، اضغط للإيقاف"
               >
+                <span className="busy-indicator-dot" aria-hidden="true" />
                 <Square className="w-3.5 h-3.5 fill-current" />
               </button>
             ) : (

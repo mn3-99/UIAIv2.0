@@ -21,6 +21,7 @@ import { ArenaPairView } from './components/ArenaPairView';
 import { SkillsBar } from './components/SkillsBar';
 import { SkillsManagerModal } from './components/SkillsManagerModal';
 import { OnboardingModal, isOnboardingDone } from './components/OnboardingModal';
+import { ImageStudio } from './components/ImageStudio';
 import { applyTheme, isDarkTheme } from './utils/theme';
 import { GEMS, getGemPrompt } from './utils/gems';
 import { generateFollowUps } from './utils/followUps';
@@ -91,6 +92,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFilesOpen, setIsFilesOpen] = useState(false);
   const [isGemsOpen, setIsGemsOpen] = useState(false);
+  const [isImageStudioOpen, setIsImageStudioOpen] = useState(false);
   const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
   const [isPromptEditOpen, setIsPromptEditOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -1440,6 +1442,7 @@ ${h.text}`)
           onOpenCanvas={() => setIsCanvasOpen(!isCanvasOpen)}
           onOpenFiles={() => setIsFilesOpen(true)}
           onOpenGems={() => setIsGemsOpen(true)}
+          onOpenImageStudio={() => { setIsImageStudioOpen(true); closeSidebar(); }}
           onOpenUpgrade={() => setIsUpgradeOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenProfile={() => setIsProfileOpen(true)}
@@ -1705,6 +1708,7 @@ ${h.text}`)
       />
       <FilesModal isOpen={isFilesOpen} onClose={() => setIsFilesOpen(false)} />
       <GemsModal isOpen={isGemsOpen} onClose={() => setIsGemsOpen(false)} onSelectGem={setActiveGemId} activeGemId={activeGemId} />
+      <ImageStudio isOpen={isImageStudioOpen} onClose={() => setIsImageStudioOpen(false)} />
       <UpgradeModal isOpen={isUpgradeOpen} onClose={() => setIsUpgradeOpen(false)} />
       <PromptEditModal
         isOpen={isPromptEditOpen}

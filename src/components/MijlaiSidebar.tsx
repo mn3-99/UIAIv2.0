@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Menu, SquarePen, Search, Brush, Folder, LayoutGrid,
-  Sparkles, Settings, X, Trash2, Pin, MessageSquare, User, LogIn, ChevronDown, ShieldCheck
+  Sparkles, Settings, X, Trash2, Pin, MessageSquare, User, LogIn, ChevronDown, ShieldCheck, ImagePlus
 } from 'lucide-react';
 import { ChatSession, UserAccount } from '../types';
 import { MijlaiLogo } from './MijlaiLogo';
@@ -15,6 +15,7 @@ interface MijlaiSidebarProps {
   onOpenCanvas: () => void;
   onOpenFiles: () => void;
   onOpenGems: () => void;
+  onOpenImageStudio: () => void;
   onOpenUpgrade: () => void;
   onOpenSettings: () => void;
   onOpenProfile: () => void;
@@ -74,6 +75,7 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
   onOpenCanvas,
   onOpenFiles,
   onOpenGems,
+  onOpenImageStudio,
   onOpenUpgrade,
   onOpenSettings,
   onOpenProfile,
@@ -150,6 +152,7 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
               active={isHistoryOpen}
               badge={chats.length}
             />
+            <NavItem id="image_studio" icon={ImagePlus} label="استوديو الصور" onClick={onOpenImageStudio} />
             <NavItem id="canvas_tool" icon={Brush} label="مساحة الكتابة (Canvas)" onClick={onOpenCanvas} />
             <NavItem id="file_manager" icon={Folder} label="إدارة الملفات" onClick={onOpenFiles} />
             <NavItem id="gems_store" icon={LayoutGrid} label="Gems / المساعدون" onClick={onOpenGems} />

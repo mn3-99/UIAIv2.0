@@ -3,8 +3,9 @@ import { Copy, Check, RotateCcw, Edit3, User, AlertCircle, Sparkles, TerminalSqu
 import { ChatMessage } from '../types';
 import { RichMarkdown } from './RichMarkdown';
 import { ThinkingPanel } from './ThinkingPanel';
+import { ThinkingSteps } from './ThinkingSteps';
+import { WaitingIndicator, WaitingLines } from './WaitingAnimations';
 import { MessageReactions } from './MessageReactions';
-import { SkeletonLines } from './SkeletonLoading';
 import { copyText } from '../utils/clipboard';
 import { speakText, stopSpeaking } from '../utils/tts';
 import { toast } from './Toast';
@@ -321,15 +322,24 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                   <div className="whitespace-pre-wrap font-normal text-white text-[15px] leading-relaxed" style={{ unicodeBidi: 'plaintext' }}>{message.content}</div>
                 </div>
               ) : isQueued ? (
-                /* رسالة منتظرة في الطابور — ستُرسل تلقائياً عند اكتمال الرد الحالي */
-                <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-400 py-1">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  في الطابور — تنتظر دورها للإرسال...
+                /* رسالة منتظرة في الطابور — حركة الثلاث خطوط + شريحة الحالة */
+                <div className="py-1">
+                  <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-400 pb-1">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    في الطابور — تنتظر دورها للإرسال...
+                  </div>
+                  <WaitingLines variant="pulse" />
                 </div>
-              ) : (isStreaming || isThinking) && !message.content && !message.thinking ? (
-                /* First-token wait — shimmer masks the model's queue/network latency.
-                   isThinking: النموذج يفكر قبل توليد أول توكن */
-                <SkeletonLines />
+              ) : (isStreaming || isThinking) && !message.content ? (
+                /* انتظار أول توكن: توقيع EKG MijlAI + خطوات التفكير المرئية (نمط Kimi) */
+                <div className="py-1 space-y-1">
+                  <WaitingIndicator />
+                  <ThinkingSteps
+                    status={message.status}
+                    hasThinkingText={!!message.thinking}
+                    hasContent={!!message.content}
+                  />
+                </div>
               ) : (
                 <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} onRunPython={handleRunPython} onOpenCanvas={onOpenCanvas} />
               )}
