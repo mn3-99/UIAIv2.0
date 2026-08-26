@@ -20,6 +20,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { ArenaPairView } from './components/ArenaPairView';
 import { SkillsBar } from './components/SkillsBar';
 import { SkillsManagerModal } from './components/SkillsManagerModal';
+import { OnboardingModal, isOnboardingDone } from './components/OnboardingModal';
 import { applyTheme, isDarkTheme } from './utils/theme';
 import { GEMS, getGemPrompt } from './utils/gems';
 import { generateFollowUps } from './utils/followUps';
@@ -116,6 +117,8 @@ export default function App() {
   const [loadingModels, setLoadingModels] = useState(true);
 
   const [isUnlocked, setIsUnlocked] = useState(!settings.passwordProtected);
+  // ترحيب أول مرة — يظهر بعد تجاوز بوابة القفل فقط
+  const [showOnboarding, setShowOnboarding] = useState(() => !isOnboardingDone());
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(connectionManager.getStatus());
   const [isOnline, setIsOnline] = useState(connectionManager.isOnline());
 
@@ -1502,7 +1505,7 @@ ${h.text}`)
             <div
               ref={chatContainerRef}
               onScroll={handleScroll}
-              className="w-full max-w-[850px] h-full overflow-y-auto py-16 px-3 sm:px-4 space-y-4 scroll-smooth"
+              className="w-full max-w-[850px] h-full overflow-y-auto py-16 px-3 sm:px-5 space-y-5 scroll-smooth"
             >
               {activeChat.messages.map((msg, index) => {
                 // Arena pairs render side-by-side (the second member is folded in)
@@ -1694,6 +1697,11 @@ ${h.text}`)
         registry={skillsRegistry}
         onToggleSkill={handleToggleSkill}
         onRegistryChanged={refreshSkillsRegistry}
+      />
+      {/* ترحيب أول مرة — بعد تجاوز بوابة القفل */}
+      <OnboardingModal
+        isOpen={isUnlocked && showOnboarding}
+        onClose={() => setShowOnboarding(false)}
       />
       <FilesModal isOpen={isFilesOpen} onClose={() => setIsFilesOpen(false)} />
       <GemsModal isOpen={isGemsOpen} onClose={() => setIsGemsOpen(false)} onSelectGem={setActiveGemId} activeGemId={activeGemId} />

@@ -18,6 +18,28 @@
 @layer base {
   :root {
     font-family: 'Cairo', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    /* Motion tokens — انتقالات سلسة موحدة بدون مبالغة */
+    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+    --dur-fast: 150ms;
+    --dur-normal: 220ms;
+  }
+
+  /* انتقال أساسي خفيف للعناصر التفاعلية — أي transition مخصص في المكوّنات
+     يتفوق عليه تلقائياً، فهذا مجرد أرضية ناعمة موحدة */
+  button, [role="button"], a, input, textarea, select {
+    transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+    transition-duration: var(--dur-fast);
+    transition-timing-function: var(--ease-standard);
+  }
+
+  /* احترام تفضيل تقليل الحركة */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   html, body, #root {
@@ -37,7 +59,8 @@
     --accent-soft: #eff6ff;
     --text-main: #0f172a;
     --text-muted: #64748b;
-    --text-faint: #94a3b8;
+    /* رُفع التباين من 2.9:1 إلى ~4:1 — النصوص الخافتة تبقى خافتة لكن مقروءة */
+    --text-faint: #75859b;
     --border-color: #e2e8f0;
     --app-bg: linear-gradient(180deg, #e8f0fe 0%, #f8fbff 38%, #eef6ff 100%);
     --scrim: rgba(15, 23, 42, 0.25);

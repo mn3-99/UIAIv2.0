@@ -665,7 +665,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                 title="اختر النموذج الفعال"
               >
                 <span className="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center">
-                  <span className="text-blue-600 text-[10px]">✦</span>
+                  <Sparkles className="w-2.5 h-2.5 text-blue-600" strokeWidth={2.4} />
                 </span>
                 <span className="text-xs font-semibold">{currentTier.shortName}</span>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-500" strokeWidth={2} />
