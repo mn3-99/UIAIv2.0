@@ -1,0 +1,71 @@
+{
+ "at": "2026-08-26 23:53:33",
+ "results": [
+  {
+   "component": "skill-builder",
+   "rounds": 3,
+   "success": 3,
+   "failed": 0,
+   "success_rate": "100%",
+   "avg_ms": 33761.0,
+   "min_ms": 26599.7,
+   "max_ms": 38749.2,
+   "verdict": "موثوق"
+  },
+  {
+   "component": "web-search-plugin",
+   "rounds": 3,
+   "success": 3,
+   "failed": 0,
+   "success_rate": "100%",
+   "avg_ms": 4553.9,
+   "min_ms": 2060.6,
+   "max_ms": 9114.1,
+   "verdict": "موثوق"
+  },
+  {
+   "component": "image-gen-plugin",
+   "rounds": 3,
+   "success": 3,
+   "failed": 0,
+   "success_rate": "100%",
+   "avg_ms": 3.4,
+   "min_ms": 1.5,
+   "max_ms": 6.3,
+   "verdict": "موثوق"
+  },
+  {
+   "component": "queue-parallel-send",
+   "rounds": 2,
+   "success": 2,
+   "failed": 0,
+   "success_rate": "100%",
+   "avg_ms": 883.1,
+   "min_ms": 668.2,
+   "max_ms": 1098.0,
+   "verdict": "موثوق"
+  },
+  {
+   "component": "chat-e2e-completion",
+   "rounds": 2,
+   "success": 2,
+   "failed": 0,
+   "success_rate": "100%",
+   "avg_ms": 5265.7,
+   "min_ms": 3024.5,
+   "max_ms": 7506.8,
+   "verdict": "موثوق"
+  },
+  {
+   "component": "models-api",
+   "rounds": 3,
+   "success": 3,
+   "failed": 0,
+   "success_rate": "100%",
+   "avg_ms": 6.7,
+   "min_ms": 2.1,
+   "max_ms": 14.1,
+   "verdict": "موثوق"
+  }
+ ]
+}

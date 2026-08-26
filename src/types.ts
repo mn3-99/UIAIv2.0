@@ -7,12 +7,35 @@ export interface ChatMessage {
   timestamp: number;
   modelId?: string;
   providerId?: string;
-  status?: 'streaming' | 'complete' | 'error';
+  /**
+   * Message lifecycle states for the smart queue system:
+   * pending → queued (waiting in line) → thinking (model reasoning) →
+   * streaming/responding (tokens flowing) → complete | error
+   */
+  status?: 'pending' | 'queued' | 'thinking' | 'streaming' | 'responding' | 'complete' | 'error';
   errorDetails?: string;
   isImage?: boolean;
   thinking?: string;
   thinkingDurationMs?: number;
   searchSources?: SearchSource[];
+  attachments?: FileAttachment[];
+  /** Heuristic follow-up question chips attached after the answer completes */
+  followUps?: string[];
+  /** Arena (side-by-side model comparison) fields */
+  arenaGroup?: string;
+  arenaLabel?: string;
+  arenaStats?: { ttftMs?: number; totalMs?: number; charsPerSec?: number };
+  arenaVote?: 'left' | 'right' | 'tie' | null;
+}
+
+export interface FileAttachment {
+  id: string;
+  name: string;
+  url: string;
+  mime: string;
+  size?: number;
+  /** Extracted plain text for documents (PDF/TXT/MD/code) — sent as chat context. */
+  textContent?: string;
 }
 
 export interface SearchSource {
@@ -53,7 +76,7 @@ export interface ProviderConfig {
   models: ModelOption[];
 }
 
-export type ThemeOption = 'emerald-slate' | 'obsidian-amber' | 'dark' | 'light';
+export type ThemeOption = 'system' | 'emerald-slate' | 'obsidian-amber' | 'dark' | 'light';
 
 export interface AppSettings {
   schemaVersion: number;

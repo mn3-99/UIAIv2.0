@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, User, Lock, Mail, ShieldCheck, LogIn, UserPlus, KeyRound, CheckCircle2 } from 'lucide-react';
+import { X, User, Lock, Mail, ShieldCheck, LogIn, UserPlus } from 'lucide-react';
 import { UserAccount } from '../types';
+import { useModalA11y } from '../utils/useModalA11y';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const dialogRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -94,19 +96,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
     }
   };
 
-  const fillQuickAccount = (role: 'admin' | 'user') => {
-    if (role === 'admin') {
-      setUsernameOrEmail('admin@mijlai.com');
-      setPassword('admin123');
-    } else {
-      setUsernameOrEmail('user@mijlai.com');
-      setPassword('user123');
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden relative">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="تسجيل الدخول" tabIndex={-1} className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden relative">
         
         {/* Header */}
         <div className="px-6 pt-6 pb-4 bg-gradient-to-br from-slate-900 to-slate-800 text-white relative">
@@ -170,7 +162,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
                     required
                     value={usernameOrEmail}
                     onChange={(e) => setUsernameOrEmail(e.target.value)}
-                    placeholder="admin@mijlai.com أو user@mijlai.com"
+                    placeholder="بريدك الإلكتروني أو اسم المستخدم"
                     className="w-full pr-9 pl-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                   />
                 </div>
@@ -199,29 +191,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
                 {loading ? 'جاري التحقق...' : 'دخول النظام'}
               </button>
 
-              {/* Quick Preset Accounts */}
-              <div className="mt-4 pt-3 border-t border-slate-100">
-                <div className="text-[11px] font-bold text-slate-400 mb-2">حسابات للتجربة السريعة:</div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => fillQuickAccount('admin')}
-                    className="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-[11px] font-bold text-slate-700 flex items-center justify-center gap-1 transition-colors"
-                  >
-                    <KeyRound className="w-3 h-3 text-amber-600" />
-                    <span>حساب الأدمن</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => fillQuickAccount('user')}
-                    className="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-[11px] font-bold text-slate-700 flex items-center justify-center gap-1 transition-colors"
-                  >
-                    <User className="w-3 h-3 text-blue-600" />
-                    <span>مستخدم عادي</span>
-                  </button>
-                </div>
-              </div>
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">

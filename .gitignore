@@ -9,7 +9,21 @@ coverage/
 __pycache__/
 *.pyc
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.key
+*.pem
+**/.*_key
 ssl/
 models/
 src-tauri/target/
 src-tauri/gen/
+workspaces/uploads/
+workspaces/sbx_*/
+secrets/
+
+# Python virtualenv (machine-specific, never commit)
+venv/

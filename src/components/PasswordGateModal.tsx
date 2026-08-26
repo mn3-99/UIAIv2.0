@@ -21,7 +21,7 @@ export const PasswordGateModal: React.FC<PasswordGateModalProps> = ({ onUnlock }
 
   return (
     <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-xl z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 w-full max-w-md text-center space-y-6 shadow-2xl animate-scale-up">
+      <div className="modal-themed bg-slate-900 border border-slate-800 rounded-3xl p-8 w-full max-w-md text-center space-y-6 shadow-2xl animate-scale-up">
         <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
           <Lock className="w-8 h-8" />
         </div>

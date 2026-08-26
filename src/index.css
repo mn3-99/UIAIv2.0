@@ -31,12 +31,16 @@
     --bg-primary: #f8fafc;
     --bg-surface: #ffffff;
     --bg-card: #f1f5f9;
+    --bg-elevated: #ffffff;
     --accent-color: #2563eb;
     --accent-hover: #1d4ed8;
     --accent-soft: #eff6ff;
     --text-main: #0f172a;
     --text-muted: #64748b;
+    --text-faint: #94a3b8;
     --border-color: #e2e8f0;
+    --app-bg: linear-gradient(180deg, #e8f0fe 0%, #f8fbff 38%, #eef6ff 100%);
+    --scrim: rgba(15, 23, 42, 0.25);
     --radius-sm: 0.75rem;
     --radius-md: 1rem;
     --radius-lg: 1.25rem;
@@ -44,6 +48,11 @@
     --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
     --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
     --shadow-lg: 0 8px 30px rgba(15, 23, 42, 0.12);
+  }
+
+  body {
+    background: var(--app-bg);
+    color: var(--text-main);
   }
 }
 
@@ -68,38 +77,136 @@
   height: 100dvh;
 }
 
-/* Visual Theme Variables */
+/* Visual Theme Variables (all three non-default themes are dark) */
+body[data-theme="dark"] {
+  --bg-primary: #0b0d12;
+  --bg-surface: #14171f;
+  --bg-card: #1b1f2a;
+  --bg-elevated: #20242f;
+  --accent-color: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-soft: rgba(59, 130, 246, 0.14);
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+  --border-color: rgba(148, 163, 184, 0.16);
+  --app-bg: linear-gradient(180deg, #0a0c11 0%, #0d1017 40%, #0a0d13 100%);
+  --scrim: rgba(0, 0, 0, 0.55);
+}
+
 body[data-theme="emerald-slate"] {
   --bg-primary: #090d16;
   --bg-surface: #0f172a;
-  --bg-card: #1e293b;
+  --bg-card: #16202f;
+  --bg-elevated: #1e293b;
   --accent-color: #10b981;
-  --accent-hover: #059669;
+  --accent-hover: #34d399;
+  --accent-soft: rgba(16, 185, 129, 0.13);
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
+  --text-faint: #64748b;
   --border-color: rgba(51, 65, 85, 0.5);
+  --app-bg: linear-gradient(180deg, #070a12 0%, #0a0f1a 42%, #081019 100%);
+  --scrim: rgba(2, 6, 12, 0.55);
 }
 
 body[data-theme="obsidian-amber"] {
   --bg-primary: #0c0a09;
-  --bg-surface: #1c1917;
-  --bg-card: #292524;
+  --bg-surface: #161312;
+  --bg-card: #1c1917;
+  --bg-elevated: #292524;
   --accent-color: #f59e0b;
-  --accent-hover: #d97706;
+  --accent-hover: #fbbf24;
+  --accent-soft: rgba(245, 158, 11, 0.13);
   --text-main: #fafaf9;
   --text-muted: #a8a29e;
+  --text-faint: #78716c;
   --border-color: rgba(68, 64, 60, 0.6);
+  --app-bg: linear-gradient(180deg, #0a0908 0%, #100d0c 42%, #0d0b09 100%);
+  --scrim: rgba(0, 0, 0, 0.55);
 }
 
-body[data-theme="light"] {
-  --bg-primary: #f8fafc;
-  --bg-surface: #ffffff;
-  --bg-card: #f1f5f9;
-  --accent-color: #059669;
-  --accent-hover: #047857;
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  --border-color: #e2e8f0;
+/* ==========================================
+   Dark-theme utility remapping layer.
+   Components hardcode light Tailwind utilities (bg-white, text-slate-800, ...).
+   Unlayered author CSS outranks Tailwind's @layer utilities, so these scoped
+   overrides re-skin the entire app for dark themes without touching JSX.
+   ========================================== */
+body[data-theme="dark"], body[data-theme="emerald-slate"], body[data-theme="obsidian-amber"] {
+  /* ---- surfaces ---- */
+  .bg-white { background-color: var(--bg-surface); }
+  .bg-white\/95 { background-color: color-mix(in srgb, var(--bg-surface) 95%, transparent); }
+  .bg-white\/90 { background-color: color-mix(in srgb, var(--bg-surface) 90%, transparent); }
+  .bg-white\/80 { background-color: color-mix(in srgb, var(--bg-surface) 80%, transparent); }
+  .bg-white\/70 { background-color: color-mix(in srgb, var(--bg-surface) 70%, transparent); }
+  .bg-white\/60 { background-color: color-mix(in srgb, var(--bg-surface) 60%, transparent); }
+  .bg-white\/50 { background-color: color-mix(in srgb, var(--bg-surface) 50%, transparent); }
+  .bg-white\/40 { background-color: color-mix(in srgb, var(--text-main) 8%, transparent); }
+  .bg-white\/25 { background-color: color-mix(in srgb, var(--text-main) 10%, transparent); }
+  .bg-white\/20 { background-color: color-mix(in srgb, var(--text-main) 10%, transparent); }
+  .bg-white\/10 { background-color: color-mix(in srgb, var(--text-main) 7%, transparent); }
+  .bg-white\/5 { background-color: color-mix(in srgb, var(--text-main) 5%, transparent); }
+  .bg-slate-50 { background-color: var(--bg-card); }
+  .bg-slate-100 { background-color: var(--bg-card); }
+  .bg-slate-200 { background-color: var(--bg-elevated); }
+  .bg-slate-200\/80 { background-color: color-mix(in srgb, var(--bg-elevated) 80%, transparent); }
+  .bg-slate-300 { background-color: var(--bg-elevated); }
+  .bg-blue-50, .bg-emerald-50 { background-color: var(--accent-soft); }
+  .bg-blue-100, .bg-emerald-100 { background-color: var(--accent-soft); }
+  .bg-blue-500, .bg-blue-600 { background-color: var(--accent-color); }
+  .bg-blue-700 { background-color: var(--accent-hover); }
+  .hover\:bg-white:hover { background-color: var(--bg-surface); }
+  .hover\:bg-slate-50:hover { background-color: var(--bg-card); }
+  .hover\:bg-slate-100:hover { background-color: var(--bg-card); }
+  .hover\:bg-slate-200:hover, .hover\:bg-slate-200\/80:hover { background-color: var(--bg-elevated); }
+  .hover\:bg-blue-50:hover { background-color: var(--accent-soft); }
+  .hover\:bg-blue-600:hover { background-color: var(--accent-color); }
+  .hover\:bg-blue-700:hover { background-color: var(--accent-hover); }
+  .hover\:bg-white\/5:hover { background-color: color-mix(in srgb, var(--text-main) 6%, transparent); }
+  .hover\:bg-white\/20:hover { background-color: color-mix(in srgb, var(--text-main) 14%, transparent); }
+  .hover\:bg-white\/25:hover { background-color: color-mix(in srgb, var(--text-main) 16%, transparent); }
+  .hover\:bg-white\/40:hover { background-color: color-mix(in srgb, var(--text-main) 12%, transparent); }
+
+  /* ---- text ---- */
+  .text-slate-900, .text-slate-800, .text-slate-700 { color: var(--text-main); }
+  .text-slate-600, .text-slate-500 { color: var(--text-muted); }
+  .text-slate-400 { color: var(--text-faint); }
+  .text-blue-500, .text-blue-600, .text-blue-700 { color: var(--accent-color); }
+  .hover\:text-slate-900:hover, .hover\:text-slate-800:hover, .hover\:text-slate-700:hover { color: var(--text-main); }
+  .hover\:text-slate-600:hover { color: var(--text-muted); }
+  .hover\:text-blue-600:hover, .hover\:text-blue-700:hover { color: var(--accent-color); }
+  .placeholder-slate-400::placeholder, .placeholder-slate-500::placeholder { color: var(--text-faint); }
+
+  /* ---- borders ---- */
+  .border-slate-100, .border-slate-200, .border-slate-200\/80, .border-slate-200\/60, .border-slate-300 { border-color: var(--border-color); }
+  .border-blue-100, .border-blue-200, .border-blue-300 { border-color: color-mix(in srgb, var(--accent-color) 35%, transparent); }
+  .border-emerald-100, .border-emerald-200 { border-color: color-mix(in srgb, #10b981 30%, transparent); }
+  .hover\:border-blue-300:hover, .hover\:border-blue-500:hover, .hover\:border-blue-600:hover { border-color: var(--accent-color); }
+  .divide-slate-100 > * + *, .divide-slate-200 > * + * { border-color: var(--border-color); }
+
+  /* ---- inputs inside cards read as surfaces ---- */
+  input.bg-white, textarea.bg-white, select.bg-white { background-color: var(--bg-card); }
+}
+
+/* ==========================================
+   Light-theme modal harmonisation.
+   A few dialogs are natively dark (slate-900 shells). Scoping them with
+   .modal-themed flips them to the light palette when the light theme is on.
+   ========================================== */
+body[data-theme="light"] .modal-themed {
+  .bg-slate-950 { background-color: var(--bg-elevated); }
+  .bg-slate-900 { background-color: var(--bg-elevated); }
+  .bg-slate-800 { background-color: var(--bg-card); }
+  .bg-slate-800\/50, .bg-slate-800\/60, .bg-slate-800\/80 { background-color: color-mix(in srgb, var(--bg-card) 75%, transparent); }
+  .bg-slate-900\/50, .bg-slate-900\/60, .bg-slate-900\/80, .bg-slate-900\/95 { background-color: color-mix(in srgb, var(--bg-elevated) 92%, transparent); }
+  .bg-slate-700 { background-color: var(--bg-card); }
+  .text-slate-100, .text-slate-200, .text-slate-300 { color: var(--text-main); }
+  .text-slate-400 { color: var(--text-muted); }
+  .border-slate-800, .border-slate-700, .border-slate-600 { border-color: var(--border-color); }
+  .border-slate-700\/50, .border-slate-800\/50 { border-color: var(--border-color); }
+  .hover\:bg-slate-800:hover, .hover\:bg-slate-700:hover { background-color: var(--bg-card); }
+  .hover\:text-slate-200:hover, .hover\:text-slate-100:hover { color: var(--text-main); }
+  input, textarea, select { color-scheme: light; }
 }
 
 /* Markdown prose container formatting */
@@ -203,6 +310,28 @@ body[data-theme="light"] {
 /* RTL Auto direction support */
 [dir="auto"] {
   text-align: start;
+}
+
+/* Bilingual message text: isolate each run's direction so mixed
+   Arabic/English renders naturally instead of scrambling punctuation. */
+.markdown-body p,
+.markdown-body li,
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+  unicode-bidi: plaintext;
+}
+
+/* Inline code inside RTL prose stays LTR and visually separated */
+.markdown-body code {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/* LTR islands (code/mermaid/math) inside RTL bubbles keep their own scrollbar
+   on the correct side without flipping the page layout. */
+.code-block-wrap,
+.mermaid-wrap,
+.katex-display {
+  direction: ltr;
 }
 
 /* ==========================================
@@ -355,3 +484,320 @@ body[data-theme="light"] {
 }
 .code-run-btn:hover { background: rgba(16,185,129,0.22); transform: translateY(-1px); }
 .code-run-btn.running { color: #2563eb; border-color: rgba(37,99,235,.35); background: rgba(37,99,235,.08); pointer-events: none; }
+
+/* ==========================================
+   Glassmorphism & Premium Animations System
+   ========================================== */
+
+/* Glass morphism effect for cards and modals */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+body[data-theme="dark"] .glass-effect,
+body[data-theme="emerald-slate"] .glass-effect,
+body[data-theme="obsidian-amber"] .glass-effect {
+  background: rgba(20, 23, 31, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Shimmer loading animation */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.shimmer {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, 
+    rgba(255,255,255,0) 0%, 
+    rgba(255,255,255,0.1) 50%, 
+    rgba(255,255,255,0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+body[data-theme="dark"] .shimmer,
+body[data-theme="emerald-slate"] .shimmer,
+body[data-theme="obsidian-amber"] .shimmer {
+  background: linear-gradient(90deg, 
+    rgba(255,255,255,0) 0%, 
+    rgba(255,255,255,0.05) 50%, 
+    rgba(255,255,255,0) 100%
+  );
+  background-size: 200% 100%;
+}
+
+/* Smooth fade-in animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Slide-in from right */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.slide-in-right {
+  animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Scale-in bounce */
+@keyframes scaleInBounce {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.scale-in-bounce {
+  animation: scaleInBounce 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Typing dots animation */
+@keyframes typingDots {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+}
+
+.typing-dot {
+  animation: typingDots 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) { animation-delay: 0s; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* Pulse ring animation */
+@keyframes pulseRing {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.pulse-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: currentColor;
+  animation: pulseRing 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Floating animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+.float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Hover lift effect */
+.hover-lift {
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), 
+              box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+body[data-theme="dark"] .hover-lift:hover,
+body[data-theme="emerald-slate"] .hover-lift:hover,
+body[data-theme="obsidian-amber"] .hover-lift:hover {
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+}
+
+/* Press effect */
+.press-effect {
+  transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.press-effect:active {
+  transform: scale(0.97);
+}
+
+/* Skeleton loading */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.06) 0%,
+    rgba(0, 0, 0, 0.1) 50%,
+    rgba(0, 0, 0, 0.06) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+  border-radius: 0.5rem;
+}
+
+body[data-theme="dark"] .skeleton,
+body[data-theme="emerald-slate"] .skeleton,
+body[data-theme="obsidian-amber"] .skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  background-size: 200% 100%;
+}
+
+/* Message bubble entrance */
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.message-enter {
+  animation: messageIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  /* Long-chat render performance: the browser skips layout/paint for
+     off-screen messages entirely; contain-intrinsic-size keeps the scrollbar
+     stable. Find-in-page still reveals matches. Big win on 100+ message chats. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 140px;
+}
+
+/* Glow effect for active elements */
+.glow-blue {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+.glow-emerald {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+body[data-theme="dark"] .glow-blue,
+body[data-theme="emerald-slate"] .glow-blue,
+body[data-theme="obsidian-amber"] .glow-blue {
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.4);
+}
+
+/* Smooth scrollbar for webkit */
+.smooth-scroll {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+}
+
+.smooth-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.smooth-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.smooth-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.3);
+  border-radius: 3px;
+}
+
+.smooth-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(156, 163, 175, 0.5);
+}
+
+/* Focus ring with animation */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  animation: focusPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes focusPulse {
+  0%, 100% {
+    outline-color: var(--accent-color);
+  }
+  50% {
+    outline-color: transparent;
+  }
+}
+
+/* Stagger animation for lists */
+.stagger-item {
+  opacity: 0;
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0ms; }
+.stagger-item:nth-child(2) { animation-delay: 50ms; }
+.stagger-item:nth-child(3) { animation-delay: 100ms; }
+.stagger-item:nth-child(4) { animation-delay: 150ms; }
+.stagger-item:nth-child(5) { animation-delay: 200ms; }
+.stagger-item:nth-child(6) { animation-delay: 250ms; }
+.stagger-item:nth-child(7) { animation-delay: 300ms; }
+.stagger-item:nth-child(8) { animation-delay: 350ms; }
+
+/* Ripple effect */
+@keyframes ripple {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.3;
+  animation: ripple 0.6s linear;
+  pointer-events: none;
+}

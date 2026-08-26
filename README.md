@@ -82,3 +82,17 @@ npm run dev
 1. **Tab Switch / Lock Screen Resilience**: When a user locks their phone or switches tabs, `VisibilityObserver` listens to `document.visibilityState`.
 2. **Reconciliation**: Upon returning to foreground, `VisibilityObserver` calls `/api/chat/preview/{task_id}` to reconcile any missed text instantly.
 3. **Seamless Re-Stream**: If generation is still in progress, `SSEManager` re-establishes the SSE stream starting from the last received token offset `N`.
+
+---
+
+## 🧩 Skills & Plugins System (v2.0)
+
+نظام مهارات وإضافات مستورد البنية من مرجع Kimi الرسمي ومنفّذ بأدوات حقيقية:
+
+- **Smart Message Queue**: إرسال رسائل متعددة أثناء التوليد — تدخل طابوراً وتُجاب بالتسلسل تلقائياً مع حالات مرئية (queued → thinking → streaming).
+- **Skills Bar**: شريط سفلي أسفل حقل الكتابة للوصول السريع للمهارات المفعّلة + زر إدارة.
+- **Skills Manager**: صفحة بتبويبات (مهارات/إضافات)، بحث، تفعيل/تعطيل، وشفافية العناصر غير المستوردة مع الأسباب.
+- **Skill Builder** (`POST /api/skills/generate`): حوّل وصفاً موجزاً إلى مهارة كاملة قابلة للتنفيذ (مخطط JSON + حزمة تعليمات) — تُحفظ وتعمل فوراً.
+- **Prompt-pack skills** تُحقن كتعليمات أسلوب عند الإرسال؛ **الإضافات** ترتبط بأدوات النظام الفعلية (بحث ويب، توليد صور، TTS، MCP).
+
+انظر `CHANGELOG.md` للتفاصيل الكاملة و`tests/stress_test_results.json` لنتائج اختبار الضغط.

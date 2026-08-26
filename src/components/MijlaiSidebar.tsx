@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Menu, SquarePen, Search, Brush, Folder, LayoutGrid,
-  Sparkles, Settings, X, Trash2, Pin, MessageSquare, User, LogIn, ChevronDown
+  Sparkles, Settings, X, Trash2, Pin, MessageSquare, User, LogIn, ChevronDown, ShieldCheck
 } from 'lucide-react';
 import { ChatSession, UserAccount } from '../types';
 import { MijlaiLogo } from './MijlaiLogo';
@@ -19,6 +19,7 @@ interface MijlaiSidebarProps {
   onOpenSettings: () => void;
   onOpenProfile: () => void;
   onOpenAuthModal: () => void;
+  onOpenAdminPanel: () => void;
   currentUser: UserAccount | null;
   chats: ChatSession[];
   activeChatId: string | null;
@@ -77,6 +78,7 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
   onOpenSettings,
   onOpenProfile,
   onOpenAuthModal,
+  onOpenAdminPanel,
   currentUser,
   chats,
   activeChatId,
@@ -230,6 +232,14 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
         {/* Footer — settings + account */}
         <div className="border-t border-slate-100 px-3 py-3 space-y-1">
           <NavItem id="settings_btn" icon={Settings} label="الإعدادات" onClick={onOpenSettings} />
+          {currentUser?.role === 'admin' && (
+            <NavItem
+              id="admin_panel_btn"
+              icon={ShieldCheck}
+              label="لوحة تحكم الأدمن"
+              onClick={onOpenAdminPanel}
+            />
+          )}
           {currentUser ? (
             <NavItem
               id="user_profile_sidebar"

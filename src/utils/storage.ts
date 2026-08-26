@@ -6,7 +6,7 @@ const SETTINGS_STORAGE_KEY = 'mijlai_v1_settings';
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: APP_CONFIG.storageSchemaVersion,
-  theme: 'emerald-slate',
+  theme: 'system',
   fontSize: 'base',
   temperature: 0.7,
   systemPrompt: APP_CONFIG.defaultSystemPrompt,
@@ -95,14 +95,28 @@ export function loadChats(): ChatSession[] {
   try {
     const raw = localStorage.getItem(CHATS_STORAGE_KEY);
     if (!raw) return [];
-    
+
     const chats: ChatSession[] = JSON.parse(raw);
     if (!Array.isArray(chats)) return [];
-    
+
     // Ensure all sessions have valid structure
     return chats.map(chat => ({
       ...chat,
-      messages: Array.isArray(chat.messages) ? chat.messages : [],
+      messages: (Array.isArray(chat.messages) ? chat.messages : []).map(m => {
+        // A message stuck in "streaming" means the page was closed/refreshed
+        // mid-generation — reconcile it so the UI never shows an eternal cursor.
+        if (m.status === 'streaming') {
+          return m.content && m.content.trim()
+            ? { ...m, status: 'complete' as const }
+            : { ...m, status: 'error' as const, errorDetails: 'تمت مقاطعة التوليد (أُغلقت الصفحة)' };
+        }
+        // "thinking" / "queued" / "pending" stuck after reload: the queue is
+        // in-memory only — settle them as interrupted so nothing hangs forever.
+        if (m.status === 'thinking' || m.status === 'queued' || m.status === 'pending') {
+          return { ...m, status: 'error' as const, errorDetails: 'تمت مقاطعة الطابور (أُغلقت الصفحة)' };
+        }
+        return m;
+      }),
       pinned: !!chat.pinned,
       createdAt: chat.createdAt || Date.now(),
       updatedAt: chat.updatedAt || Date.now()

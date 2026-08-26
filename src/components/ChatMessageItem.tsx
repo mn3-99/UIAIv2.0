@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
-import { Copy, Check, RotateCcw, Edit3, User, AlertCircle, Sparkles, Play, TerminalSquare, Globe, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Copy, Check, RotateCcw, Edit3, User, AlertCircle, Sparkles, TerminalSquare, Globe, Loader2, RefreshCw, FileText, Volume2, Square } from 'lucide-react';
 import { ChatMessage } from '../types';
 import { RichMarkdown } from './RichMarkdown';
 import { ThinkingPanel } from './ThinkingPanel';
+import { MessageReactions } from './MessageReactions';
+import { SkeletonLines } from './SkeletonLoading';
+import { copyText } from '../utils/clipboard';
+import { speakText, stopSpeaking } from '../utils/tts';
+import { toast } from './Toast';
 
 interface PythonRunResult {
   ok: boolean;
@@ -16,25 +21,61 @@ interface PythonRunResult {
 interface ChatMessageItemProps {
   message: ChatMessage;
   onRegenerate?: () => void;
-  onEditPrompt?: (newText: string) => void;
+  onEditPrompt?: (messageId: string, newText: string) => void;
   isLastAssistantMessage?: boolean;
+  onOpenCanvas?: (code: string, language: string) => void;
 }
 
 export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
   message,
   onRegenerate,
   onEditPrompt,
-  isLastAssistantMessage
+  isLastAssistantMessage,
+  onOpenCanvas
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
   const [pyResults, setPyResults] = useState<Record<number, PythonRunResult>>({});
+  const [reactions, setReactions] = useState<Record<string, boolean>>({});
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const speakingRef = useRef(false);
+
+  // Stop any audio this bubble started when it unmounts (chat switch/navigate)
+  useEffect(() => {
+    return () => {
+      if (speakingRef.current) {
+        speakingRef.current = false;
+        stopSpeaking();
+      }
+    };
+  }, []);
+
+  const handleToggleReadAloud = () => {
+    if (isSpeaking) {
+      speakingRef.current = false;
+      stopSpeaking();
+      setIsSpeaking(false);
+      return;
+    }
+    const started = speakText(message.content, () => {
+      speakingRef.current = false;
+      setIsSpeaking(false);
+    });
+    if (started) {
+      speakingRef.current = true;
+      setIsSpeaking(true);
+    } else {
+      toast.error('القراءة الصوتية غير مدعومة في هذا المتصفح — جرّب Chrome أو Edge');
+    }
+  };
 
   const isUser = message.role === 'user';
   const isError = message.status === 'error';
-  const isStreaming = message.status === 'streaming';
-  const isThinkingActive = isStreaming && !!message.thinking && message.content.length === 0;
+  const isStreaming = message.status === 'streaming' || message.status === 'responding';
+  const isThinking = message.status === 'thinking';
+  const isQueued = message.status === 'queued';
+  const isThinkingActive = (isStreaming || isThinking) && !!message.thinking && message.content.length === 0;
 
   const handleRunPython = (code: string, blockIndex: number) => {
     setPyResults(prev => ({ ...prev, [blockIndex]: { ok: false, stdout: '', stderr: '', running: true } }));
@@ -51,19 +92,26 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
       })));
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(message.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    const ok = await copyText(message.content);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      toast.error('تعذر النسخ — انسخ النص يدوياً بالتحديد');
+    }
   };
 
   const handleSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editText.trim() && onEditPrompt) {
-      onEditPrompt(editText.trim());
+      onEditPrompt(message.id, editText.trim());
       setIsEditing(false);
     }
   };
+
+  // Compact time label (e.g. 14:32) shown under each bubble
+  const timeLabel = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   // Helper to cleanly format model ID with MijlAI prefix
   const formatModelBadge = (rawModelId?: string) => {
@@ -76,8 +124,12 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
     return `MijlAI ${cleanName}`;
   };
 
+  const handleReact = (emoji: string) => {
+    setReactions(prev => ({ ...prev, [emoji]: !prev[emoji] }));
+  };
+
   return (
-    <div className={`w-full flex my-4 transition-all duration-300 ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`w-full flex my-4 transition-all duration-300 message-enter ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
         className={`group relative max-w-[88%] md:max-w-[82%] transition-all ${
           isUser ? 'items-end' : 'items-start'
@@ -116,8 +168,8 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
               )}
             </div>
 
-            {/* Quick Action Tools */}
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* Quick Action Tools (always visible on touch devices, hover on desktop) */}
+            <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-within:opacity-100 transition-opacity">
               <button
                 onClick={handleCopy}
                 className={`p-1.5 rounded-xl transition-colors ${
@@ -127,6 +179,23 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
+
+              {!isUser && (
+                <button
+                  onClick={handleToggleReadAloud}
+                  className={`p-1.5 rounded-xl transition-colors ${
+                    isUser
+                      ? 'hover:bg-white/20 text-white'
+                      : isSpeaking
+                        ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                        : 'hover:bg-slate-100 text-slate-500 hover:text-slate-800'
+                  }`}
+                  title={isSpeaking ? 'إيقاف القراءة الصوتية' : 'قراءة الرد بصوت عالٍ'}
+                  aria-pressed={isSpeaking}
+                >
+                  {isSpeaking ? <Square className="w-3 h-3 fill-current animate-pulse" /> : <Volume2 className="w-3.5 h-3.5" />}
+                </button>
+              )}
 
               {isUser && onEditPrompt && (
                 <button
@@ -206,9 +275,19 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
               {isError ? (
                 <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 border border-red-200 p-3.5 rounded-2xl">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <div>
+                  <div className="flex-1">
                     <div className="font-semibold">حدث خطأ أثناء توليد الرد</div>
                     <div className="mt-1 opacity-90">{message.errorDetails || message.content}</div>
+                    <div className="mt-1.5 text-[10px] text-red-400/90">💡 جرّب إعادة المحاولة أو التبديل لنموذج آخر (Mini / Flash) من شريط الإدخال.</div>
+                    {onRegenerate && (
+                      <button
+                        onClick={onRegenerate}
+                        className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold transition-colors active:scale-95"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        إعادة المحاولة
+                      </button>
+                    )}
                   </div>
                 </div>
               ) : message.isImage && !isUser ? (
@@ -216,9 +295,43 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                   <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} />
                 </div>
               ) : isUser ? (
-                <div className="whitespace-pre-wrap font-normal text-white text-[15px] leading-relaxed">{message.content}</div>
+                <div>
+                  {/* Attached images preview */}
+                  {!!message.attachments?.length && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {message.attachments.map(a =>
+                        a.mime.startsWith('image/') ? (
+                          <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer" className="block">
+                            <img
+                              src={a.url}
+                              alt={a.name}
+                              loading="lazy"
+                              className="max-w-[180px] max-h-[180px] rounded-xl border border-white/30 object-cover"
+                            />
+                          </a>
+                        ) : (
+                          <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer"
+                             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/15 border border-white/25 text-[11px] text-white hover:bg-white/25 transition-colors">
+                            <FileText className="w-3.5 h-3.5" /> {a.name}
+                          </a>
+                        )
+                      )}
+                    </div>
+                  )}
+                  <div className="whitespace-pre-wrap font-normal text-white text-[15px] leading-relaxed" style={{ unicodeBidi: 'plaintext' }}>{message.content}</div>
+                </div>
+              ) : isQueued ? (
+                /* رسالة منتظرة في الطابور — ستُرسل تلقائياً عند اكتمال الرد الحالي */
+                <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-400 py-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  في الطابور — تنتظر دورها للإرسال...
+                </div>
+              ) : (isStreaming || isThinking) && !message.content && !message.thinking ? (
+                /* First-token wait — shimmer masks the model's queue/network latency.
+                   isThinking: النموذج يفكر قبل توليد أول توكن */
+                <SkeletonLines />
               ) : (
-                <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} onRunPython={handleRunPython} />
+                <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} onRunPython={handleRunPython} onOpenCanvas={onOpenCanvas} />
               )}
 
               {/* Python execution outputs (agentic terminal) */}
@@ -255,6 +368,23 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                 <span className="inline-block w-2.5 h-4 ms-1.5 bg-blue-500 animate-pulse rounded-full align-middle" />
               )}
             </div>
+          )}
+
+          {/* Timestamp — subtle, shown under every bubble */}
+          {!isEditing && (
+            <div className={`mt-1.5 text-[10px] font-medium tracking-wide ${isUser ? 'text-blue-300/80' : 'text-slate-400/90'}`} dir="ltr">
+              {timeLabel}
+            </div>
+          )}
+
+          {/* Message Reactions — interactive emoji responses */}
+          {!isEditing && (
+            <MessageReactions
+              messageId={message.id}
+              reactions={reactions}
+              onReact={handleReact}
+              isUser={isUser}
+            />
           )}
         </div>
       </div>

@@ -6,6 +6,8 @@ import {
 import { AppSettings, ProviderConfig, TestConnectionResult, ThemeOption } from '../types';
 import { APP_CONFIG } from '../config';
 import { hashPassword } from '../utils/storage';
+import { applyTheme } from '../utils/theme';
+import { useModalA11y } from '../utils/useModalA11y';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -51,6 +53,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [availableModels, setAvailableModels] = useState<Array<{id: string; name: string; provider: string; icon?: string; is_free?: boolean}>>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
+
+  // Accessibility: focus trap + Escape-to-close + focus restoration
+  const dialogRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
 
   // Load models from API on mount
   useEffect(() => {
@@ -174,7 +179,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleThemeChange = (theme: ThemeOption) => {
-    document.body.setAttribute('data-theme', theme);
+    applyTheme(theme);
     onUpdateSettings({ ...settings, theme });
   };
 
@@ -193,8 +198,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up">
+    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="الإعدادات" tabIndex={-1} className="modal-themed bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-scale-up">
         {/* Modal Header */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
           <div className="flex items-center gap-2">
@@ -503,6 +508,69 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <p className="text-slate-400">اختر إحدى الهويات البصرية المجهزة بعناية فائقة وتناسق بصري مبهر:</p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* System (follows OS) */}
+                <button
+                  onClick={() => handleThemeChange('system')}
+                  className={`p-4 rounded-xl border text-right transition-all space-y-2 ${
+                    settings.theme === 'system'
+                      ? 'border-blue-500 bg-blue-500/10 shadow-lg'
+                      : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-100">تلقائي (حسب النظام)</span>
+                    {settings.theme === 'system' && <Check className="w-4 h-4 text-blue-400" />}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full bg-white border border-slate-300" />
+                    <div className="w-4 h-4 rounded-full bg-slate-900" />
+                    <div className="w-4 h-4 rounded-full bg-blue-500" />
+                  </div>
+                  <p className="text-[11px] text-slate-400">يتبع مظهر نظام التشغيل تلقائياً — نهاري فاتح وليلي داكن.</p>
+                </button>
+
+                {/* Light */}
+                <button
+                  onClick={() => handleThemeChange('light')}
+                  className={`p-4 rounded-xl border text-right transition-all space-y-2 ${
+                    settings.theme === 'light'
+                      ? 'border-blue-500 bg-blue-500/10 shadow-lg'
+                      : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-100">فاتح (Light)</span>
+                    {settings.theme === 'light' && <Check className="w-4 h-4 text-blue-400" />}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full bg-sky-100 border border-sky-200" />
+                    <div className="w-4 h-4 rounded-full bg-white border border-slate-200" />
+                    <div className="w-4 h-4 rounded-full bg-blue-600" />
+                  </div>
+                  <p className="text-[11px] text-slate-400">واجهة فاتحة نقية بتدرج سماوي هادئ ولون أزرق ملكي.</p>
+                </button>
+
+                {/* Dark */}
+                <button
+                  onClick={() => handleThemeChange('dark')}
+                  className={`p-4 rounded-xl border text-right transition-all space-y-2 ${
+                    settings.theme === 'dark'
+                      ? 'border-blue-500 bg-blue-500/10 shadow-lg'
+                      : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-100">داكن (Dark)</span>
+                    {settings.theme === 'dark' && <Check className="w-4 h-4 text-blue-400" />}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full bg-slate-950 border border-slate-700" />
+                    <div className="w-4 h-4 rounded-full bg-slate-800" />
+                    <div className="w-4 h-4 rounded-full bg-blue-500" />
+                  </div>
+                  <p className="text-[11px] text-slate-400">وضع ليلي عميق مريح للعين بتباين عالٍ وألوان هادئة.</p>
+                </button>
+
                 {/* Theme A: Emerald Slate */}
                 <button
                   onClick={() => handleThemeChange('emerald-slate')}

@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { AdminControlPanel } from './AdminControlPanel';
+import { useModalA11y } from '../utils/useModalA11y';
+import { toast } from './Toast';
 
 interface AdminControlPanelModalProps {
   isOpen: boolean;
@@ -18,6 +20,7 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
   onClose,
   currentUser
 }) => {
+  const dialogRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'chats' | 'benchmark' | 'settings'>('overview');
   const [analytics, setAnalytics] = useState<any>(null);
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -25,29 +28,97 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
   const [selectedChat, setSelectedChat] = useState<any>(null);
   const [selectedChatMessages, setSelectedChatMessages] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
-  // System settings state
-  const [siteTitle, setSiteTitle] = useState('MijlAi Enterprise Workspace');
-  const [defaultPrompt, setDefaultPrompt] = useState('أنت مساعد MijlAi الذكي، قام بتدريبك وتطويرك محمود نمر العجلة.');
+  // System settings state (persisted server-side in system_settings table)
+  const [siteTitle, setSiteTitle] = useState('');
+  const [defaultPrompt, setDefaultPrompt] = useState('');
   const [registrationsOpen, setRegistrationsOpen] = useState(true);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [vacuuming, setVacuuming] = useState(false);
+
+  const loadSystemSettings = async () => {
+    try {
+      const res = await authFetch('/api/admin/settings');
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const s = data.settings || {};
+      setSiteTitle(s.site_title ?? 'MijlAi Workspace & Intelligence Engine');
+      setDefaultPrompt(s.default_system_prompt ?? '');
+      setRegistrationsOpen(String(s.allow_registrations ?? 'true') === 'true');
+      setSettingsLoaded(true);
+    } catch {
+      toast.error('تعذر تحميل إعدادات النظام');
+    }
+  };
+
+  const saveSystemSettings = async () => {
+    setSettingsSaving(true);
+    try {
+      const res = await authFetch('/api/admin/settings', {
+        method: 'POST',
+        body: JSON.stringify({
+          settings: {
+            site_title: siteTitle,
+            default_system_prompt: defaultPrompt,
+            allow_registrations: String(registrationsOpen)
+          }
+        })
+      });
+      if (!res.ok) throw new Error();
+      toast.success('تم حفظ إعدادات النظام في قاعدة البيانات ✓');
+    } catch {
+      toast.error('فشل حفظ الإعدادات — تحقق من صلاحيات الأدمن');
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  const runDbVacuum = async () => {
+    setVacuuming(true);
+    try {
+      const res = await authFetch('/api/admin/db/vacuum', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'فشل');
+      toast.success(`تمت صيانة قاعدة البيانات بنجاح — الحجم الحالي ${data.size_kb}KB`);
+    } catch (e: any) {
+      toast.error(`فشلت الصيانة: ${e.message || 'خطأ غير معروف'}`);
+    } finally {
+      setVacuuming(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
       fetchAdminData();
+      loadSystemSettings();
     }
   }, [isOpen]);
 
+  // Authenticated fetch — admin endpoints require the JWT from login
+  const authFetch = (input: string, init: RequestInit = {}) => {
+    const token = localStorage.getItem('mijlai_auth_token');
+    const headers = new Headers(init.headers || {});
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    if (init.body) headers.set('Content-Type', 'application/json');
+    return fetch(input, { ...init, headers });
+  };
+
   const fetchAdminData = async () => {
     setIsLoading(true);
+    setAuthError(null);
     try {
       const [analyticsRes, usersRes] = await Promise.all([
-        fetch('/api/admin/analytics'),
-        fetch('/api/admin/users')
+        authFetch('/api/admin/analytics'),
+        authFetch('/api/admin/users')
       ]);
 
       if (analyticsRes.ok) {
         const text = await analyticsRes.text();
         try { setAnalytics(JSON.parse(text)); } catch (e) {}
+      } else if (analyticsRes.status === 401 || analyticsRes.status === 403) {
+        setAuthError('صلاحيات الأدمن مطلوبة — سجّل الدخول بحساب أدمن لإدارة اللوحة.');
       }
       if (usersRes.ok) {
         const text = await usersRes.text();
@@ -62,9 +133,8 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
 
   const handleUpdateRoleOrStatus = async (userId: string, role?: string, status?: string) => {
     try {
-      const res = await fetch('/api/admin/user/role_or_status', {
+      const res = await authFetch('/api/admin/user/role_or_status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, role, status })
       });
       if (res.ok) {
@@ -75,14 +145,26 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
     }
   };
 
+  // Two-step inline confirm (no blocking window.confirm): first click arms the
+  // button for 3s, second click executes the deletion.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const handleDeleteUser = async (userId: string) => {
-    if (!confirm('هل أنت تأكد من إزالة هذا المستخدم وكافة بياناته نهائياً؟')) return;
+    if (pendingDeleteId !== userId) {
+      setPendingDeleteId(userId);
+      setTimeout(() => setPendingDeleteId((cur) => (cur === userId ? null : cur)), 3000);
+      return;
+    }
+    setPendingDeleteId(null);
     try {
-      const res = await fetch(`/api/admin/user/${userId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/admin/user/${userId}`, { method: 'DELETE' });
       if (res.ok) {
+        toast.success('تم حذف المستخدم نهائياً');
         fetchAdminData();
+      } else {
+        toast.error('فشل حذف المستخدم');
       }
     } catch (err) {
+      toast.error('خطأ في الاتصال أثناء الحذف');
       console.error('Error deleting user:', err);
     }
   };
@@ -90,7 +172,7 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
   const handleViewChatMessages = async (chat: any) => {
     setSelectedChat(chat);
     try {
-      const res = await fetch(`/api/admin/chat_messages/${chat.chat_id}`);
+      const res = await authFetch(`/api/admin/chat_messages/${chat.chat_id}`);
       if (res.ok) {
         const text = await res.text();
         try {
@@ -114,7 +196,7 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="w-full max-w-6xl h-[92vh] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden relative">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="لوحة تحكم المشرف" tabIndex={-1} className="w-full max-w-6xl h-[92vh] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden relative">
         
         {/* Top Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800">
@@ -154,6 +236,11 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
 
         {/* Navigation Tabs Bar */}
         <div className="px-6 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center gap-2 overflow-x-auto shrink-0">
+          {authError && (
+            <div className="flex-1 min-w-[240px] text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-1">
+              {authError}
+            </div>
+          )}
           {[
             { id: 'overview', label: 'التحليلات والمراقبة', icon: Activity },
             { id: 'users', label: 'إدارة المستخدمين', icon: Users },
@@ -274,13 +361,17 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
                                 {user.status === 'blocked' ? <UserCheck className="w-3.5 h-3.5" /> : <UserX className="w-3.5 h-3.5" />}
                               </button>
 
-                              {/* Delete User */}
+                              {/* Delete User — two-step confirm (click once to arm, again to execute) */}
                               <button
                                 onClick={() => handleDeleteUser(user.id)}
-                                className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors"
-                                title="حذف الحساب"
+                                className={`p-1.5 rounded-lg transition-colors font-bold text-[10px] ${
+                                  pendingDeleteId === user.id
+                                    ? 'bg-red-600 text-white hover:bg-red-700 px-2'
+                                    : 'bg-red-50 hover:bg-red-100 text-red-600'
+                                }`}
+                                title={pendingDeleteId === user.id ? 'اضغط مجدداً للتأكيد' : 'حذف الحساب'}
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                {pendingDeleteId === user.id ? 'تأكيد؟' : <Trash2 className="w-3.5 h-3.5" />}
                               </button>
                             </div>
                           </td>
@@ -468,18 +559,20 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
 
                 <div className="pt-4 border-t flex justify-between">
                   <button
-                    onClick={() => alert('تم حفظ إعدادات النظام بنجاح')}
-                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-sm transition-all"
+                    onClick={saveSystemSettings}
+                    disabled={settingsSaving || !settingsLoaded}
+                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold shadow-sm transition-all"
                   >
-                    حفظ التغييرات
+                    {settingsSaving ? 'جاري الحفظ…' : 'حفظ التغييرات'}
                   </button>
 
                   <button
-                    onClick={() => alert('تم إجراء صيانة وتنظيف قاعدة بيانات SQLite بنجاح')}
-                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-all flex items-center gap-1.5"
+                    onClick={runDbVacuum}
+                    disabled={vacuuming}
+                    className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-bold transition-all flex items-center gap-1.5"
                   >
                     <Database className="w-4 h-4 text-slate-500" />
-                    <span>ضغط وتنظيف DB</span>
+                    <span>{vacuuming ? 'جاري الصيانة…' : 'ضغط وتنظيف DB'}</span>
                   </button>
                 </div>
               </div>

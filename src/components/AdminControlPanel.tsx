@@ -42,13 +42,23 @@ export const AdminControlPanel: React.FC = () => {
   const [selectedChat, setSelectedChat] = useState<any>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
 
+  // All admin API calls carry the JWT — the FastAPI admin routes reject
+  // unauthenticated requests with 401/403.
+  const authFetch = (input: string, init: RequestInit = {}) => {
+    const token = localStorage.getItem('mijlai_auth_token');
+    const headers = new Headers(init.headers || {});
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    if (init.body) headers.set('Content-Type', 'application/json');
+    return fetch(input, { ...init, headers });
+  };
+
   const fetchAdminMetrics = async () => {
     setIsLoading(true);
     setError(null);
     try {
       const [analyticsRes, usersRes] = await Promise.all([
-        fetch('/api/admin/analytics'),
-        fetch('/api/admin/users')
+        authFetch('/api/admin/analytics'),
+        authFetch('/api/admin/users')
       ]);
 
       if (!analyticsRes.ok || !usersRes.ok) {
@@ -88,9 +98,8 @@ export const AdminControlPanel: React.FC = () => {
   const handleToggleUserRole = async (userId: string, currentRole: string) => {
     const newRole = currentRole === 'admin' ? 'user' : 'admin';
     try {
-      const res = await fetch('/api/admin/user/role_or_status', {
+      const res = await authFetch('/api/admin/user/role_or_status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, role: newRole })
       });
       if (res.ok) fetchAdminMetrics();
@@ -102,9 +111,8 @@ export const AdminControlPanel: React.FC = () => {
   const handleToggleUserStatus = async (userId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'blocked' ? 'active' : 'blocked';
     try {
-      const res = await fetch('/api/admin/user/role_or_status', {
+      const res = await authFetch('/api/admin/user/role_or_status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, status: newStatus })
       });
       if (res.ok) fetchAdminMetrics();
@@ -113,10 +121,17 @@ export const AdminControlPanel: React.FC = () => {
     }
   };
 
+  // Two-step inline confirm: first click arms for 3s, second click executes.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm('هل أنت متأكد من حذف هذا المستخدم نهائياً؟')) return;
+    if (pendingDeleteId !== userId) {
+      setPendingDeleteId(userId);
+      setTimeout(() => setPendingDeleteId((cur) => (cur === userId ? null : cur)), 3000);
+      return;
+    }
+    setPendingDeleteId(null);
     try {
-      const res = await fetch(`/api/admin/user/${userId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/admin/user/${userId}`, { method: 'DELETE' });
       if (res.ok) fetchAdminMetrics();
     } catch (err) {
       console.error(err);
@@ -126,7 +141,7 @@ export const AdminControlPanel: React.FC = () => {
   const handleInspectChat = async (chat: any) => {
     setSelectedChat(chat);
     try {
-      const res = await fetch(`/api/admin/chat_messages/${chat.chat_id}`);
+      const res = await authFetch(`/api/admin/chat_messages/${chat.chat_id}`);
       if (res.ok) {
         const text = await res.text();
         try {
@@ -351,10 +366,14 @@ export const AdminControlPanel: React.FC = () => {
 
                           <button
                             onClick={() => handleDeleteUser(u.id)}
-                            className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors"
-                            title="حذف الحساب"
+                            className={`p-1.5 rounded-lg transition-colors font-bold text-[10px] ${
+                              pendingDeleteId === u.id
+                                ? 'bg-red-600 text-white hover:bg-red-700 px-2'
+                                : 'bg-red-50 hover:bg-red-100 text-red-600'
+                            }`}
+                            title={pendingDeleteId === u.id ? 'اضغط مجدداً للتأكيد' : 'حذف الحساب'}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            {pendingDeleteId === u.id ? 'تأكيد؟' : <Trash2 className="w-3.5 h-3.5" />}
                           </button>
                         </div>
                       </td>

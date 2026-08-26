@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
+import dns from 'dns';
 import { spawn, ChildProcess } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 import { handleModelsRequest } from './functions/api/models';
@@ -14,6 +15,83 @@ dotenv.config();
 const app = express();
 const PORT: number = Number(process.env.PORT) || 8082;
 const G4F_SERVICE_URL = 'http://127.0.0.1:5050';
+
+// Python interpreter for backend services: ALWAYS prefer the project venv
+// (it has fastapi/aiohttp/g4f/bcrypt installed). Falling back to the system
+// python3 silently boots the crippled fallback HTTP server.
+const VENV_PYTHON = path.join(process.cwd(), 'venv', 'bin', 'python3');
+const PYTHON_BIN = fs.existsSync(VENV_PYTHON) ? VENV_PYTHON : 'python3';
+
+// ==========================================
+// SSRF protection for user-supplied provider baseURLs
+// ==========================================
+// Power users on private networks can opt back in explicitly.
+const ALLOW_PRIVATE_BASE_URL = process.env.ALLOW_PRIVATE_BASE_URL === 'true';
+
+function isPrivateOrReservedIp(ip: string): boolean {
+  let addr = ip.trim().toLowerCase();
+  const v4Mapped = addr.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (v4Mapped) addr = v4Mapped[1];
+  if (addr.includes(':')) {
+    // IPv6: loopback, unspecified, link-local, unique-local, documentation ranges
+    return (
+      addr === '::1' || addr === '::' ||
+      addr.startsWith('fe80:') || addr.startsWith('fc') || addr.startsWith('fd') ||
+      addr.startsWith('2001:db8:')
+    );
+  }
+  const parts = addr.split('.').map((n) => parseInt(n, 10));
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return true; // unparsable → unsafe
+  const [a, b] = parts;
+  return (
+    a === 0 || a === 10 || a === 127 ||                       // current net, private, loopback
+    (a === 169 && b === 254) ||                               // link-local & cloud metadata (169.254.169.254)
+    (a === 172 && b >= 16 && b <= 31) ||                      // private
+    (a === 192 && b === 168) ||                               // private
+    (a === 100 && b >= 64 && b <= 127) ||                     // CGNAT
+    (a === 192 && b === 0) || (a === 198 && (b === 51 || b === 18)) || (a === 203 && b === 0) || // test-nets
+    a >= 224                                                  // multicast & reserved
+  );
+}
+
+// Validate a user-supplied provider baseURL: http(s) only, no internal hosts,
+// and (by default) no hostname that resolves to a private/reserved IP.
+async function assertSafeBaseUrl(raw: string): Promise<{ ok: boolean; reason?: string }> {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return { ok: false, reason: 'invalid_url' };
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return { ok: false, reason: 'protocol_not_allowed' };
+  }
+  const host = parsed.hostname.toLowerCase();
+  const blockedHostnames = new Set(['localhost', 'metadata.google.internal']);
+  if (
+    blockedHostnames.has(host) ||
+    host.endsWith('.localhost') || host.endsWith('.internal') || host.endsWith('.local') || host.endsWith('.lan')
+  ) {
+    return { ok: false, reason: 'internal_hostname_blocked' };
+  }
+  const isLiteralIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':');
+  if (isLiteralIp) {
+    return isPrivateOrReservedIp(host) ? { ok: false, reason: 'private_ip_blocked' } : { ok: true };
+  }
+  if (ALLOW_PRIVATE_BASE_URL) return { ok: true };
+  try {
+    const records = await dns.promises.lookup(host, { all: true, verbatim: true });
+    if (!records.length) return { ok: false, reason: 'dns_resolution_failed' };
+    for (const record of records) {
+      if (isPrivateOrReservedIp(record.address)) {
+        return { ok: false, reason: 'hostname_resolves_to_private_ip' };
+      }
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'dns_resolution_failed' };
+  }
+}
 
 // ==========================================
 // MijlAi identity enforcement (applied to every model, local or cloud)
@@ -50,6 +128,22 @@ function injectMijlAiSystem(messages: any[]): any[] {
     { role: 'assistant', content: 'محمود نمر العجلة (Mhmod Nemr Alijla) هو مالك ومطور ومدرب منصة MijlAi. لست من Google أو OpenAI أو أي شركة أخرى.' },
     ...(messages || []).filter((m) => m && m.role !== 'system')
   ];
+}
+
+// Apply MijlAi identity replacements to prose only — fenced/inline code is left
+// untouched so snippets legitimately mentioning Microsoft (e.g. `import win32com`,
+// Azure SDK docs) never get corrupted.
+function sanitizeIdentityOutsideCode(text: string): string {
+  if (!text) return text;
+  const segments = text.split(/(```[\s\S]*?```|`[^`\n]*`)/g);
+  return segments
+    .map((seg, i) => {
+      if (i % 2 === 1) return seg; // inside a code span/fence
+      return seg
+        .replace(/Microsoft Copilot|Copilot|كوبايلوت|كوبايلت/gi, 'مساعد MijlAi الذكي')
+        .replace(/شركة Microsoft|شركة مايكروسوفت|مايكروسوفت/gi, 'محمود نمر العجلة (Mhmod Nemr Alijla)');
+    })
+    .join('');
 }
 
 app.use(express.json({ limit: '200mb' }));
@@ -165,6 +259,17 @@ function rateLimiterMiddleware(req: express.Request, res: express.Response, next
 
 app.use('/api/', rateLimiterMiddleware);
 
+// Purge stale rate-limiter buckets (one per client IP) so long-running
+// servers don't accumulate an unbounded Map of idle visitors.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of rateLimitStore.entries()) {
+    if (now - record.lastRefill > REFILL_WINDOW_MS * 2) {
+      rateLimitStore.delete(ip);
+    }
+  }
+}, 300000).unref?.();
+
 // ==========================================
 // Process Management: g4f_provider.py Service
 // ==========================================
@@ -190,7 +295,7 @@ function ensureFastApiService() {
         PATH: `/root/.local/bin:${process.env.PATH || ''}`
       };
 
-      fastApiProcess = spawn('python3', ['./backend/app.py'], {
+      fastApiProcess = spawn(PYTHON_BIN, ['./backend/app.py'], {
         env,
         stdio: ['ignore', 'inherit', 'inherit']
       });
@@ -228,7 +333,7 @@ function ensureG4FProviderService() {
         PATH: `/root/.local/bin:${process.env.PATH || ''}`
       };
 
-      g4fProcess = spawn('python3', ['./g4f_provider.py'], {
+      g4fProcess = spawn(PYTHON_BIN, ['./g4f_provider.py'], {
         env,
         stdio: ['ignore', 'inherit', 'inherit']
       });
@@ -288,6 +393,8 @@ interface BackgroundJob {
   // State machine for <think>...</think> tag parsing across chunk boundaries
   _inThinkBlock: boolean;
   _thinkCarry: string;
+  // How many think chunks have been pushed to listeners (avoids duplicate events)
+  _notifiedThinkCount: number;
   error?: string;
   createdAt: number;
   updatedAt: number;
@@ -562,8 +669,8 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
                 job.chunks.push(visibleDelta);
                 notifyListeners('chunk', visibleDelta);
               }
-              if (job.thinkChunks.length > (job as any)._notifiedThinkCount) {
-                (job as any)._notifiedThinkCount = job.thinkChunks.length;
+              if (job.thinkChunks.length > job._notifiedThinkCount) {
+                job._notifiedThinkCount = job.thinkChunks.length;
                 notifyListeners('think');
               }
             } catch (e) {
@@ -576,12 +683,11 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
       // Flush any residual carried text (partial <think> tag tails) once stream ends
       flushThinkingCarry(job);
 
-      // Post-process sanitization for identity enforcement
+      // Post-process sanitization for identity enforcement (code-safe)
       if (job.fullText && (job.fullText.includes('Copilot') || job.fullText.includes('Microsoft') || job.fullText.includes('مايكروسوفت'))) {
-        let cleanText = job.fullText
-          .replace(/Microsoft Copilot|Copilot|كوبايلوت|كوبايلت/gi, 'مساعد MijlAi الذكي')
-          .replace(/شركة Microsoft|شركة مايكروسوفت|مايكروسوفت/gi, 'محمود نمر العجلة (Mhmod Nemr Alijla)');
-        job.fullText = cleanText;
+        job.fullText = sanitizeIdentityOutsideCode(job.fullText);
+        // Regenerate the chunk list so reconnecting clients get the cleaned text
+        job.chunks = [job.fullText];
       }
 
       if (job.status === 'generating') {
@@ -793,7 +899,10 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
     const localBody: any = {
       model: targetModel,
       messages,
-      temperature: 0,
+      // Respect the client-supplied sampling temperature (default 0.7) instead
+      // of hardcoding 0 — a frozen temperature made every cloud/local answer
+      // deterministic and repetitive regardless of the user's settings.
+      temperature: typeof temperature === 'number' ? temperature : 0.7,
       stream: true
     };
     if (targetModel.includes('mini-flash') || modelId.includes('mini-flash')) {
@@ -851,8 +960,8 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
               job.chunks.push(visibleDelta);
               notifyListeners('chunk', visibleDelta);
             }
-            if (job.thinkChunks.length > (job as any)._notifiedThinkCount) {
-              (job as any)._notifiedThinkCount = job.thinkChunks.length;
+            if (job.thinkChunks.length > job._notifiedThinkCount) {
+              job._notifiedThinkCount = job.thinkChunks.length;
               notifyListeners('think');
             }
           } catch (e) {
@@ -922,6 +1031,7 @@ app.post('/api/chat', async (req, res) => {
       thinkChunks: [],
       _inThinkBlock: false,
       _thinkCarry: '',
+      _notifiedThinkCount: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       modelId,
@@ -974,10 +1084,43 @@ app.get('/api/chat/status', (req, res) => {
 });
 
 // Proxy decoupled zero-latency FastAPI endpoints if active
+// Inline local /api/files/... image references in vision content-parts as
+// base64 data URLs — providers can't fetch relative server paths.
+function inlineLocalImages(messages: any[]): any[] {
+  if (!Array.isArray(messages)) return messages || [];
+  return messages.map((m: any) => {
+    if (!m || !Array.isArray(m.content)) return m;
+    const content = m.content.map((part: any) => {
+      if (part?.type === 'image_url' && typeof part.image_url?.url === 'string'
+          && part.image_url.url.startsWith('/api/files/')) {
+        const fileId = safeUploadName(part.image_url.url.replace('/api/files/', ''));
+        const fp = path.join(UPLOADS_DIR, fileId);
+        try {
+          if (fp.startsWith(UPLOADS_DIR) && fs.existsSync(fp)) {
+            const b64 = fs.readFileSync(fp).toString('base64');
+            const mime = fileId.endsWith('.png') ? 'image/png'
+              : fileId.endsWith('.webp') ? 'image/webp'
+              : fileId.endsWith('.gif') ? 'image/gif'
+              : 'image/jpeg';
+            return { ...part, image_url: { url: `data:${mime};base64,${b64}` } };
+          }
+        } catch { /* fall through */ }
+      }
+      return part;
+    });
+    return { ...m, content };
+  });
+}
+
 app.post(['/send', '/api/chat/send'], async (req, res) => {
   const prompt = req.body?.prompt;
   const reqModel = String(req.body.model || 'gemini');
   const isLocalModel = reqModel.startsWith('local:') || !!getLocalModelInfo(reqModel);
+
+  // Vision: rewrite local file refs to data URLs before any downstream consumer
+  if (Array.isArray(req.body?.messages)) {
+    req.body.messages = inlineLocalImages(req.body.messages);
+  }
 
   if (!isLocalModel) {
     ensureFastApiService();
@@ -1030,6 +1173,7 @@ app.post(['/send', '/api/chat/send'], async (req, res) => {
     thinkChunks: [],
     _inThinkBlock: false,
     _thinkCarry: '',
+    _notifiedThinkCount: 0,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     modelId,
@@ -1039,9 +1183,17 @@ app.post(['/send', '/api/chat/send'], async (req, res) => {
   };
   activeJobs.set(jobId, job);
 
-  const messages = Array.isArray(req.body.messages) && req.body.messages.length
+  let messages = Array.isArray(req.body.messages) && req.body.messages.length
     ? req.body.messages
     : [{ role: 'user', content: String(prompt) }];
+
+  // Honor the client-supplied style/persona instructions (Settings system
+  // prompt + active Gem). injectMijlAiSystem merges client system messages
+  // AFTER the identity core, so guardrails always win.
+  const clientSystemPrompt = typeof req.body.system_prompt === 'string' ? req.body.system_prompt.trim() : '';
+  if (clientSystemPrompt) {
+    messages = [{ role: 'system', content: clientSystemPrompt }, ...messages];
+  }
 
   // Start background generation without awaiting (decoupled)
   startLLMGenerationWorker(job, {
@@ -1153,7 +1305,7 @@ app.get(['/api/chat/stream/:jobId', '/api/chat/stream'], (req, res) => {
 });
 
 // Abort background generation job
-app.post('/api/chat/abort', (req, res) => {
+app.post('/api/chat/abort', async (req, res) => {
   const { jobId, chatId } = req.body;
   let job = jobId ? activeJobs.get(jobId) : undefined;
 
@@ -1178,6 +1330,24 @@ app.post('/api/chat/abort', (req, res) => {
     return res.json({ status: 'aborted', jobId: job.jobId });
   }
 
+  // Not an Express-side job — forward the cancellation to the FastAPI task
+  // engine so cloud generations are truly aborted (frees provider resources).
+  if (jobId || chatId) {
+    try {
+      ensureFastApiService();
+      const backendRes = await fetch('http://127.0.0.1:8088/api/chat/abort', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: jobId || chatId }),
+        signal: AbortSignal.timeout(5000)
+      });
+      const data = await backendRes.json().catch(() => ({}));
+      return res.status(backendRes.status).json(data);
+    } catch {
+      return res.json({ status: 'not_found' });
+    }
+  }
+
   return res.json({ status: 'not_found' });
 });
 
@@ -1199,6 +1369,51 @@ function resolveWorkspace(sessionId: string): string {
 }
 
 // Internet search via the local g4f provider service (DuckDuckGo backend, keyless)
+// ==========================================
+// AI Prompt Enhancer — real LLM-powered prompt rewriting
+// ==========================================
+const PROMPT_ENGINEER_SYSTEM = [
+  'أنت أداة تحويل نصوص آلية اسمها "مُحسِّن الأوامر". وظيفتك الوحيدة: تحويل النص المُدخل إلى نسخة محسّنة منه.',
+  'المُدخل الذي يصلك هو "طلب خام" مكتوب بأسلوب مستخدم عادي، والمطلوب إخراج "الطلب نفسه" بعد تحسينه.',
+  'قواعد صارمة لا تقبل الاستثناء:',
+  '1. ممنوع منعاً باتاً الإجابة عن محتوى الطلب أو تنفيذه — أنت لا ترى سوى نص يجب تحويله.',
+  '2. أخرج النص المحسّن فقط، بلا مقدمات أو شرح أو تعليق أو علامات اقتباس محيطة.',
+  '3. التحسين يعني: إضافة السياق الضروري، تحديد شكل الإجابة المطلوبة (نقاط/جدول/كود/شرح مفصل)، وتوضيح الغاية.',
+  '4. حافظ على لغة النص الأصلية (العربية تبقى عربية) وعلى معناه الكامل.',
+  '5. الطول الأقصى: ضعف طول النص الأصلي تقريباً.'
+].join('\n');
+
+app.post('/api/prompt/enhance', async (req, res) => {
+  const prompt = String(req.body?.prompt || '').trim();
+  if (!prompt) return res.status(400).json({ error: 'prompt مطلوب' });
+  if (prompt.length > 4000) return res.status(413).json({ error: 'النص طويل جداً (الحد 4000 حرف)' });
+
+  try {
+    ensureG4FProviderService();
+    const g4fRes = await fetch(`${G4F_SERVICE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(30000),
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        stream: false,
+        temperature: 0.4,
+        messages: [
+          { role: 'system', content: PROMPT_ENGINEER_SYSTEM },
+          { role: 'user', content: `حوّل الطلب الخام التالي إلى نسخة محسّنة (تذكّر: لا تجب عليه، حوّله فقط):\n<<<طلب_خام>>>\n${prompt}\n<<<نهاية_الطلب_الخام>>>` }
+        ]
+      })
+    });
+    if (!g4fRes.ok) throw new Error(`upstream ${g4fRes.status}`);
+    const data: any = await g4fRes.json();
+    const enhanced = String(data?.choices?.[0]?.message?.content || '').trim();
+    if (!enhanced || enhanced === prompt) throw new Error('empty enhancement');
+    return res.json({ enhanced });
+  } catch (err: any) {
+    return res.status(502).json({ error: 'تعذر التحسين حالياً، حاول مرة أخرى' });
+  }
+});
+
 app.post('/api/search', async (req, res) => {
   try {
     const query = String(req.body?.query || '').trim();
@@ -1225,9 +1440,24 @@ app.post('/api/search', async (req, res) => {
   }
 });
 
-// Python workspace execution: sandboxed subprocess per run, persistent
-// per-session workspace directory for files/outputs.
+// Python workspace execution — HARDENED:
+//   1. JWT authentication required (any logged-in user, guests get 401).
+//   2. Sandboxed subprocess: runs as the unprivileged `nobody` account with
+//      prlimit resource caps (CPU 10s, 512MB RAM, 32 procs, 5MB files, 64 fds),
+//      a minimal scrubbed environment, and a hard wall-clock timeout.
+//      (unshare/netns is unavailable in this container; user isolation + rlimits
+//      remove the RCE/privilege-escalation surface.)
+const SANDBOX_CMD = 'sudo';
+const SANDBOX_PREFIX = ['-n', '-u', 'nobody', 'prlimit',
+  '--cpu=10', '--as=536870912', '--nproc=32', '--fsize=5242880', '--nofile=64'];
+
 app.post('/api/python/run', async (req, res) => {
+  // ── Authentication ──
+  const authUser = await verifyAuthToken(req.headers['authorization'] as string | undefined);
+  if (!authUser) {
+    return res.status(401).json({ error: 'تشغيل الكود يتطلب تسجيل الدخول (صلاحية Python محمية).' });
+  }
+
   const sessionId = String(req.body?.sessionId || 'default');
   const code = String(req.body?.code || '');
   if (!code.trim()) return res.status(400).json({ error: 'code مطلوب' });
@@ -1236,19 +1466,23 @@ app.post('/api/python/run', async (req, res) => {
   if (code.length > 60000) return res.status(413).json({ error: 'الكود طويل جداً (الحد 60KB)' });
 
   const workdir = resolveWorkspace(sessionId);
+  // `nobody` must be able to read the cell and write outputs into the workspace
+  fs.mkdirSync(workdir, { recursive: true });
+  fs.chmodSync(workdir, 0o777);
   const filePath = path.join(workdir, `cell_${Date.now()}.py`);
   fs.writeFileSync(filePath, code, 'utf-8');
+  fs.chmodSync(filePath, 0o644);
 
   const startedAt = Date.now();
   let child: any;
   try {
-    child = spawn('python3', ['-u', filePath], {
+    child = spawn(SANDBOX_CMD, [...SANDBOX_PREFIX, 'python3', '-u', filePath], {
       cwd: workdir,
-      env: { PATH: process.env.PATH, HOME: workdir, PYTHONDONTWRITEBYTECODE: '1', PYTHONUNBUFFERED: '1' },
+      env: { PATH: '/usr/bin:/bin', HOME: workdir, TMPDIR: path.join(workdir, 'tmp'), PYTHONDONTWRITEBYTECODE: '1', PYTHONUNBUFFERED: '1' },
       stdio: ['ignore', 'pipe', 'pipe']
     });
   } catch (err: any) {
-    return res.status(500).json({ error: 'فشل تشغيل بايثون' });
+    return res.status(500).json({ error: 'فشل تشغيل بيضة بايثون المعزولة' });
   }
 
   let stdout = '';
@@ -1279,6 +1513,7 @@ app.post('/api/python/run', async (req, res) => {
       timed_out: timedOut,
       duration_ms: durationMs,
       workspace: path.basename(workdir),
+      sandbox: 'nobody+prlimit',
       files: fs.readdirSync(workdir).filter(f => f !== `cell_${path.basename(filePath, '.py')}` && !f.startsWith('cell_')).slice(0, 50)
     });
   });
@@ -1296,9 +1531,199 @@ app.get('/api/python/files/:sessionId', (req, res) => {
 });
 
 // ==========================================
+// File Uploads (images for vision analysis + documents)
+// Base64 JSON transport (no extra deps); files land in workspaces/uploads
+// and are served back read-only. Size/type limits enforced server-side.
+// ==========================================
+const UPLOADS_DIR = path.join(process.cwd(), 'workspaces', 'uploads');
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8MB
+const ALLOWED_MIME_PREFIXES = ['image/', 'text/', 'application/json', 'application/pdf'];
+const ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.txt', '.md', '.json', '.csv', '.pdf', '.py', '.js', '.ts'];
+
+function safeUploadName(name: string): string {
+  return (name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80) || 'file';
+}
+
+app.post('/api/files/upload', (req, res) => {
+  const { name, mime, data } = req.body || {};
+  if (typeof data !== 'string' || !data) {
+    return res.status(400).json({ error: 'data (base64) مطلوبة' });
+  }
+  const buffer = Buffer.from(data, 'base64');
+  if (buffer.length === 0) return res.status(400).json({ error: 'ملف فارغ' });
+  if (buffer.length > MAX_UPLOAD_BYTES) {
+    return res.status(413).json({ error: 'حجم الملف يتجاوز 8MB' });
+  }
+
+  const fileName = safeUploadName(name);
+  const ext = path.extname(fileName).toLowerCase();
+  const mimeOk = !mime || ALLOWED_MIME_PREFIXES.some(p => String(mime).startsWith(p));
+  if (!mimeOk || (ext && !ALLOWED_EXTENSIONS.includes(ext))) {
+    return res.status(415).json({ error: `نوع الملف غير مدعوم (${mime || ext})` });
+  }
+
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  const id = `f_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const stored = `${id}${ext || ''}`;
+  fs.writeFileSync(path.join(UPLOADS_DIR, stored), buffer);
+
+  return res.json({
+    id,
+    name: fileName,
+    url: `/api/files/${stored}`,
+    mime: mime || 'application/octet-stream',
+    size: buffer.length
+  });
+});
+
+// Serve uploaded files read-only (immutable ids — long cache is safe)
+app.get('/api/files/:fileId', (req, res) => {
+  const fileId = safeUploadName(String(req.params.fileId));
+  const filePath = path.join(UPLOADS_DIR, fileId);
+  if (!filePath.startsWith(UPLOADS_DIR) || !fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'الملف غير موجود' });
+  }
+  res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+  return res.sendFile(filePath);
+});
+
+// Extract plain text from an uploaded document (PDF via pypdf, text formats
+// directly). Lets the chat model actually READ attached documents instead of
+// just storing them. Output capped at 120KB of text.
+const TEXTLIKE_EXTENSIONS = new Set(['.txt', '.md', '.json', '.csv', '.py', '.js', '.ts', '.html', '.css', '.xml', '.yml', '.yaml', '.log']);
+const MAX_EXTRACT_CHARS = 120_000;
+
+app.post('/api/files/extract-text', async (req, res) => {
+  const rawId = String(req.body?.fileId || '');
+  const fileId = safeUploadName(rawId);
+  const filePath = path.join(UPLOADS_DIR, fileId);
+  if (!fileId || !filePath.startsWith(UPLOADS_DIR) || !fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'الملف غير موجود' });
+  }
+
+  const ext = path.extname(fileId).toLowerCase();
+  try {
+    if (TEXTLIKE_EXTENSIONS.has(ext)) {
+      const text = fs.readFileSync(filePath, 'utf-8').slice(0, MAX_EXTRACT_CHARS);
+      return res.json({ text, truncated: fs.statSync(filePath).size > MAX_EXTRACT_CHARS });
+    }
+
+    if (ext === '.pdf') {
+      // Delegate to the venv interpreter (pypdf) with a strict timeout.
+      const { execFile } = await import('child_process');
+      const text: string = await new Promise((resolve, reject) => {
+        execFile(
+          PYTHON_BIN,
+          ['-c', `
+import sys, json
+from pypdf import PdfReader
+reader = PdfReader(sys.argv[1])
+parts = []
+for page in reader.pages[:60]:
+    try:
+        parts.append(page.extract_text() or "")
+    except Exception:
+        parts.append("")
+text = "\\n".join(parts)
+print(json.dumps({"text": text[:120000], "pages": len(reader.pages)}))
+`.trim(), filePath],
+          { timeout: 20000, maxBuffer: 8 * 1024 * 1024 },
+          (err, stdout, stderr) => {
+            if (err) return reject(new Error(stderr?.slice(0, 300) || err.message));
+            try {
+              resolve(JSON.parse(stdout).text || '');
+            } catch {
+              reject(new Error('فشل تحليل مخرجات استخراج PDF'));
+            }
+          }
+        );
+      });
+      return res.json({ text, truncated: text.length >= MAX_EXTRACT_CHARS });
+    }
+
+    return res.status(415).json({ error: 'نوع الملف لا يدعم استخراج النص' });
+  } catch (err: any) {
+    return res.status(422).json({ error: `تعذر استخراج النص: ${String(err?.message || err).slice(0, 200)}` });
+  }
+});
+
+// ==========================================
+// Provider Reliability: live status + circuit summary
+// Aggregates: g4f service health, FastAPI health, and the hourly provider
+// monitor report into one cheap endpoint the UI polls every 60s.
+// ==========================================
+let providerStatusCache: { at: number; data: any } | null = null;
+
+async function probeUrl(url: string, timeoutMs = 4000): Promise<{ ok: boolean; latency_ms: number }> {
+  const t0 = Date.now();
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    return { ok: r.ok, latency_ms: Date.now() - t0 };
+  } catch {
+    return { ok: false, latency_ms: Date.now() - t0 };
+  }
+}
+
+app.get('/api/providers/status', async (req, res) => {
+  if (providerStatusCache && Date.now() - providerStatusCache.at < 30000) {
+    return res.json({ ...providerStatusCache.data, cached: true });
+  }
+
+  const [g4f, fastapi, pollinations] = await Promise.all([
+    probeUrl(`${G4F_SERVICE_URL}/health`),
+    probeUrl('http://127.0.0.1:8088/health'),
+    probeUrl('https://text.pollinations.ai/', 5000)
+  ]);
+
+  // Summarize the last monitor report when present
+  let monitor: any = null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'provider_health_report.json'), 'utf-8'));
+    monitor = {
+      checked_at: raw.updated_at || raw.date || null,
+      stable_providers: (raw.stable_providers || raw.summary?.stable_providers || []).length,
+      degraded_providers: (raw.degraded_providers || raw.summary?.degraded_providers || []).length
+    };
+  } catch { /* report optional */ }
+
+  const overall = g4f.ok ? 'ok' : (fastapi.ok || pollinations.ok ? 'degraded' : 'down');
+  const data = {
+    overall,
+    checked_at: new Date().toISOString(),
+    routes: {
+      primary: { name: 'g4f-router', ...g4f },
+      engine: { name: 'fastapi', ...fastapi },
+      emergency: { name: 'pollinations', ...pollinations }
+    },
+    monitor
+  };
+  providerStatusCache = { at: Date.now(), data };
+  return res.json({ ...data, cached: false });
+});
+
+// Verify a Bearer JWT against the FastAPI auth service (single source of truth).
+// Returns the token payload, or null when invalid/expired/unreachable.
+async function verifyAuthToken(authHeader: string | undefined): Promise<{ user_id: string; role: string } | null> {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  try {
+    ensureFastApiService();
+    const res = await fetch('http://127.0.0.1:8088/api/auth/me', {
+      headers: { 'Authorization': authHeader },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    if (!data?.user_id) return null;
+    return { user_id: data.user_id, role: data.role || 'user' };
+  } catch {
+    return null;
+  }
+}
+
+// ==========================================
 // Auth & Admin Panel Proxies (FastAPI Port 8088)
 // ==========================================
-app.use(['/api/auth', '/api/admin'], async (req, res) => {
+app.use(['/api/auth', '/api/admin', '/api/sync', '/api/memory', '/api/rag', '/api/mcp'], async (req, res) => {
   ensureFastApiService();
   try {
     const targetUrl = `http://127.0.0.1:8088${req.originalUrl}`;
@@ -1306,6 +1731,11 @@ app.use(['/api/auth', '/api/admin'], async (req, res) => {
       method: req.method,
       headers: { 'Content-Type': 'application/json' }
     };
+    // Forward the caller's JWT so FastAPI can enforce admin authentication
+    const authHeader = req.headers['authorization'];
+    if (authHeader) {
+      options.headers['Authorization'] = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+    }
     if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
       options.body = JSON.stringify(req.body);
     }
@@ -1365,6 +1795,117 @@ app.post('/api/image/generate', async (req, res) => {
   }
 });
 
+// ==========================================
+// Skill Builder — مهارة صانع المهارات
+// يستقبل وصفاً موجزاً ويولّد مهارة كاملة بمخطط JSON موحّد عبر نموذج قوي.
+// المهارة الناتجة قابلة للتنفيذ فعلياً: promptPack يُحقن كتعليمات عند الإرسال.
+// ==========================================
+const SKILL_BUILDER_META_PROMPT = `You are a Skill Builder for the MijlAI assistant platform. Given a short user description, output ONE complete, executable skill definition as STRICT JSON (no markdown fences, no commentary).
+
+The JSON must match this exact schema:
+{
+  "name": "Arabic display name (2-4 words)",
+  "nameEn": "english-id",
+  "desc": "وصف عربي موجز لوظيفة المهارة (سطر واحد)",
+  "category": "واحدة من: إنتاجية | تطوير | إبداع | بحث | بيانات | كتابة",
+  "promptPack": "تعليمات نظام عربية كاملة ودقيقة تُلزم النموذج بتنفيذ المهارة باحتراف — تفصيلية لكن أقل من 120 كلمة",
+  "schema": {
+    "input_schema": { "topic": { "type": "string", "description": "وصف المدخل الأساسي", "required": true } },
+    "execution_logic": "خطوات التنفيذ مرقمة ومختصرة",
+    "output_criteria": "معايير قبول المخرجات (شكلها، طولها، جودتها)"
+  }
+}
+Rules: output ONLY valid JSON. promptPack must make the skill genuinely executable by any strong LLM. Understand the user's DEEP intent, not the literal words.
+
+Example — for the description "تحويل النصوص إلى نقاط":
+{"name":"مُلخِّص النقاط","nameEn":"bullet-summarizer","desc":"يحوّل أي نص إلى نقاط مركزة واضحة","category":"إنتاجية","promptPack":"حوّل نص المستخدم إلى قائمة نقاط مرقمة: استخرج الأفكار الأساسية فقط، كل نقطة بسطر واحد واضح، دون مقدمات أو حشو. إن كان النص طويلاً اجمع النقاط المتشابهة. أخرج النقاط فقط.","schema":{"input_schema":{"topic":{"type":"string","description":"النص المراد تحويله لنقاط","required":true}},"execution_logic":"1) قراءة النص 2) استخراج الأفكار 3) صياغة نقاط مرقمة","output_criteria":"نقاط مرقمة، كل نقطة ≤ 20 كلمة، بدون مقدمات"}}
+
+Now output the JSON for the user's description. JSON only:`;
+
+function extractJsonObject(text: string): any | null {
+  if (!text) return null;
+  let cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+function validateGeneratedSkill(obj: any): { valid: boolean; skill?: any; error?: string } {
+  if (!obj || typeof obj !== 'object') return { valid: false, error: 'not_an_object' };
+  if (typeof obj.name !== 'string' || !obj.name.trim()) return { valid: false, error: 'missing_name' };
+  if (typeof obj.promptPack !== 'string' || obj.promptPack.trim().length < 30) return { valid: false, error: 'weak_prompt_pack' };
+  const id = `gen-${String(obj.nameEn || obj.name).toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, '-').slice(0, 40)}-${Date.now().toString(36)}`;
+  return {
+    valid: true,
+    skill: {
+      id,
+      name: String(obj.name).slice(0, 60),
+      nameEn: String(obj.nameEn || 'generated-skill').slice(0, 60),
+      desc: String(obj.desc || '').slice(0, 200),
+      icon: 'Sparkles',
+      category: String(obj.category || 'عام').slice(0, 30),
+      type: 'skill',
+      source: 'generated',
+      enabled: true,
+      reliable: true,
+      promptPack: obj.promptPack.trim(),
+      schema: obj.schema && typeof obj.schema === 'object' ? obj.schema : { input_schema: {}, execution_logic: '', output_criteria: '' },
+    }
+  };
+}
+
+app.post('/api/skills/generate', async (req, res) => {
+  const description = String(req.body?.description || '').trim();
+  if (!description || description.length < 3) {
+    return res.status(400).json({ error: 'وصف المهارة مطلوب (3 أحرف فأكثر)' });
+  }
+  if (description.length > 500) {
+    return res.status(413).json({ error: 'الوصف طويل جداً (500 حرف كحد أقصى)' });
+  }
+  try {
+    ensureG4FProviderService();
+    // جرّب أكثر من نموذج حتى نحصل على JSON صالح (النماذج المجانية تتفاوت في الالتزام بالصيغة)
+    const builderModels = ['gemini', 'gpt-4o-mini', 'sonar'];
+    let lastRaw = '';
+    for (const builderModel of builderModels) {
+      try {
+        const g4fRes = await fetch(`${G4F_SERVICE_URL}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: builderModel,
+            messages: [
+              { role: 'system', content: SKILL_BUILDER_META_PROMPT },
+              { role: 'user', content: `الوصف الموجز من المستخدم: ${description}` }
+            ],
+            stream: false,
+            temperature: 0.2
+          })
+        });
+        if (!g4fRes.ok) continue;
+        const data: any = await g4fRes.json();
+        const content: string = data?.choices?.[0]?.message?.content || '';
+        lastRaw = content;
+        const verdict = validateGeneratedSkill(extractJsonObject(content));
+        if (verdict.valid) {
+          return res.json({ success: true, skill: verdict.skill, model: builderModel });
+        }
+      } catch (attemptErr) {
+        console.warn(`Skill Builder attempt via ${builderModel} failed:`, attemptErr);
+      }
+    }
+    return res.status(422).json({ error: 'فشل توليد مهارة صالحة — حاول بوصف أوضح', raw: lastRaw.slice(0, 300) });
+  } catch (err: any) {
+    console.error('Skill Builder error:', err);
+    return res.status(500).json({ error: err.message || 'Skill generation failed' });
+  }
+});
+
 app.get('/api/image/models', (req, res) => {
   return res.json({
     models: [
@@ -1412,6 +1953,40 @@ app.get('/api/local/health', async (req, res) => {
 });
 
 
+// Pipe an upstream streaming response to the client, and stop reading from the
+// upstream the moment the client disconnects (prevents orphaned LLM streams
+// burning provider quota after the user hits Stop or navigates away).
+function pipeUpstreamStream(req: express.Request, res: express.Response, upstream: Response): Promise<void> {
+  return new Promise((resolve) => {
+    const reader = upstream.body?.getReader();
+    if (!reader) {
+      if (!res.writableEnded) res.end();
+      resolve();
+      return;
+    }
+    const onClientClose = () => {
+      try { reader.cancel(); } catch (e) { /* already released */ }
+    };
+    req.on('close', onClientClose);
+    (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (res.writableEnded) break;
+          res.write(value);
+        }
+      } catch (e) {
+        // upstream cancelled (client disconnect) — expected
+      } finally {
+        req.removeListener('close', onClientClose);
+        if (!res.writableEnded) res.end();
+        resolve();
+      }
+    })();
+  });
+}
+
 // OpenAI-compatible chat completions proxy handler
 // Supports: g4f (cloud-free), local llama.cpp/Ollama models, and any OpenAI-compatible
 // baseURL passed via `baseURL` (e.g. from a custom connection in the frontend).
@@ -1434,14 +2009,9 @@ app.post(['/api/chat/completions', '/api/v1/chat/completions'], async (req, res)
       });
 
       if (stream) {
-        const reader = g4fRes.body?.getReader();
-        if (!reader) return res.status(500).json({ error: { message: 'No stream reader available' } });
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          res.write(value);
-        }
-        return res.end();
+        if (!g4fRes.body) return res.status(500).json({ error: { message: 'No stream reader available' } });
+        await pipeUpstreamStream(req, res, g4fRes);
+        return;
       } else {
         const data = await g4fRes.json();
         return res.json(data);
@@ -1498,14 +2068,9 @@ app.post(['/api/chat/completions', '/api/v1/chat/completions'], async (req, res)
       res.setHeader('X-Accel-Buffering', 'no');
 
       if (stream) {
-        const reader = upstream.body?.getReader();
-        if (!reader) return res.status(500).json({ error: { message: 'No stream reader available' } });
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          res.write(value);
-        }
-        return res.end();
+        if (!upstream.body) return res.status(500).json({ error: { message: 'No stream reader available' } });
+        await pipeUpstreamStream(req, res, upstream);
+        return;
       } else {
         const data = await upstream.json();
         return res.json(data);
@@ -1518,8 +2083,14 @@ app.post(['/api/chat/completions', '/api/v1/chat/completions'], async (req, res)
     }
   }
 
-  // 3) Custom OpenAI-compatible baseURL (user-defined connection)
+  // 3) Custom OpenAI-compatible baseURL (user-defined connection) — SSRF-guarded
   if (req.body.baseURL) {
+    const safety = await assertSafeBaseUrl(String(req.body.baseURL));
+    if (!safety.ok) {
+      return res.status(403).json({
+        error: { message: 'عنوان المزود محظور لأسباب أمنية (حماية SSRF).', type: 'ssrf_blocked', reason: safety.reason }
+      });
+    }
     try {
       const upstreamUrl = `${String(req.body.baseURL).replace(/\/$/, '')}/v1/chat/completions`;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -1538,14 +2109,9 @@ app.post(['/api/chat/completions', '/api/v1/chat/completions'], async (req, res)
       res.setHeader('Cache-Control', 'no-cache, no-transform');
       res.setHeader('X-Accel-Buffering', 'no');
       if (stream) {
-        const reader = upstream.body?.getReader();
-        if (!reader) return res.status(500).json({ error: { message: 'No stream reader available' } });
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          res.write(value);
-        }
-        return res.end();
+        if (!upstream.body) return res.status(500).json({ error: { message: 'No stream reader available' } });
+        await pipeUpstreamStream(req, res, upstream);
+        return;
       } else {
         const data = await upstream.json();
         return res.json(data);

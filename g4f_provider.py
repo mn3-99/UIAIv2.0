@@ -139,6 +139,23 @@ def build_fallback_chain(model_id: str) -> List[str]:
 # These work WITHOUT any API key and are used as an independent fallback layer
 # when g4f web providers fail. Optional keys are read from environment.
 # ------------------------------------------------------------------------------
+def _mijlai_pwr_key() -> Optional[str]:
+    """Read the MijlAI-PWR (DigitalOcean agent) key from env, falling back to .env."""
+    key = os.getenv("MIJLAI_PWR_API_KEY")
+    if key:
+        return key.strip().strip('"').strip("'")
+    try:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        with open(env_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("MIJLAI_PWR_API_KEY="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return None
+
+
 DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
     {
         "name": "kilo",
@@ -173,7 +190,58 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         "models": ["DeepSeek-V4-Flash-0731", "gpt-4o-mini", "gemini-flash", "deepseek-r1"],
         "default_model": "DeepSeek-V4-Flash-0731",
     },
+    {
+        # MijlAI-PWR: dedicated DigitalOcean GenAI agent (OpenAI-compatible).
+        # Keyed endpoint — tried first for the 'direct:mijlai-pwr' model tier.
+        "name": "mijlai-pwr",
+        "url": "https://l3y3mfzeo7nw5yxxenvf7xbw.agents.do-ai.run/api/v1/chat/completions",
+        "api_key": _mijlai_pwr_key(),
+        "models": ["mijlai-pwr"],
+        "default_model": "mijlai-pwr",
+        # DigitalOcean agents reject system/developer roles (agent instructions
+        # live in the DO agent config) — fold them into user turns first.
+        "no_system_role": True,
+    },
 ]
+
+
+def fold_system_messages_for_agent(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Convert system/developer messages into a user-role prefix.
+
+    DigitalOcean GenAI agents reject system/developer roles with HTTP 400
+    ('agent instructions are set via agent configuration'). Folding keeps the
+    identity/style guidance visible to the model instead of dropping it.
+    """
+    sys_parts: List[str] = []
+    convo: List[Dict[str, Any]] = []
+    for m in messages:
+        if m.get("role") in ("system", "developer"):
+            content = m.get("content")
+            if isinstance(content, str) and content.strip():
+                sys_parts.append(content.strip())
+            elif isinstance(content, list):
+                texts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
+                joined = "\n".join(t for t in texts if t.strip())
+                if joined.strip():
+                    sys_parts.append(joined.strip())
+        else:
+            convo.append(dict(m))
+
+    if not sys_parts:
+        return convo
+
+    prefix = "تعليمات النظام (التزم بها):\n" + "\n\n".join(sys_parts)
+    if convo and convo[0].get("role") == "user":
+        first = convo[0]
+        if isinstance(first.get("content"), str):
+            convo[0] = {**first, "content": prefix + "\n\n---\n\n" + first["content"]}
+        elif isinstance(first.get("content"), list):
+            convo[0] = {**first, "content": [{"type": "text", "text": prefix + "\n\n---\n"}] + first["content"]}
+        else:
+            convo.insert(0, {"role": "user", "content": prefix})
+    else:
+        convo.insert(0, {"role": "user", "content": prefix})
+    return convo
 
 
 def resolve_direct_endpoint(model_id: str) -> Optional[Dict[str, Any]]:
@@ -183,6 +251,53 @@ def resolve_direct_endpoint(model_id: str) -> Optional[Dict[str, Any]]:
         if any(low == m.lower() or low in m.lower() or m.lower() in low for m in ep["models"]):
             return ep
     return None
+
+
+# ------------------------------------------------------------------------------
+# Circuit Breaker for direct endpoints: after N consecutive failures an endpoint
+# is "open" (skipped) for COOLDOWN_S seconds so user requests never queue behind
+# a dead provider. One success closes the circuit again.
+# ------------------------------------------------------------------------------
+class EndpointCircuitBreaker:
+    FAILURE_THRESHOLD = 3
+    COOLDOWN_S = 120
+
+    def __init__(self):
+        self._fail: Dict[str, int] = {}
+        self._opened_at: Dict[str, float] = {}
+
+    def is_open(self, name: str) -> bool:
+        opened = self._opened_at.get(name)
+        if opened is None:
+            return False
+        if time.time() - opened >= self.COOLDOWN_S:
+            # half-open: allow one probe
+            self._opened_at.pop(name, None)
+            self._fail[name] = self.FAILURE_THRESHOLD - 1
+            return False
+        return True
+
+    def record_failure(self, name: str) -> None:
+        self._fail[name] = self._fail.get(name, 0) + 1
+        if self._fail[name] >= self.FAILURE_THRESHOLD:
+            self._opened_at[name] = time.time()
+
+    def record_success(self, name: str) -> None:
+        self._fail.pop(name, None)
+        self._opened_at.pop(name, None)
+
+    def snapshot(self) -> Dict[str, Dict[str, Any]]:
+        out = {}
+        for ep in DIRECT_ENDPOINTS:
+            n = ep["name"]
+            out[n] = {
+                "failures": self._fail.get(n, 0),
+                "circuit": "open" if self.is_open(n) else "closed",
+            }
+        return out
+
+
+endpoint_breaker = EndpointCircuitBreaker()
 
 
 async def attempt_direct_chat(request, messages, temperature, stream,
@@ -201,10 +316,14 @@ async def attempt_direct_chat(request, messages, temperature, stream,
         endpoints = [ep for ep in DIRECT_ENDPOINTS if ep["name"] == preferred_name]
 
     for ep in endpoints:
+        if endpoint_breaker.is_open(ep["name"]):
+            logger.debug(f"[direct:{ep['name']}] circuit OPEN — skipping")
+            continue
         payload_model = preferred_model or ep["default_model"]
+        ep_messages = fold_system_messages_for_agent(messages) if ep.get("no_system_role") else messages
         body = {
             "model": payload_model,
-            "messages": messages,
+            "messages": ep_messages,
             "temperature": max(0.0, min(temperature, 1.5)),
             "stream": bool(stream),
         }
@@ -213,11 +332,13 @@ async def attempt_direct_chat(request, messages, temperature, stream,
             headers["Authorization"] = f"Bearer {ep['api_key']}"
 
         try:
-            timeout = aiohttp.ClientTimeout(total=90, connect=10)
+            # Local llama.cpp can be slower on shared CPU — give it more headroom
+            timeout = aiohttp.ClientTimeout(total=300 if ep.get("local") else 90, connect=10)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(ep["url"], json=body, headers=headers) as upstream:
                     if upstream.status != 200:
                         logger.debug(f"[direct:{ep['name']}] HTTP {upstream.status}")
+                        endpoint_breaker.record_failure(ep["name"])
                         continue
 
                     if not stream:
@@ -235,6 +356,7 @@ async def attempt_direct_chat(request, messages, temperature, stream,
                             content = str(data)[:500]
                         if not content.strip():
                             continue
+                        endpoint_breaker.record_success(ep["name"])
                         return web.json_response({
                             "id": f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}",
                             "object": "chat.completion",
@@ -304,12 +426,15 @@ async def attempt_direct_chat(request, messages, temperature, stream,
                             response.force_close()
                         except Exception:
                             pass
+                        endpoint_breaker.record_failure(ep["name"])
                         continue
+                    endpoint_breaker.record_success(ep["name"])
                     await response.write(b"data: [DONE]\n\n")
                     await response.write_eof()
                     return response
         except Exception as err:
             logger.debug(f"[direct:{ep['name']}] failed: {err}")
+            endpoint_breaker.record_failure(ep["name"])
             continue
 
     return None
@@ -591,17 +716,20 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
 
 
 async def handle_provider_health(request: web.Request) -> web.Response:
-    """Serve JSON provider health report from background monitor."""
+    """Serve JSON provider health report + live circuit-breaker state."""
     import os
+    payload: Dict[str, Any] = {"circuits": endpoint_breaker.snapshot()}
     if os.path.exists("provider_health_report.json"):
         with open("provider_health_report.json", "r", encoding="utf-8") as f:
             data = json.load(f)
-        return web.json_response(data)
+        payload.update(data if isinstance(data, dict) else {})
+        return web.json_response(payload)
     else:
-        return web.json_response({
+        payload.update({
             "status": "initializing",
             "message": "Provider health monitor initial 60-minute cycle in progress..."
         })
+        return web.json_response(payload)
 
 
 async def handle_search(request: web.Request) -> web.Response:
