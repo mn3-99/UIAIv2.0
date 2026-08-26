@@ -3,6 +3,7 @@ import hmac
 import base64
 import json
 import os
+import secrets
 import time
 from datetime import datetime, timedelta
 from typing import Optional, Dict
@@ -19,7 +20,86 @@ try:
 except ImportError:
     BCRYPT_AVAILABLE = False
 
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "mijlai-ultra-secure-jwt-secret-key-2026")
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_ENV_PATH = os.path.join(_PROJECT_ROOT, ".env")
+
+
+def load_env_file() -> None:
+    """Load project .env into os.environ (without overriding real env vars)."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_ENV_PATH, override=False)
+        return
+    except ImportError:
+        pass
+    # Minimal fallback parser (KEY=VALUE lines, optional quotes, # comments).
+    # Matches python-dotenv semantics: within the file the LAST occurrence of a
+    # key wins, and real environment variables always take precedence.
+    try:
+        if not os.path.exists(_ENV_PATH):
+            return
+        parsed: Dict[str, str] = {}
+        with open(_ENV_PATH, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key:
+                    parsed[key] = value
+        for key, value in parsed.items():
+            if key not in os.environ:
+                os.environ[key] = value
+    except Exception:
+        pass
+
+
+def _read_env_value(key: str) -> str:
+    """Read a key straight from the .env file (last occurrence wins)."""
+    try:
+        if not os.path.exists(_ENV_PATH):
+            return ""
+        value = ""
+        with open(_ENV_PATH, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith(f"{key}="):
+                    value = line.partition("=")[2].strip().strip('"').strip("'")
+        return value
+    except Exception:
+        return ""
+
+
+def ensure_env_secret(key: str) -> str:
+    """
+    Return the secret for `key` from the environment. When absent, generate a
+    cryptographically strong one and persist it to the project .env file so it
+    survives restarts. Never falls back to a hardcoded value. Re-scans the .env
+    file before generating to stay consistent when several processes boot at once.
+    """
+    existing = os.environ.get(key, "").strip()
+    if existing:
+        return existing
+    from_file = _read_env_value(key)
+    if from_file:
+        os.environ[key] = from_file
+        return from_file
+    generated = secrets.token_urlsafe(48)
+    try:
+        with open(_ENV_PATH, "a", encoding="utf-8") as fh:
+            fh.write(f"\n# Auto-generated strong secret ({time.strftime('%Y-%m-%d %H:%M:%S')})\n{key}={generated}\n")
+    except Exception as exc:
+        # Secret stays valid for this process lifetime even if persistence fails.
+        print(f"⚠️ [security] Could not persist {key} to .env: {exc}")
+    os.environ[key] = generated
+    return generated
+
+
+load_env_file()
+
+SECRET_KEY = ensure_env_secret("JWT_SECRET_KEY")
 
 def _b64_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b'=').decode('utf-8')

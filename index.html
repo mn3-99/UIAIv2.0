@@ -7,15 +7,41 @@
     <meta name="description" content="MijlAi — تطبيق دردشة ويب ذكي، خفيف وسريع للغاية" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="MijlAi" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- FOUC guard: resolve & apply the saved theme BEFORE first paint so the
+         app never flashes the wrong theme on load/reload. -->
+    <script>
+      (function () {
+        try {
+          var pref = 'system';
+          var raw = localStorage.getItem('mijlai_v1_settings');
+          if (raw) {
+            var t = JSON.parse(raw).theme;
+            if (['system', 'emerald-slate', 'obsidian-amber', 'dark', 'light'].indexOf(t) !== -1) pref = t;
+          }
+          var resolved = pref;
+          if (pref === 'system') {
+            resolved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+          }
+          document.body.setAttribute('data-theme', resolved);
+          document.body.setAttribute('data-theme-preference', pref);
+          var isDark = resolved !== 'light';
+          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+        } catch (e) { /* never block paint */ }
+      })();
+    </script>
     <!-- Google Fonts: Cairo (Arabic Body & UI) + Plus Jakarta Sans (English & Display) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <title>MijlAi — تطبيق دردشة ويب حديث</title>
   </head>
-  <body class="bg-[#e8f0fe] text-slate-900 font-sans antialiased overflow-x-hidden selection:bg-blue-200/60">
+  <body class="font-sans antialiased overflow-x-hidden selection:bg-blue-200/60">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import json
 import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
@@ -49,6 +50,52 @@ class ActiveModelManager:
                 except Exception:
                     pass
             self._create_tables()
+        self._run_migrations()
+
+    def _run_migrations(self):
+        """Idempotent schema migrations (safe to call on every boot)."""
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cols = {row[1] for row in cursor.execute("PRAGMA table_info(chat_records)").fetchall()}
+            if "payload" not in cols:
+                cursor.execute("ALTER TABLE chat_records ADD COLUMN payload TEXT")
+            if "deleted" not in cols:
+                cursor.execute("ALTER TABLE chat_records ADD COLUMN deleted INTEGER DEFAULT 0")
+            mcols = {row[1] for row in cursor.execute("PRAGMA table_info(message_records)").fetchall()}
+            if "thinking" not in mcols:
+                cursor.execute("ALTER TABLE message_records ADD COLUMN thinking TEXT")
+            if "status" not in mcols:
+                cursor.execute("ALTER TABLE message_records ADD COLUMN status TEXT")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_facts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    fact TEXT NOT NULL,
+                    source_chat_id TEXT,
+                    active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rag_documents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    chunk_count INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rag_chunks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    doc_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    chunk_index INTEGER,
+                    text TEXT,
+                    embedding BLOB,
+                    FOREIGN KEY (doc_id) REFERENCES rag_documents(id) ON DELETE CASCADE
+                )
+            """)
 
     def _create_tables(self):
         with self._get_conn() as conn:
@@ -149,28 +196,41 @@ class ActiveModelManager:
         ])
 
     def _seed_default_data(self):
-        """Seed Default Admin Account & Settings if missing"""
+        """Seed Default Admin Account & Settings. Credentials come from the
+        environment (ADMIN_PASSWORD / DEMO_USER_PASSWORD); when absent, strong
+        random passwords are generated and persisted to .env. Existing accounts
+        have their password hashes rotated to match the env-managed secrets, so
+        no hardcoded/default credential (e.g. admin123) ever remains valid."""
+        from security.auth import ensure_env_secret
         now_str = datetime.now().isoformat()
-        admin_pass = SecureAuthManager.hash_password("admin123")
-        user_pass = SecureAuthManager.hash_password("user123")
+        admin_email = os.environ.get("ADMIN_EMAIL", "admin@mijlai.com").strip().lower()
+        demo_email = os.environ.get("DEMO_USER_EMAIL", "user@mijlai.com").strip().lower()
+        admin_pass = SecureAuthManager.hash_password(ensure_env_secret("ADMIN_PASSWORD"))
+        user_pass = SecureAuthManager.hash_password(ensure_env_secret("DEMO_USER_PASSWORD"))
         with self._get_conn() as conn:
             cursor = conn.cursor()
-            
-            # Default Seed Admin Account
-            cursor.execute("SELECT id FROM users WHERE email = 'admin@mijlai.com'")
-            if not cursor.fetchone():
-                cursor.execute("""
-                    INSERT INTO users (id, username, email, password_hash, role, status, created_at, last_login, ip_address, device_info, country)
-                    VALUES ('admin_001', 'admin', 'admin@mijlai.com', ?, 'admin', 'active', ?, ?, '192.168.1.1', 'MijlAi Enterprise Workstation', 'Palestine')
-                """, (admin_pass, now_str, now_str))
 
-            # Default Seed Demo User Account
-            cursor.execute("SELECT id FROM users WHERE email = 'user@mijlai.com'")
-            if not cursor.fetchone():
+            # Default Seed Admin Account (upsert + password rotation)
+            cursor.execute("SELECT id FROM users WHERE email = ?", (admin_email,))
+            row = cursor.fetchone()
+            if not row:
                 cursor.execute("""
                     INSERT INTO users (id, username, email, password_hash, role, status, created_at, last_login, ip_address, device_info, country)
-                    VALUES ('user_001', 'mhmod_alijla', 'user@mijlai.com', ?, 'user', 'active', ?, ?, '197.230.12.4', 'Android App Client v2.5', 'Palestine')
-                """, (user_pass, now_str, now_str))
+                    VALUES ('admin_001', 'admin', ?, ?, 'admin', 'active', ?, ?, '127.0.0.1', 'MijlAi Enterprise Workstation', 'Palestine')
+                """, (admin_email, admin_pass, now_str, now_str))
+            else:
+                cursor.execute("UPDATE users SET password_hash = ?, role = 'admin', status = 'active' WHERE email = ?", (admin_pass, admin_email))
+
+            # Default Seed Demo User Account (upsert + password rotation)
+            cursor.execute("SELECT id FROM users WHERE email = ?", (demo_email,))
+            row = cursor.fetchone()
+            if not row:
+                cursor.execute("""
+                    INSERT INTO users (id, username, email, password_hash, role, status, created_at, last_login, ip_address, device_info, country)
+                    VALUES ('user_001', 'mhmod_alijla', ?, ?, 'user', 'active', ?, ?, '127.0.0.1', 'Android App Client v2.5', 'Palestine')
+                """, (demo_email, user_pass, now_str, now_str))
+            else:
+                cursor.execute("UPDATE users SET password_hash = ? WHERE email = ?", (user_pass, demo_email))
 
             # Default System Settings
             default_settings = {
@@ -186,6 +246,24 @@ class ActiveModelManager:
                     ON CONFLICT(setting_key) DO NOTHING
                 """, (k, v))
 
+            conn.commit()
+
+    def get_system_settings(self) -> Dict[str, str]:
+        """Read all system settings as a plain dict."""
+        with self._get_conn() as conn:
+            rows = conn.execute("SELECT setting_key, setting_value FROM system_settings").fetchall()
+            return {row["setting_key"]: row["setting_value"] for row in rows}
+
+    def set_system_settings(self, settings: Dict[str, str]) -> None:
+        """Upsert system settings (key-value)."""
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            for key, value in settings.items():
+                cursor.execute("""
+                    INSERT INTO system_settings (setting_key, setting_value)
+                    VALUES (?, ?)
+                    ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value
+                """, (key, value))
             conn.commit()
 
     def sync_verified_models(self, verified_list: List[Dict[str, Any]]):
@@ -516,4 +594,124 @@ class ActiveModelManager:
                 ORDER BY id ASC
             """, (chat_id,))
             return [dict(r) for r in cursor.fetchall()]
+
+    # ==================================================================
+    # Cloud Chat Sync (user-scoped, last-write-wins by updated_at)
+    # ==================================================================
+
+    def upsert_user_chats(self, user_id: str, chats: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Upsert a batch of chat sessions (full payload JSON) for a user.
+        Returns how many rows were inserted vs updated."""
+        inserted = updated = 0
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            for chat in chats:
+                chat_id = str(chat.get("id") or "")[:128]
+                if not chat_id:
+                    continue
+                title = str(chat.get("title") or "")[:300]
+                payload = json.dumps({
+                    "id": chat_id,
+                    "title": title,
+                    "createdAt": chat.get("createdAt"),
+                    "updatedAt": chat.get("updatedAt"),
+                    "messages": chat.get("messages", []),
+                    "pinned": bool(chat.get("pinned", False)),
+                    "modelId": chat.get("modelId"),
+                    "draftMessage": chat.get("draftMessage", ""),
+                }, ensure_ascii=False)
+                msg_count = len(chat.get("messages") or [])
+                existing = cursor.execute(
+                    "SELECT rowid FROM chat_records WHERE chat_id = ? AND user_id = ?",
+                    (chat_id, user_id)
+                ).fetchone()
+                if existing:
+                    cursor.execute("""
+                        UPDATE chat_records
+                        SET title = ?, payload = ?, message_count = ?, updated_at = ?, deleted = 0
+                        WHERE chat_id = ? AND user_id = ?
+                    """, (title, payload, msg_count, datetime.now().isoformat(), chat_id, user_id))
+                    updated += 1
+                else:
+                    cursor.execute("""
+                        INSERT INTO chat_records (chat_id, user_id, title, payload, message_count, created_at, updated_at, deleted)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                    """, (chat_id, user_id, title, payload, msg_count,
+                          datetime.now().isoformat(), datetime.now().isoformat()))
+                    inserted += 1
+        return {"inserted": inserted, "updated": updated}
+
+    def get_user_chats(self, user_id: str, since: float = 0) -> List[Dict[str, Any]]:
+        """Return the full chat payload list for a user (newest first).
+        `since` (epoch ms) filters to chats updated after that time."""
+        rows = []
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT chat_id, payload, updated_at FROM chat_records
+                WHERE user_id = ? AND deleted = 0
+                ORDER BY updated_at DESC
+            """, (user_id,))
+            rows = cursor.fetchall()
+        result = []
+        for chat_id, payload, updated_at in rows:
+            try:
+                data = json.loads(payload) if payload else None
+            except Exception:
+                data = None
+            if not isinstance(data, dict):
+                continue
+            if since and (data.get("updatedAt") or 0) <= since:
+                continue
+            result.append(data)
+        return result
+
+    def delete_user_chat(self, user_id: str, chat_id: str) -> bool:
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cur = cursor.execute(
+                "UPDATE chat_records SET deleted = 1 WHERE chat_id = ? AND user_id = ?",
+                (chat_id, user_id)
+            )
+            return cur.rowcount > 0
+
+    # ==================================================================
+    # Long-term Memory (user_facts)
+    # ==================================================================
+
+    def add_user_fact(self, user_id: str, fact: str, source_chat_id: str = None) -> Optional[int]:
+        fact = (fact or "").strip()
+        if not fact:
+            return None
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            dup = cursor.execute(
+                "SELECT id FROM user_facts WHERE user_id = ? AND fact = ? AND active = 1",
+                (user_id, fact)
+            ).fetchone()
+            if dup:
+                return None
+            cur = cursor.execute(
+                "INSERT INTO user_facts (user_id, fact, source_chat_id) VALUES (?, ?, ?)",
+                (user_id, fact[:500], source_chat_id)
+            )
+            return cur.lastrowid
+
+    def get_user_facts(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            rows = cursor.execute(
+                "SELECT id, fact, created_at FROM user_facts WHERE user_id = ? AND active = 1 ORDER BY id DESC LIMIT ?",
+                (user_id, limit)
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def delete_user_fact(self, user_id: str, fact_id: int) -> bool:
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cur = cursor.execute(
+                "UPDATE user_facts SET active = 0 WHERE id = ? AND user_id = ?",
+                (fact_id, user_id)
+            )
+            return cur.rowcount > 0
 

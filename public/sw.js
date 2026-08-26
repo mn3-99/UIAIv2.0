@@ -1,9 +1,14 @@
-const CACHE_NAME = 'mijlai-cache-v2';
+const CACHE_NAME = 'mijlai-cache-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/icon.svg',
-  '/manifest.json'
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-maskable-192.png',
+  '/icon-maskable-512.png',
+  '/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -52,7 +57,18 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         })
-        .catch(() => caches.match(event.request))
+        .catch(() =>
+          caches.match(event.request).then((cached) =>
+            cached ||
+            caches.match('/index.html').then((shell) => {
+              if (shell) return shell;
+              return new Response(
+                '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MijlAi — غير متصل</title><style>body{font-family:system-ui;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#e8f0fe;color:#0f172a;margin:0}div{text-align:center;padding:2rem}h1{font-size:1.2rem}p{color:#64748b;font-size:.9rem}</style></head><body><div><h1>لا يوجد اتصال بالإنترنت</h1><p>سيتم تحميل MijlAi تلقائياً عند عودة الاتصال. محادثاتك المحفوظة متاحة بعد العودة.</p></div></body></html>',
+                { headers: { 'Content-Type': 'text/html; charset=utf-8' }, status: 200 }
+              )
+            })
+          )
+        )
     );
     return;
   }

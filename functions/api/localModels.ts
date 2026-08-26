@@ -33,7 +33,8 @@ function defaultProbePorts(): number[] {
       .map((p) => parseInt(p.trim(), 10))
       .filter((p) => Number.isInteger(p) && p > 0 && p < 65536);
   }
-  return [8080, 8081, 8083];
+  // Standard local inference ports: llama.cpp (8080-8085, 5000) & Ollama (11434)
+  return [8080, 8081, 8083, 8085, 5000, 11434];
 }
 
 async function probePort(port: number): Promise<LocalModelInfo[]> {

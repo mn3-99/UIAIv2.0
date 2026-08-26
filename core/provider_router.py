@@ -15,6 +15,8 @@ from providers.openrouter_free import OpenRouterFreeProvider
 from providers.groq_free import GroqFreeProvider
 from providers.together_free import TogetherFreeProvider
 from providers.cerebras_free import CerebrasFreeProvider
+from providers.pollinations_free import PollinationsFreeProvider
+from providers.tokenhub_free import TokenHubFreeProvider
 
 logger = logging.getLogger("provider_router")
 
@@ -66,6 +68,12 @@ class SmartProviderRouter:
             "groq": {"tier": ProviderTier.TIER_1_DIRECT, "weight": 1.0, "instance": GroqFreeProvider()},
             "together": {"tier": ProviderTier.TIER_1_DIRECT, "weight": 0.9, "instance": TogetherFreeProvider()},
             "cerebras": {"tier": ProviderTier.TIER_1_DIRECT, "weight": 1.0, "instance": CerebrasFreeProvider()},
+            # Tencent TokenHub free quota (16 models x 1M tokens, exp 2027) —
+            # high weight: reliable OpenAI-compatible gateway with real models
+            "tokenhub": {"tier": ProviderTier.TIER_1_DIRECT, "weight": 0.95, "instance": TokenHubFreeProvider()},
+            # Verified keyless but heavily rate-limited per IP (2026-08):
+            # low weight = last-resort only; yields "" on 429 so chain continues
+            "pollinations": {"tier": ProviderTier.TIER_1_DIRECT, "weight": 0.55, "instance": PollinationsFreeProvider()},
             "you": {"tier": ProviderTier.TIER_2_SCRAPER, "weight": 0.75, "instance": YouScraper()}
         }
         self.provider_stats: Dict[str, List[ProviderResult]] = {}

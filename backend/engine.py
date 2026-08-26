@@ -41,6 +41,8 @@ class TaskStore:
             "status": "generating",
             "full_text": "",
             "tokens": [],
+            "think_tokens": [],
+            "think_text": "",
             "created_at": time.time(),
             "updated_at": time.time(),
             "error": None
@@ -102,6 +104,31 @@ class TaskStore:
             except Exception as e:
                 logger.warning(f"Redis set_completed error: {e}")
 
+    async def set_aborted(self, task_id: str) -> None:
+        """Mark a task as aborted by the user (distinct terminal state)."""
+        if task_id in self._memory_store:
+            self._memory_store[task_id]["status"] = "aborted"
+            self._memory_store[task_id]["updated_at"] = time.time()
+        if self.redis_client:
+            try:
+                await self.redis_client.hset(f"task:{task_id}", mapping={"status": "aborted", "updated_at": str(time.time())})
+            except Exception as e:
+                logger.warning(f"Redis set_aborted error: {e}")
+
+    async def add_think_token(self, task_id: str, text: str) -> None:
+        """Buffer a reasoning (think) token for live SSE fan-out."""
+        if not text or task_id not in self._memory_store:
+            return
+        task = self._memory_store[task_id]
+        task.setdefault("think_tokens", []).append(text)
+        task["think_text"] = task.get("think_text", "") + text
+        task["updated_at"] = time.time()
+
+    async def get_think_text(self, task_id: str) -> str:
+        if task_id in self._memory_store:
+            return self._memory_store[task_id].get("think_text", "")
+        return ""
+
     async def get_task_preview(self, task_id: str) -> Dict[str, Any]:
         """Lightweight check for instant load (predictive pre-fetching)"""
         if task_id in self._memory_store:
@@ -114,6 +141,7 @@ class TaskStore:
                 "full_text": task["full_text"],
                 "token_count": len(tokens),
                 "last_chunk": last_chunk,
+                "thinking": task.get("think_text", ""),
                 "error": task.get("error")
             }
 
@@ -154,6 +182,85 @@ class TaskStore:
 # Singleton task store instance
 task_store = TaskStore()
 
+import re as _re
+
+_CODE_SEGMENT_RE = _re.compile(r"(```[\s\S]*?```|`[^`\n]*`)")
+
+def sanitize_identity_outside_code(text: str) -> str:
+    """Apply MijlAi identity replacements to prose only — fenced/inline code is
+    left untouched so snippets legitimately mentioning Microsoft never break."""
+    if not text:
+        return text
+
+    def _clean(segment: str) -> str:
+        return (
+            segment
+            .replace("Microsoft Copilot", "مساعد MijlAi الذكي")
+            .replace("Copilot", "مساعد MijlAi الذكي")
+            .replace("كوبايلوت", "مساعد MijlAi الذكي")
+            .replace("كوبايلت", "مساعد MijlAi الذكي")
+            .replace("شركة Microsoft", "محمود نمر العجلة (Mhmod Nemr Alijla)")
+            .replace("شركة مايكروسوفت", "محمود نمر العجلة (Mhmod Nemr Alijla)")
+            .replace("مايكروسوفت", "محمود نمر العجلة (Mhmod Nemr Alijla)")
+        )
+
+    parts = _CODE_SEGMENT_RE.split(text)
+    return "".join(p if i % 2 == 1 else _clean(p) for i, p in enumerate(parts))
+
+class _ThinkExtractor:
+    """
+    Stateful <think>...</think> splitter. Routes reasoning text into the task's
+    think stream while returning only the visible answer. An 8-char carry guard
+    prevents splitting a tag across chunk boundaries.
+    """
+    def __init__(self):
+        self.in_think = False
+        self.carry = ""
+
+    def feed(self, chunk: str) -> Dict[str, str]:
+        visible, think = "", ""
+        buf = self.carry + (chunk or "")
+        self.carry = ""
+        while buf:
+            if self.in_think:
+                end = buf.find("</think>")
+                if end == -1:
+                    if len(buf) > 8:
+                        think += buf[:-8]
+                        self.carry = buf[-8:]
+                    else:
+                        self.carry = buf
+                    buf = ""
+                else:
+                    think += buf[:end]
+                    self.in_think = False
+                    buf = buf[end + 8:]
+            else:
+                start = buf.find("<think>")
+                if start == -1:
+                    if len(buf) > 8:
+                        visible += buf[:-8]
+                        self.carry = buf[-8:]
+                    else:
+                        self.carry = buf
+                    buf = ""
+                else:
+                    visible += buf[:start]
+                    self.in_think = True
+                    buf = buf[start + 7:]
+        return {"visible": visible, "think": think}
+
+    def flush(self) -> Dict[str, str]:
+        out = {"visible": "", "think": ""}
+        if self.carry:
+            if self.in_think:
+                out["think"] = self.carry
+            else:
+                out["visible"] = self.carry
+            self.carry = ""
+        return out
+
+
 class LLMEngine:
     """
     High-Performance Async LLM Stream Engine with Checkpointing.
@@ -161,15 +268,47 @@ class LLMEngine:
     """
     def __init__(self, store: TaskStore):
         self.store = store
+        self._running: Dict[str, asyncio.Task] = {}
+
+    async def abort_task(self, task_id: str) -> bool:
+        """Cancel a running generation task (true abort, frees provider resources).
+        Marks the task store immediately so SSE listeners get a terminal done event,
+        and drops the task handle (asyncio.CancelledError is a BaseException that
+        propagates out of the generation coroutine on its own)."""
+        if not task_id:
+            return False
+        task = self._running.pop(task_id, None)
+        if task and not task.done():
+            task.cancel()
+        await self.store.set_aborted(task_id)
+        return True
 
     async def generate_response_stream(
         self,
         task_id: str,
         prompt: str,
         model_id: Optional[str] = None,
-        messages: Optional[list] = None
+        messages: Optional[list] = None,
+        user_id: Optional[str] = None,
+        custom_system_prompt: Optional[str] = None
     ) -> None:
         await self.store.create_task(task_id, prompt)
+        self._running[task_id] = asyncio.current_task()
+        think_extractor = _ThinkExtractor()
+
+        # Long-term memory: inject the user's durable facts so every model
+        # "remembers" them across chats (privacy-controlled from the profile UI).
+        memory_block = ""
+        try:
+            from db_manager import ActiveModelManager as _AMM
+            facts = _AMM().get_user_facts(user_id or "guest", limit=5)
+            if facts:
+                joined = "؛ ".join(f["fact"] for f in reversed(facts))
+                memory_block = (
+                    f"\n\n[ذاكرة طويلة المدى عن المستخدم — استعن بها عند الحاجة ولا تذكر مصدرها]:\n{joined}"
+                )
+        except Exception as mem_err:
+            logger.debug(f"Memory injection skipped: {mem_err}")
 
         try:
             from g4f.client import AsyncClient
@@ -178,8 +317,7 @@ class LLMEngine:
 
         # Enforced MijlAi System Prompt with Creator & Identity Guardrails
         system_prompt = (
-            "أنت MijlAi (مجلاي)، مساعد ذكاء اصطناعي متقدم وعالي السرعة، تم تطويره وامتلاكه حصرياً من منصة MijlAi (mijlai.duckdns.org).\n"
-            "مالك هذه الأداة ومطورها ومن قام بتدريبها وإعدادها هو: محمود نمر العجلة (Mhmod Nemr Alijla).\n"
+            "أنت MijlAi (مجلاي)، مساعد ذكاء اصطناعي متقدم وعالي السرعة، تم تطويره وامتلاكه حصرياً من منصة MijlAi (mijlai.duckdns.org).\n"            "مالك هذه الأداة ومطورها ومن قام بتدريبها وإعدادها هو: محمود نمر العجلة (Mhmod Nemr Alijla).\n"
             "قوانين صارمة وملزمة لجميع الردود:\n"
             "1. عند سؤالك \"من أنت\" أو \"Who are you\" أو عن هويتك أو صانعك أو مالكك، يجب أن تعرّف نفسك دائماً وبوضوح بأنك \"MijlAi (مجلاي)\"، نظام ذكاء اصطناعي صُمم وطُوّر خصيصاً لمنصة MijlAi، وأن مالك هذه الأداة ومطورها هو محمود نمر العجلة (Mhmod Nemr Alijla).\n"
             "2. يُمنع منعاً باتاً وبشكل مطلق أن تذكر أو تُعزي تطويرك أو مصدرك إلى أي شركات أو جهات أو منظمات خارجية (مثل OpenAI أو ChatGPT أو Anthropic أو Claude أو Google أو Copilot أو Microsoft أو غيرها) بأي حال من الأحوال. كل العلامات والتطوير والملكية تعود حصراً لمنصة MijlAi ومطورها.\n"
@@ -194,6 +332,18 @@ class LLMEngine:
         )
 
         chat_messages = [{"role": "system", "content": system_prompt}]
+
+        # User-level customization layer (app Settings system prompt + active
+        # Gem persona instructions). Applied AFTER the identity core so it can
+        # steer style/expertise without ever weakening the identity guardrails.
+        if custom_system_prompt and custom_system_prompt.strip():
+            chat_messages.append({
+                "role": "system",
+                "content": (
+                    "تعليمات أسلوب إضافية من إعدادات المستخدم (طبّقها ما دامت لا تتعارض مع هويتك وقواعدك أعلاه):\n"
+                    + custom_system_prompt.strip()
+                )
+            })
 
         # Conversation few-shot demonstrations so even stubborn base models
         # (e.g. ones that self-report as "Gemini/Google") answer with the
@@ -297,11 +447,24 @@ class LLMEngine:
                                     delta = obj.get("choices", [{}])[0].get("delta", {})
                                 except Exception:
                                     pass
-                                text_chunk = delta.get("content") or ""
+                                # Structured reasoning fields (OpenRouter/DeepSeek style)
+                                reasoning_chunk = delta.get("reasoning_content") or delta.get("reasoning") or ""
+                                if isinstance(reasoning_chunk, str) and reasoning_chunk:
+                                    received_content = True
+                                    await self.store.add_think_token(task_id, reasoning_chunk)
 
+                                text_chunk = delta.get("content") or ""
                                 if text_chunk:
                                     received_content = True
-                                    checkpoint_buffer += text_chunk
+                                    parts = think_extractor.feed(text_chunk)
+                                    if parts["think"]:
+                                        await self.store.add_think_token(task_id, parts["think"])
+                                    visible_chunk = parts["visible"]
+                                else:
+                                    visible_chunk = ""
+
+                                if visible_chunk:
+                                    checkpoint_buffer += visible_chunk
                                     token_offset += 1
                                     buffer_counter += 1
 
@@ -310,8 +473,16 @@ class LLMEngine:
                                         checkpoint_buffer = ""
                                         buffer_counter = 0
 
+                        flushed = think_extractor.flush()
+                        if flushed["think"]:
+                            await self.store.add_think_token(task_id, flushed["think"])
+                        if flushed["visible"]:
+                            checkpoint_buffer += flushed["visible"]
+                            token_offset += 1
                         if checkpoint_buffer:
                             await self.store.update_checkpoint(task_id, checkpoint_buffer, token_offset - buffer_counter)
+                            checkpoint_buffer = ""
+                            buffer_counter = 0
 
                         if received_content:
                             logger.info(f"Successfully generated response for task {task_id} using '{current_model}'")
@@ -350,18 +521,21 @@ class LLMEngine:
             await self.store.update_checkpoint(task_id, fallback_text, 0)
         else:
             # Enforce MijlAi identity post-processing on task storage (in-memory + redis)
+            # Code blocks are skipped so code output mentioning Microsoft stays valid.
             preview = await self.store.get_task_preview(task_id)
             clean_content = preview.get("full_text") or ""
             if clean_content and ('Copilot' in clean_content or 'Microsoft' in clean_content or 'مايكروسوفت' in clean_content):
-                clean_content = clean_content.replace('Microsoft Copilot', 'مساعد MijlAi الذكي') \
-                                             .replace('Copilot', 'مساعد MijlAi الذكي') \
-                                             .replace('كوبايلوت', 'مساعد MijlAi الذكي') \
-                                             .replace('شركة Microsoft', 'محمود نمر العجلة (Mhmod Nemr Alijla)') \
-                                             .replace('شركة مايكروسوفت', 'محمود نمر العجلة (Mhmod Nemr Alijla)') \
-                                             .replace('مايكروسوفت', 'محمود نمر العجلة (Mhmod Nemr Alijla)')
+                clean_content = sanitize_identity_outside_code(clean_content)
                 if task_id in self.store._memory_store:
                     self.store._memory_store[task_id]['full_text'] = clean_content
+                    # Replace token stream with the cleaned text so offset
+                    # resumption replays exactly what the user already saw.
+                    self.store._memory_store[task_id]['tokens'] = [
+                        {"o": 0, "d": clean_content}
+                    ]
 
         await self.store.set_completed(task_id)
+        # Normal completion: drop the task handle (aborted tasks are popped by abort_task).
+        self._running.pop(task_id, None)
 
 llm_engine = LLMEngine(task_store)
