@@ -2,6 +2,19 @@
 
 جميع التغييرات المهمة في مشروع UIAIv2.0 موثقة هنا.
 
+## [2.1.1] — 2026-08-29
+
+### ميزات جديدة
+- **محرك استخراج الحقائق** (`features/fact_extractor.py`): استخراج منظم للحقائق من النصوص.
+- **محرك RAG** (`features/rag_engine.py`): نظام استرجاع معزز بالمعلومات للتوليد الأدق.
+- **عميل MCP** (`features/mcp_client.py`): تكامل مع خوادم MCP للوصول إلى أدوات خارجية.
+- **مزود Pollinations المجاني** (`providers/pollinations_free.py`): مزود نصي مجاني بدون مفتاح.
+- **مزود TokenHub المجاني** (`providers/tokenhub_free.py`): مزود إضافي مجاني.
+- **نظام الموجهات** (`prompts/mijlai-pwr-coder.system.md`): موجه النظام لمهارة البرمجة.
+- **دراسة تسريع PWR** (`prompts/pwr-acceleration-study.md`): ملاحظات بحثية عن تسريع MTP/speculative-decoding.
+- **أيقونات PWA**: أيقونات تطبيق جديدة (192x192, 512x512, Apple Touch Icon, maskable).
+- **تحديث AGENTS.md**: إضافة مرجع الموجهات الجديدة ودراسة التسريع.
+
 ## [2.1.0] — 2026-08-27
 
 ### حركات الانتظار والتفكير المرئي

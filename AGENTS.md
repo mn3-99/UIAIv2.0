@@ -14,3 +14,5 @@
 - The DO agent rejects system/developer roles (HTTP 400) — `g4f_provider.py` folds them into the first user message via `fold_system_messages_for_agent` (`no_system_role: True`).
 - The local llama.cpp fallback (`llama-local.service`, port 8085) was removed/disabled per owner request — do not re-add local fallbacks.
 - aider is configured for this model via `~/.aider.conf.yml` + `~/.aider.model.settings.yml` (`use_system_prompt: false`).
+- `prompts/mijlai-pwr-coder.system.md` — the CODER system prompt (paste into the DO agent's Instructions field).
+- `prompts/pwr-acceleration-study.md` — research notes on MTP/speculative-decoding acceleration for Nemotron-3 Super 120B.

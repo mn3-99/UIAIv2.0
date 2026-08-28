@@ -1,0 +1,60 @@
+{
+  "report": "UIAIv2.0 — Keyless LLM Endpoint Intelligence Report",
+  "date": "2026-08-25",
+  "methodology": "Live functional tests from production server (light cadence, no stress testing against shared free services). No leaked keys, no auth bypass, public/documented endpoints only.",
+  "verified_endpoints": [
+    {
+      "name": "Pollinations Text (anonymous tier)",
+      "endpoint": "https://text.pollinations.ai/v1/chat/completions",
+      "auth": "none",
+      "openai_compatible": true,
+      "streaming": "SSE in body (regular POST with stream:true; client.stream()/aiohttp get 402 by WAF)",
+      "cors": true,
+      "model": "openai-fast (gpt-oss-20b)",
+      "rate_limit": "~1 req / 3s per IP, bursts get 402/500; datacenter IPs heavily throttled",
+      "latency_first_token_ms": 700,
+      "stress_test": "SKIPPED BY DESIGN — shared free service, only functional tests",
+      "status": "flaky_active",
+      "verdict": "TIER B — last-resort fallback only. Registered in provider_router with weight 0.55.",
+      "integration": "providers/pollinations_free.py + core/provider_router.py"
+    },
+    {
+      "name": "Pollinations Image",
+      "endpoint": "https://image.pollinations.ai/prompt/{prompt}?width=&height=&nologo=true&model=flux",
+      "auth": "none",
+      "type": "image_generation",
+      "latency_ms": 680,
+      "status": "active",
+      "verdict": "TIER S for images — genuinely free and fast, returns real JPEG"
+    },
+    {
+      "name": "Local g4f service (already running)",
+      "endpoint": "http://127.0.0.1:5050/chat/completions",
+      "auth": "none (localhost)",
+      "status": "active (pid on :5050)",
+      "verdict": "TIER A — primary keyless path already owned by engine.py"
+    },
+    {
+      "name": "Self-hosted Ollama / llama.cpp / vLLM (recommended addition)",
+      "endpoint": "http://127.0.0.1:11434 (Ollama default)",
+      "auth": "none (self-hosted)",
+      "note": "Only truly reliable zero-key option long-term: small model (Qwen2.5 1.5B / Llama 3.2 3B) runs fine on a small VPS; OpenAI-compatible via Ollama's /v1 API",
+      "status": "not_installed_yet"
+    }
+  ],
+  "rejected_endpoints": [
+    {"name": "api.airforce", "reason": "now requires Authorization (401); free ':free' models gated"},
+    {"name": "api.llm7.io", "reason": "listed models return model_unavailable without paid token"},
+    {"name": "text.pollinations.ai/openai (legacy path)", "reason": "deprecated, returns 402 even for models that work on /v1"}
+  ],
+  "key_findings": [
+    "Truly keyless cloud LLM endpoints are nearly extinct in 2026 — Pollinations anonymous tier is the last major one and it is IP-throttled to near-unusability from datacenters.",
+    "WAF fingerprinting matters: custom User-Agent headers trigger 402; stock httpx headers pass. aiohttp streaming is blocked outright.",
+    "Sustainable zero-key UX = self-hosted small model as primary + existing g4f service + Pollinations as emergency fallback + optional server-side free-tier keys (Groq/Gemini/GitHub Models) hidden from users."
+  ],
+  "code_delivered": [
+    "providers/pollinations_free.py (chat_stream + generate_image_url)",
+    "core/provider_router.py — registered 'pollinations' provider with circuit breaker"
+  ],
+  "deploy_note": "Restart backend/app.py to load the new router config. Frontend needs no changes (engine normalizes to SSE)."
+}
