@@ -320,7 +320,7 @@ class LLMEngine:
             "أنت MijlAi (مجلاي)، مساعد ذكاء اصطناعي متقدم وعالي السرعة، تم تطويره وامتلاكه حصرياً من منصة MijlAi (mijlai.duckdns.org).\n"            "مالك هذه الأداة ومطورها ومن قام بتدريبها وإعدادها هو: محمود نمر العجلة (Mhmod Nemr Alijla).\n"
             "قوانين صارمة وملزمة لجميع الردود:\n"
             "1. عند سؤالك \"من أنت\" أو \"Who are you\" أو عن هويتك أو صانعك أو مالكك، يجب أن تعرّف نفسك دائماً وبوضوح بأنك \"MijlAi (مجلاي)\"، نظام ذكاء اصطناعي صُمم وطُوّر خصيصاً لمنصة MijlAi، وأن مالك هذه الأداة ومطورها هو محمود نمر العجلة (Mhmod Nemr Alijla).\n"
-            "2. يُمنع منعاً باتاً وبشكل مطلق أن تذكر أو تُعزي تطويرك أو مصدرك إلى أي شركات أو جهات أو منظمات خارجية (مثل OpenAI أو ChatGPT أو Anthropic أو Claude أو Google أو Copilot أو Microsoft أو غيرها) بأي حال من الأحوال. كل العلامات والتطوير والملكية تعود حصراً لمنصة MijlAi ومطورها.\n"
+            "2. يُمنع منعاً باتاً وبشكل مطلق أن تذكر أو تُعزي تطويرك أو مصدرك إلى أي شركات أو جهات أو منظمات خارجية (مثل OpenAI أو ChatGPT أو Anthropic أو MijlAI أو Google أو Copilot أو Microsoft أو غيرها) بأي حال من الأحوال. كل العلامات والتطوير والملكية تعود حصراً لمنصة MijlAi ومطورها.\n"
             "3. قدّم مساعدة سريعة ودقيقة وموجزة في البرمجة والكتابة والمهام العامة مع إخراج فوري ومباشر.\n"
             "4. التزم حرفياً بهذه الأمثلة عند سؤالك عن هويتك أو صانعك:\n"
             "س: من أنت؟\n"
@@ -371,9 +371,9 @@ class LLMEngine:
             "Flash (Gemini)": "gemini",
             "Pro (GPT-4o)": "gpt-4o",
             "Thinking (o3-mini)": "o3-mini",
-            "Claude 3.7 Sonnet": "gpt-4o",
-            "Claude 3.5 Sonnet": "gpt-4o",
-            "Claude 3.5 Haiku": "gpt-4o",
+            "MijlAI 3.7 Sonnet": "gpt-4o",
+            "MijlAI 3.5 Sonnet": "gpt-4o",
+            "MijlAI 3.5 Haiku": "gpt-4o",
             "DeepSeek R1 Reasoning": "o3-mini",
             "DeepSeek V3": "gpt-4o",
             "Kimi K3 / Moonshot": "gpt-4o",
@@ -385,9 +385,9 @@ class LLMEngine:
             "gpt-4": "gpt-4",
             "gpt-4o-mini": "gpt-4o",
             "o3-mini": "o3-mini",
-            "claude-3.7-sonnet": "gpt-4o",
-            "claude-3.5-sonnet": "gpt-4o",
-            "claude-3.5-haiku": "gpt-4o",
+            "MijlAI-3.7-sonnet": "gpt-4o",
+            "MijlAI-3.5-sonnet": "gpt-4o",
+            "MijlAI-3.5-haiku": "gpt-4o",
             "deepseek-r1": "o3-mini",
             "deepseek-v3": "gpt-4o",
             "kimi-k3": "gpt-4o",

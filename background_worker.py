@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from kimi_scraper import KimiK3ScraperEngine
-from claude_scraper import ClaudeScraperEngine
+from MijlAI_scraper import MijlAIScraperEngine
 from smart_scrapers import SmartScraperEngine
 from health_checker import verify_model_live
 from db_manager import ActiveModelManager
@@ -13,7 +13,7 @@ async def run_scrape_and_verify_cycle():
     """
     الخدمة الخلفية المجدولة:
     1. كشط وتجربة Kimi K3 بكل الطرق المتاحة (Direct HTTP + g4f Provider).
-    2. كشط وتجربة نماذج Claude المضمونة (Claude 3.5 Sonnet, Claude 3.7 Sonnet, Claude 3 Haiku).
+    2. كشط وتجربة نماذج MijlAI المضمونة (MijlAI 3.5 Sonnet, MijlAI 3.7 Sonnet, MijlAI 3 Haiku).
     3. كشط وفحص النماذج المرشحة الأخرى (GPT-4o, DeepSeek, Gemini, etc.).
     4. تحديث قاعدة البيانات وقائمة الواجهة المتاحة حصراً (is_active = 1).
     """
@@ -30,7 +30,7 @@ async def run_scrape_and_verify_cycle():
         {"id": "gemini-2.5-flash", "name": "MijlAI_gemini-2.5-flash"},
         {"id": "gpt-4", "name": "MijlAI_gpt-4-turbo"},
         {"id": "deepseek-r1", "name": "MijlAI_deepseek-r1"},
-        {"id": "claude-3.5-sonnet", "name": "MijlAI_claude-3.5-sonnet"}
+        {"id": "MijlAI-3.5-sonnet", "name": "MijlAI_MijlAI-3.5-sonnet"}
     ]
 
     # First test core models
@@ -50,21 +50,21 @@ async def run_scrape_and_verify_cycle():
         except Exception as err:
             logger.debug(f"[Core Model Test Error] {m_id}: {err}")
 
-    # 2. كشط وتجربة نماذج Claude المضمونة
+    # 2. كشط وتجربة نماذج MijlAI المضمونة
     try:
-        claude_engine = ClaudeScraperEngine()
-        for c_model in claude_engine.CLAUDE_MODELS:
-            res = await claude_engine.verify_claude_model(c_model)
+        MijlAI_engine = MijlAIScraperEngine()
+        for c_model in MijlAI_engine.MijlAI_MODELS:
+            res = await MijlAI_engine.verify_MijlAI_model(c_model)
             if res.get("status") == "SUCCESS" and res["model_id"] not in seen_ids:
                 verified_models.append({
                     "model_id": res["model_id"],
                     "display_name": res["name"],
-                    "method_used": res.get("method_used", "Claude_Scraped")
+                    "method_used": res.get("method_used", "MijlAI_Scraped")
                 })
                 seen_ids.add(res["model_id"])
-                logger.info(f"✅ [Claude] Model Verified: {res['model_id']}")
+                logger.info(f"✅ [MijlAI] Model Verified: {res['model_id']}")
     except Exception as e:
-        logger.error(f"[Claude Scraper Error] {e}")
+        logger.error(f"[MijlAI Scraper Error] {e}")
 
     # 3. كشط وفحص النماذج المرشحة العامة بالتوازي
     try:

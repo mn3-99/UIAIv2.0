@@ -35,7 +35,7 @@ export function loadSettings(): AppSettings {
       'g4f:gemini': 'gemini',
       'g4f:o3-mini': 'o3-mini',
       'g4f:deepseek-r1': 'deepseek-r1',
-      'g4f:claude-3.5-sonnet': 'claude-3.5-sonnet',
+      'g4f:MijlAI-3.5-sonnet': 'MijlAI-3.5-sonnet',
       'g4f:kimi-k3': 'kimi-k3',
       'local': 'g4f'
     };

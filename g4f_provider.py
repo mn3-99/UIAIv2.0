@@ -156,6 +156,34 @@ def _mijlai_pwr_key() -> Optional[str]:
     return None
 
 
+def _mijlai_mini_key() -> Optional[str]:
+    key = os.getenv("MIJLAI_MINI_API_KEY")
+    if key:
+        return key.strip().strip('"').strip("'")
+    return _mijlai_pwr_key()
+
+
+def _mijlai_flash_key() -> Optional[str]:
+    key = os.getenv("MIJLAI_FLASH_API_KEY")
+    if key:
+        return key.strip().strip('"').strip("'")
+    return _mijlai_pwr_key()
+
+
+def _mijlai_pro_key() -> Optional[str]:
+    key = os.getenv("MIJLAI_PRO_API_KEY")
+    if key:
+        return key.strip().strip('"').strip("'")
+    return _mijlai_pwr_key()
+
+
+_MIJLAI_PWR_URL = "https://l3y3mfzeo7nw5yxxenvf7xbw.agents.do-ai.run/api/v1/chat/completions"
+
+
+def _mijlai_url(env_name: str) -> str:
+    return os.getenv(env_name, _MIJLAI_PWR_URL)
+
+
 DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
     {
         "name": "kilo",
@@ -200,6 +228,34 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         "default_model": "mijlai-pwr",
         # DigitalOcean agents reject system/developer roles (agent instructions
         # live in the DO agent config) — fold them into user turns first.
+        "no_system_role": True,
+    },
+    {
+        # MijlAI-Mini: dedicated DigitalOcean GenAI agent (OpenAI-compatible).
+        # Keyed endpoint — tried first for the 'direct:mijlai-mini' model tier.
+        "name": "mijlai-mini",
+        "url": _mijlai_url("MIJLAI_MINI_URL"),
+        "api_key": _mijlai_mini_key(),
+        "models": ["mijlai-mini"],
+        "default_model": "mijlai-mini",
+        "no_system_role": True,
+    },
+    {
+        # MijlAI-Flash: dedicated DigitalOcean GenAI agent (OpenAI-compatible).
+        "name": "mijlai-flash",
+        "url": _mijlai_url("MIJLAI_FLASH_URL"),
+        "api_key": _mijlai_flash_key(),
+        "models": ["mijlai-flash"],
+        "default_model": "mijlai-flash",
+        "no_system_role": True,
+    },
+    {
+        # MijlAI-Pro: dedicated DigitalOcean GenAI agent (OpenAI-compatible).
+        "name": "mijlai-pro",
+        "url": _mijlai_url("MIJLAI_PRO_URL"),
+        "api_key": _mijlai_pro_key(),
+        "models": ["mijlai-pro"],
+        "default_model": "mijlai-pro",
         "no_system_role": True,
     },
 ]

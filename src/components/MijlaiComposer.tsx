@@ -276,24 +276,19 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
 
   const verifiedModelsMap: Record<string, { label: string; shortName: string; icon: any; color: string; desc: string; realModel: string; badge: string }> = {
     'mini': {
-      label: 'MijlAi Mini', shortName: 'Mini', icon: Zap, color: 'text-emerald-600',
-      desc: 'خفيف وسريع التدفق — للمهام اليومية الفورية',
-      realModel: 'GPT-Mini · Yqcloud', badge: '⚡ 198 توكن/ث · موثوقية 100%'
+      label: 'MijlAI-Mini', shortName: 'Mini', icon: Zap, color: 'text-emerald-600',
+      desc: 'خفيف وسريع التدفق — للمهام اليومية الفورية (وكيل MijlAI المخصص)',
+      realModel: 'MijlAI-Mini · DigitalOcean', badge: '⚡ وكيل مخصص · عبر المحرك'
     },
     'flash': {
-      label: 'MijlAi Flash', shortName: 'Flash', icon: Sparkles, color: 'text-amber-500',
-      desc: 'أسرع بداية رد يومي بتوازن ممتاز',
-      realModel: 'Sonar · Perplexity', badge: '⏱ 1.9ث أول توكن · موثوقية 100%'
+      label: 'MijlAI-Flash', shortName: 'Flash', icon: Sparkles, color: 'text-amber-500',
+      desc: 'أسرع بداية رد يومي بتوازن ممتاز (وكيل MijlAI المخصص)',
+      realModel: 'MijlAI-Flash · DigitalOcean', badge: '⏱ وكيل مخصص · عبر المحرك'
     },
     'pro': {
-      label: 'MijlAi Pro', shortName: 'Pro', icon: Brain, color: 'text-purple-600',
-      desc: 'الأقوى في التحليل والاستدلال والمهام المعقدة',
-      realModel: 'Gemini · Google', badge: '★ 158 توكن/ث · جودة قصوى'
-    },
-    'coder': {
-      label: 'MijlAi Coder', shortName: 'Coder', icon: Code, color: 'text-cyan-600',
-      desc: 'متخصص برمجياً — أسرع استجابة مقياسة (0.4ث)',
-      realModel: 'Qwen3-Coder-30B · OVHcloud', badge: '🚀 0.4ث أول توكن · 75 توكن/ث'
+      label: 'MijlAI-Pro', shortName: 'Pro', icon: Brain, color: 'text-purple-600',
+      desc: 'الأقوى في التحليل والاستدلال والمهام المعقدة (وكيل MijlAI المخصص)',
+      realModel: 'MijlAI-Pro · DigitalOcean', badge: '★ وكيل مخصص · عبر المحرك'
     },
     'pwr': {
       label: 'MijlAI-PWR', shortName: 'PWR', icon: Rocket, color: 'text-rose-600',

@@ -20,14 +20,14 @@ class SmartScraperEngine:
     """
     
     def __init__(self):
-        # Master candidate pool of models across Claude, Kimi, OpenAI, DeepSeek, Gemini, Qwen, etc.
+        # Master candidate pool of models across MijlAI, Kimi, OpenAI, DeepSeek, Gemini, Qwen, etc.
         self.known_candidate_models = [
-            # Claude Models
-            {"id": "claude-3.7-sonnet", "name": "Claude 3.7 Sonnet (g4f Free)"},
-            {"id": "claude-3.5-sonnet", "name": "Claude 3.5 Sonnet (g4f Free)"},
-            {"id": "claude-3.5-haiku", "name": "Claude 3.5 Haiku (g4f Free)"},
-            {"id": "claude-3-opus", "name": "Claude 3 Opus (g4f Free)"},
-            {"id": "claude-3-sonnet", "name": "Claude 3 Sonnet (g4f Free)"},
+            # MijlAI Models
+            {"id": "MijlAI-3.7-sonnet", "name": "MijlAI 3.7 Sonnet (g4f Free)"},
+            {"id": "MijlAI-3.5-sonnet", "name": "MijlAI 3.5 Sonnet (g4f Free)"},
+            {"id": "MijlAI-3.5-haiku", "name": "MijlAI 3.5 Haiku (g4f Free)"},
+            {"id": "MijlAI-3-opus", "name": "MijlAI 3 Opus (g4f Free)"},
+            {"id": "MijlAI-3-sonnet", "name": "MijlAI 3 Sonnet (g4f Free)"},
 
             # Kimi & Moonshot Models
             {"id": "kimi-k3", "name": "Kimi K3 / Moonshot (g4f Free)"},

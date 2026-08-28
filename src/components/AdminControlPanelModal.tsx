@@ -491,7 +491,7 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
                       {[
                         { name: 'Gemini (Google)', feats: 'Live Audio Chat, Camera Vision, Workspace Integration', extras: 'Extensions, Imagen 3, Multi-modal', speed: 'فائقة جداً', mijlai: 'مدعوم بالكامل + Flash 2.5 ⚡' },
                         { name: 'ChatGPT (OpenAI)', feats: 'Advanced Voice Mode, Custom GPTs, Memory', extras: 'o3-mini reasoning, DALL-E 3', speed: 'عالية', mijlai: 'مدعوم GPT-4o & o3-mini 🧠' },
-                        { name: 'Claude (Anthropic)', feats: 'Artifacts side-panel, Document Analysis', extras: 'Claude 3.7 Sonnet reasoning', speed: 'ممتازة', mijlai: 'مدعوم Claude 3.7 Sonnet ✨' },
+                        { name: 'MijlAI (Anthropic)', feats: 'Artifacts side-panel, Document Analysis', extras: 'MijlAI 3.7 Sonnet reasoning', speed: 'ممتازة', mijlai: 'مدعوم MijlAI 3.7 Sonnet ✨' },
                         { name: 'Grok (xAI)', feats: 'Real-time X data, Fun/Uncensored mode', extras: 'Flux image gen, X search', speed: 'سريعة', mijlai: 'مدعوم عبر النماذج المتشعبة 🚀' },
                         { name: 'Kimi (Moonshot)', feats: 'Long-context document analysis', extras: '2M tokens context, web search', speed: 'متوسطة', mijlai: 'مدعوم Kimi K3 📝' },
                         { name: 'DeepSeek R1', feats: 'Chain-of-thought reasoning logic', extras: 'Open reasoning model', speed: 'عالية', mijlai: 'مدعوم DeepSeek R1 💡' }

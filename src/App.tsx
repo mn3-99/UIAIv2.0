@@ -56,8 +56,8 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>('Mhmod');
 
-  // Model Tier state: flash, pro, thinking, claude, deepseek, kimi
-  const [selectedTier, setSelectedTier] = useState<string>('coder');
+  // Model Tier state: pwr, mini, flash, pro
+  const [selectedTier, setSelectedTier] = useState<string>('pwr');
 
   // Focus Mode (distraction-free): hides sidebar & header
   const [focusMode, setFocusMode] = useState(false);
@@ -154,15 +154,10 @@ export default function App() {
 
   // Sync selectedTier with settings.activeModelId
   const modelIdToTier: Record<string, string> = {
-    'gemini': 'flash',
-    'gpt-4': 'pro',
-    'gemini-3.6-flash': 'qwen',
-    'gemini-3.5-flash': 'thinking',
-    'gemini-auto': 'deepseek',
-    'command-a': 'claude',
-    'aria': 'kimi',
-    'direct:mijlai-pwr': 'pwr',
-    'direct:Qwen3-Coder-30B-A3B-Instruct': 'coder'
+    'direct:mijlai-mini': 'mini',
+    'direct:mijlai-flash': 'flash',
+    'direct:mijlai-pro': 'pro',
+    'direct:mijlai-pwr': 'pwr'
   };
 
   // Apply the saved theme (body[data-theme] drives the CSS variables; 'system'
@@ -384,26 +379,15 @@ export default function App() {
   const getModelIdForTier = (tier: string) => {
     switch (tier) {
       case 'mini':
-        return 'gpt-4o-mini';
+        return 'direct:mijlai-mini';
       case 'flash':
-        return 'sonar';
+        return 'direct:mijlai-flash';
       case 'pro':
-        return 'gemini';
-      case 'coder':
-        return 'direct:Qwen3-Coder-30B-A3B-Instruct';
+        return 'direct:mijlai-pro';
       case 'pwr':
         return 'direct:mijlai-pwr';
-      // Legacy tier aliases kept for old saved sessions
-      case 'thinking':
-        return 'gemini';
-      case 'claude':
-        return 'command-a';
-      case 'deepseek':
-      case 'kimi':
-      case 'qwen':
-        return 'sonar';
       default:
-        return tier.startsWith('local:') ? tier : 'gpt-4o-mini';
+        return tier.startsWith('local:') ? tier : 'direct:mijlai-pwr';
     }
   };
 

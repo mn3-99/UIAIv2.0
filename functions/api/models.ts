@@ -10,11 +10,10 @@ export interface ModelEntry {
 }
 
 export const WORKING_MODELS: ModelEntry[] = [
-  { id: 'gpt-4o-mini', name: 'MijlAi Mini (GPT-Mini · Yqcloud · 198tok/s)', provider: 'yqcloud', icon: 'zap', is_free: true },
-  { id: 'sonar', name: 'MijlAi Flash (Sonar · Perplexity · 1.9s TTFT)', provider: 'perplexity', icon: 'sparkles', is_free: true },
-  { id: 'gemini', name: 'MijlAi Pro (Gemini · Google · 158tok/s)', provider: 'google', icon: 'brain', is_free: true },
-  { id: 'direct:Qwen3-Coder-30B-A3B-Instruct', name: 'MijlAi Coder (Qwen3-Coder-30B · OVHcloud · 0.4s TTFT)', provider: 'ovhcloud', icon: 'code', is_free: true },
-  { id: 'direct:mijlai-pwr', name: 'MijlAI-PWR (وكيل مخصص · DigitalOcean)', provider: 'digitalocean', icon: 'sparkles', is_free: true }
+  { id: 'direct:mijlai-pwr', name: 'MijlAI-PWR (وكيل مخصص · DigitalOcean)', provider: 'digitalocean', icon: 'sparkles', is_free: true },
+  { id: 'direct:mijlai-mini', name: 'MijlAI-Mini (وكيل مخصص · DigitalOcean)', provider: 'digitalocean', icon: 'zap', is_free: false },
+  { id: 'direct:mijlai-flash', name: 'MijlAI-Flash (وكيل مخصص · DigitalOcean)', provider: 'digitalocean', icon: 'sparkles', is_free: false },
+  { id: 'direct:mijlai-pro', name: 'MijlAI-Pro (وكيل مخصص · DigitalOcean)', provider: 'digitalocean', icon: 'brain', is_free: false }
 ];
 
 export async function getAggregatedModels(forceRefresh = false): Promise<ModelEntry[]> {

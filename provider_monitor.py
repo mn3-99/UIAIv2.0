@@ -227,16 +227,16 @@ class ProviderMonitor:
     def discover_candidate_providers(self) -> List[Dict[str, Any]]:
         """
         Discover providers using official g4f ProviderUtils & g4f.Provider.__providers__
-        and add custom candidates for latest models (Kimi K3, Claude 3.5/3.7, DeepSeek R1/V3, etc).
+        and add custom candidates for latest models (Kimi K3, MijlAI 3.5/3.7, DeepSeek R1/V3, etc).
         """
         candidates = []
 
         # 1) Standard candidate models with AutoRouter
         models_to_check = [
-            ("claude-3.7-sonnet", "Claude 3.7 Sonnet"),
-            ("claude-3.5-sonnet", "Claude 3.5 Sonnet"),
-            ("claude-3.5-haiku", "Claude 3.5 Haiku"),
-            ("claude-3-opus", "Claude 3 Opus"),
+            ("MijlAI-3.7-sonnet", "MijlAI 3.7 Sonnet"),
+            ("MijlAI-3.5-sonnet", "MijlAI 3.5 Sonnet"),
+            ("MijlAI-3.5-haiku", "MijlAI 3.5 Haiku"),
+            ("MijlAI-3-opus", "MijlAI 3 Opus"),
             ("kimi-k3", "Kimi K3"),
             ("kimi-k1.5", "Kimi K1.5"),
             ("kimi", "Kimi Chat"),
