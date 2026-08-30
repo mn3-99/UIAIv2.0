@@ -335,7 +335,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
 
       {/* Main Interactive Input Card — also a drop target for files */}
       <div
-        className={`w-full bg-white/95 rounded-3xl border transition-all duration-300 group relative flex flex-col shadow-md hover:shadow-xl hover-lift ${
+        className={`w-full bg-white/95 rounded-3xl border transition-all duration-300 group relative flex flex-col shadow-md hover:shadow-xl hover-lift pb-safe ${
           isDropTarget
             ? 'border-blue-500 ring-4 ring-blue-300/50 shadow-xl scale-[1.01] glow-blue'
             : isDragging
@@ -427,7 +427,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
             </button>
 
             {isAttachOpen && (
-              <div className="absolute right-0 bottom-12 w-60 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-xs font-medium text-slate-700 animate-in fade-in zoom-in-95 duration-150">
+              <div className="absolute start-0 bottom-12 w-60 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-xs font-medium text-slate-700 animate-in fade-in zoom-in-95 duration-150">
                 <button
                   id="upload_file"
                   onClick={() => fileInputRef.current?.click()}
@@ -502,6 +502,146 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               height: composerHeight ? `${composerHeight}px` : undefined
             }}
           />
+
+          {/* ===== Row 1 inline actions: model selector · arena pickers · send/stop ===== */}
+          {!arenaMode && (
+            <div className="relative self-end mb-0.5 shrink-0">
+              <button
+                id="model_selector"
+                onClick={() => setIsTierOpen(!isTierOpen)}
+                className="h-10 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-slate-700 hover:bg-slate-100 transition-colors border border-slate-200/60 bg-slate-50/50"
+                title="اختر النموذج الفعال"
+              >
+                <span className="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center">
+                  <Sparkles className="w-2.5 h-2.5 text-blue-600" strokeWidth={2.4} />
+                </span>
+                <span className="text-xs font-semibold">{currentTier.shortName}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-500" strokeWidth={2} />
+              </button>
+
+              {isTierOpen && (
+                <div
+                  className="absolute end-0 bottom-12 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-right animate-in fade-in zoom-in-95 duration-150 overflow-y-auto scroll-smooth"
+                  style={{ maxHeight: 'min(420px, 55vh)', overscrollBehavior: 'contain', scrollbarWidth: 'thin' }}
+                  onWheel={(e) => {
+                    const el = e.currentTarget;
+                    const atTop = el.scrollTop <= 0;
+                    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+                    if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) return;
+                    e.stopPropagation();
+                  }}
+                >
+                  <div className="px-2 py-1 text-[11px] font-bold text-slate-400 sticky top-0 bg-white/90 backdrop-blur-sm">نماذج MijlAI — مُقاسة ومرتبة حسب الأداء الفعلي</div>
+                  {Object.entries(verifiedModelsMap).map(([key, item], idx) => {
+                    const Icon = item.icon;
+                    const isSelected = selectedTier === key;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => { onSelectTier(key); setIsTierOpen(false); }}
+                        className={`w-full text-right p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${isSelected ? 'bg-blue-50 text-blue-700 font-semibold' : 'hover:bg-slate-100 text-slate-700'}`}
+                      >
+                        <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${item.color}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-bold flex items-center justify-between gap-2">
+                            <span>{item.label}</span>
+                            {idx === 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold shrink-0">الأسرع تدفقاً</span>}
+                            {key === 'coder' && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-100 text-cyan-700 font-bold shrink-0">أسرع استجابة</span>}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-normal">{item.desc}</div>
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-mono" dir="ltr">{item.realModel}</span>
+                            <span className="text-[9px] text-slate-400">{item.badge}</span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {localModels.length > 0 && (
+                    <>
+                      <div className="px-2 py-1 text-[11px] font-bold text-slate-400 border-t border-slate-100 mt-1 pt-2 flex items-center gap-1">
+                        <Cpu className="w-3 h-3" /> نماذج محلية (llama.cpp)
+                      </div>
+                      {localModels.map((m) => {
+                        const isSelected = selectedTier === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => { onSelectTier(m.id); setIsTierOpen(false); }}
+                            className={`w-full text-right p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${isSelected ? 'bg-emerald-50 text-emerald-700 font-semibold' : 'hover:bg-slate-100 text-slate-700'}`}
+                          >
+                            <Cpu className={`w-4 h-4 mt-0.5 shrink-0 ${isSelected ? 'text-emerald-600' : 'text-emerald-500'}`} />
+                            <div>
+                              <div className="text-xs font-bold">{m.name}</div>
+                              <div className="text-[10px] text-slate-500 font-normal">يعمل محلياً على جهازك — خصوصية كاملة</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {arenaMode && (
+            <div className="flex items-center gap-1 self-end mb-0.5 shrink-0">
+              {(['a', 'b'] as const).map((side) => {
+                const value = side === 'a' ? arenaModelA : arenaModelB;
+                const open = arenaPickerOpen === side;
+                return (
+                  <div className="relative" key={side}>
+                    <button
+                      onClick={() => setArenaPickerOpen(open ? null : side)}
+                      className={`h-10 min-h-[42px] sm:min-h-0 px-2 rounded-full flex items-center gap-1 text-[11px] font-bold border transition-colors ${side === 'a' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}
+                      title={`نموذج ${side === 'a' ? 'الأول (أ)' : 'الثاني (ب)'} في المقارنة`}
+                      aria-expanded={open}
+                    >
+                      <span>{side === 'a' ? 'أ' : 'ب'}: {arenaTierShort(value)}</span>
+                      <ChevronDown className="w-3 h-3" />
+                    </button>
+                    {open && (
+                      <div className="absolute start-0 bottom-12 w-56 max-h-64 overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                        {arenaTierList.map((tier) => (
+                          <button
+                            key={tier}
+                            onClick={() => { onSelectArenaModel?.(side, tier); setArenaPickerOpen(null); }}
+                            className={`w-full text-right px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${value === tier ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-100'}`}
+                          >
+                            {arenaTierShort(tier)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {isGenerating ? (
+            <button
+              onClick={onStop}
+              className="w-10 h-10 min-h-[42px] sm:min-h-0 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-500 transition-all shadow-sm press-effect pulse-ring relative self-end mb-0.5 shrink-0"
+              title="النموذج يعمل — اضغط للإيقاف"
+              aria-label="النموذج يعمل حالياً، اضغط للإيقاف"
+            >
+              <span className="busy-indicator-dot" aria-hidden="true" />
+              <Square className="w-3.5 h-3.5 fill-current" />
+            </button>
+          ) : (
+            input.trim() && (
+              <button
+                id="send_btn"
+                onClick={onSend}
+                className="w-10 h-10 min-h-[42px] sm:min-h-0 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-white flex items-center justify-center hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm press-effect scale-in-bounce glow-blue self-end mb-0.5 shrink-0"
+                title="إرسال"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            )
+          )}
         </div>
 
         {/* Streaming Prediction Suggestions Bar */}
@@ -541,15 +681,15 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
           </div>
         )}
 
-        {/* Bottom Toolbar & Action Bar */}
-        <div className="px-3 pb-2 pt-1 border-t border-slate-100/80 flex items-center justify-between gap-1">
+        {/* Row 2: Utility bar — mode toggles · voice input · status pills */}
+        <div className="px-3 pb-2 pt-2 border-t border-slate-100/80 flex items-center justify-between gap-2 flex-wrap max-sm:gap-1.5">
           
           {/* Left Controls: Web Search Grounding & Prompt Optimizer */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0 max-sm:flex-nowrap">
             {/* Personal Knowledge (RAG) Toggle */}
             <button
               onClick={() => setKnowledgeEnabled?.(!knowledgeEnabled)}
-              className={`h-8 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-medium transition-all ${
+              className={`h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-medium transition-all ${
                 knowledgeEnabled
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/80'
@@ -563,7 +703,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
             {/* Web Search Toggle Button */}
             <button
               onClick={() => setWebSearchEnabled?.(!webSearchEnabled)}
-              className={`h-8 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-medium transition-all ${
+              className={`h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-medium transition-all ${
                 webSearchEnabled
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/80'
@@ -579,7 +719,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               <button
                 onClick={handleOptimizePrompt}
                 disabled={isOptimizing}
-                className="h-8 px-2.5 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200/60 flex items-center gap-1.5 text-xs font-semibold transition-all"
+                className="h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200/60 flex items-center gap-1.5 text-xs font-semibold transition-all"
                 title="تحسين وتوسيع الصياغة بالذكاء الاصطناعي"
               >
                 <Sparkles className={`w-3.5 h-3.5 text-amber-600 ${isOptimizing ? 'animate-spin' : ''}`} />
@@ -591,7 +731,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
             {onToggleArena && (
               <button
                 onClick={onToggleArena}
-                className={`h-8 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-medium transition-all ${
+                className={`h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-medium transition-all ${
                   arenaMode
                     ? 'bg-purple-600 text-white shadow-sm'
                     : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/80'
@@ -605,148 +745,13 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
             )}
           </div>
 
-          {/* Right Controls: Model Selector Badge & Voice / Send */}
-          <div className="flex items-center gap-1">
-
-            {/* Arena dual pickers (replace the single tier picker in arena mode) */}
-            {arenaMode && (
-              <div className="flex items-center gap-1">
-                {(['a', 'b'] as const).map((side) => {
-                  const value = side === 'a' ? arenaModelA : arenaModelB;
-                  const open = arenaPickerOpen === side;
-                  return (
-                    <div className="relative" key={side}>
-                      <button
-                        onClick={() => setArenaPickerOpen(open ? null : side)}
-                        className={`h-8 px-2 rounded-full flex items-center gap-1 text-[11px] font-bold border transition-colors ${
-                          side === 'a'
-                            ? 'bg-blue-50 text-blue-700 border-blue-200'
-                            : 'bg-purple-50 text-purple-700 border-purple-200'
-                        }`}
-                        title={`نموذج ${side === 'a' ? 'الأول (أ)' : 'الثاني (ب)'} في المقارنة`}
-                        aria-expanded={open}
-                      >
-                        <span>{side === 'a' ? 'أ' : 'ب'}: {arenaTierShort(value)}</span>
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                      {open && (
-                        <div className="absolute left-0 bottom-10 w-56 max-h-64 overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
-                          {arenaTierList.map((tier) => (
-                            <button
-                              key={tier}
-                              onClick={() => { onSelectArenaModel?.(side, tier); setArenaPickerOpen(null); }}
-                              className={`w-full text-right px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
-                                value === tier ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-100'
-                              }`}
-                            >
-                              {arenaTierShort(tier)}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Model Tier Dropdown */}
-            {!arenaMode && (
-            <div className="relative">
-              <button
-                id="model_selector"
-                onClick={() => setIsTierOpen(!isTierOpen)}
-                className="h-8 px-2.5 rounded-full flex items-center gap-1.5 text-slate-700 hover:bg-slate-100 transition-colors border border-slate-200/60 bg-slate-50/50"
-                title="اختر النموذج الفعال"
-              >
-                <span className="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center">
-                  <Sparkles className="w-2.5 h-2.5 text-blue-600" strokeWidth={2.4} />
-                </span>
-                <span className="text-xs font-semibold">{currentTier.shortName}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-500" strokeWidth={2} />
-              </button>
-
-              {isTierOpen && (
-                <div
-                  className="absolute left-0 bottom-10 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-right animate-in fade-in zoom-in-95 duration-150 overflow-y-auto scroll-smooth"
-                  style={{ maxHeight: 'min(420px, 55vh)', overscrollBehavior: 'contain', scrollbarWidth: 'thin' }}
-                  onWheel={(e) => {
-                    const el = e.currentTarget;
-                    const atTop = el.scrollTop <= 0;
-                    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
-                    if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) return;
-                    e.stopPropagation();
-                  }}
-                >
-                  <div className="px-2 py-1 text-[11px] font-bold text-slate-400 sticky top-0 bg-white/90 backdrop-blur-sm">نماذج MijlAI — مُقاسة ومرتبة حسب الأداء الفعلي</div>
-                  {Object.entries(verifiedModelsMap).map(([key, item], idx) => {
-                    const Icon = item.icon;
-                    const isSelected = selectedTier === key;
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => {
-                          onSelectTier(key);
-                          setIsTierOpen(false);
-                        }}
-                        className={`w-full text-right p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${
-                          isSelected ? 'bg-blue-50 text-blue-700 font-semibold' : 'hover:bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${item.color}`} />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-bold flex items-center justify-between gap-2">
-                            <span>{item.label}</span>
-                            {idx === 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold shrink-0">الأسرع تدفقاً</span>}
-                            {key === 'coder' && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-100 text-cyan-700 font-bold shrink-0">أسرع استجابة</span>}
-                          </div>
-                          <div className="text-[10px] text-slate-500 font-normal">{item.desc}</div>
-                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-mono" dir="ltr">{item.realModel}</span>
-                            <span className="text-[9px] text-slate-400">{item.badge}</span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {localModels.length > 0 && (
-                    <>
-                      <div className="px-2 py-1 text-[11px] font-bold text-slate-400 border-t border-slate-100 mt-1 pt-2 flex items-center gap-1">
-                        <Cpu className="w-3 h-3" /> نماذج محلية (llama.cpp)
-                      </div>
-                      {localModels.map((m) => {
-                        const isSelected = selectedTier === m.id;
-                        return (
-                          <button
-                            key={m.id}
-                            onClick={() => {
-                              onSelectTier(m.id);
-                              setIsTierOpen(false);
-                            }}
-                            className={`w-full text-right p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${
-                              isSelected ? 'bg-emerald-50 text-emerald-700 font-semibold' : 'hover:bg-slate-100 text-slate-700'
-                            }`}
-                          >
-                            <Cpu className={`w-4 h-4 mt-0.5 shrink-0 ${isSelected ? 'text-emerald-600' : 'text-emerald-500'}`} />
-                            <div>
-                              <div className="text-xs font-bold">{m.name}</div>
-                              <div className="text-[10px] text-slate-500 font-normal">يعمل محلياً على جهازك — خصوصية كاملة</div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-            )}
-
+          {/* Right Controls: Voice input · status pills */}
+          <div className="flex items-center gap-1 shrink-0 max-sm:flex-nowrap">
             {/* Mic Dictation Button */}
             <button
               id="voice_input"
               onClick={toggleVoiceInput}
-              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+              className={`w-8 h-8 min-h-[42px] sm:min-h-0 rounded-full flex items-center justify-center transition-colors ${
                 isRecording
                   ? 'bg-red-100 text-red-600 animate-pulse'
                   : 'text-slate-600 hover:bg-slate-100'
@@ -759,42 +764,23 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
             {/* Queue counter chip — الرسائل المنتظرة في الطابور */}
             {queueCount > 0 && (
               <span
-                className="h-8 px-2.5 rounded-full flex items-center gap-1 text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200/70 animate-in fade-in duration-200"
+                className="h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1 text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200/70 animate-in fade-in duration-200"
                 title="رسائل في الطابور ستُرسل تلقائياً بالتسلسل"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                 {queueCount}
               </span>
             )}
-
-            {/* Send / Stop Button — مؤشر أحمر نابض أثناء عمل النموذج */}
-            {isGenerating ? (
-              <button
-                onClick={onStop}
-                className="w-8 h-8 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-500 transition-all shadow-sm press-effect pulse-ring relative"
-                title="النموذج يعمل — اضغط للإيقاف"
-                aria-label="النموذج يعمل حالياً، اضغط للإيقاف"
-              >
-                <span className="busy-indicator-dot" aria-hidden="true" />
-                <Square className="w-3.5 h-3.5 fill-current" />
-              </button>
-            ) : (
-              input.trim() && (
-                <button
-                  id="send_btn"
-                  onClick={onSend}
-                  className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-white flex items-center justify-center hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm press-effect scale-in-bounce glow-blue"
-                  title="إرسال"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                </button>
-              )
-            )}
           </div>
 
-          {/* شريط المهارات والإضافات — أسفل حقل الكتابة، مقابل قائمة النماذج */}
-          {skillsBar}
         </div>
+
+        {/* Row 3: Skills & plugins bar — its own flex row (no nesting inside the action bar) */}
+        {skillsBar && (
+          <div className="px-3 pb-2 pt-0.5">
+            {skillsBar}
+          </div>
+        )}
       </div>
     </div>
   );

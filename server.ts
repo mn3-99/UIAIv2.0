@@ -7,6 +7,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 import { handleModelsRequest } from './functions/api/models';
 import { discoverLocalModels, getLocalModelEndpoint, getLocalModelInfo, resolveLocalTarget } from './functions/api/localModels';
+import { compressMessages, recordMedia, listMedia, clearContext } from './functions/api/contextManager';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 
@@ -1014,6 +1015,9 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ error: 'قائمة الرسائل مطلوبة' });
   }
 
+  // Context Compression (Area 3) — compress before dispatching to the worker
+  (req.body as any).messages = compressMessages(messages, incomingChatId, { window: 12 });
+
   const jobId = incomingJobId || `job_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const chatId = incomingChatId || `chat_${Date.now()}`;
   const messageId = incomingMessageId || `msg_${Date.now()}`;
@@ -1120,6 +1124,9 @@ app.post(['/send', '/api/chat/send'], async (req, res) => {
   // Vision: rewrite local file refs to data URLs before any downstream consumer
   if (Array.isArray(req.body?.messages)) {
     req.body.messages = inlineLocalImages(req.body.messages);
+    // Context Compression (Area 3): sliding window + auto-summary so long
+    // sessions stay fast/cheap. Media memory is injected when relevant.
+    req.body.messages = compressMessages(req.body.messages, req.body.chat_id, { window: 12 });
   }
 
   if (!isLocalModel) {
@@ -1186,6 +1193,9 @@ app.post(['/send', '/api/chat/send'], async (req, res) => {
   let messages = Array.isArray(req.body.messages) && req.body.messages.length
     ? req.body.messages
     : [{ role: 'user', content: String(prompt) }];
+
+  // Context Compression (Area 3) for the Express fallback path too
+  messages = compressMessages(messages, chatId, { window: 12 });
 
   // Honor the client-supplied style/persona instructions (Settings system
   // prompt + active Gem). injectMijlAiSystem merges client system messages
@@ -1437,6 +1447,36 @@ app.post('/api/search', async (req, res) => {
     }
   } catch (err: any) {
     return res.status(502).json({ error: err?.message || 'فشل البحث في الويب' });
+  }
+});
+
+// Deep Search proxy (Area 2) — forwards to the g4f service /search/deep
+app.post('/api/search/deep', async (req, res) => {
+  try {
+    const query = String(req.body?.query || '').trim();
+    if (!query) return res.status(400).json({ error: 'query مطلوب' });
+    ensureG4FProviderService();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+    try {
+      const upstream = await fetch('http://127.0.0.1:5050/search/deep', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          max_results: Math.min(Math.max(parseInt(req.body?.max_results) || 8, 1), 12),
+          history: Array.isArray(req.body?.history) ? req.body.history.slice(-10) : [],
+        }),
+        signal: controller.signal,
+      });
+      if (!upstream.ok) throw new Error(`deep search upstream ${upstream.status}`);
+      const data = await upstream.json();
+      return res.json(data);
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (err: any) {
+    return res.status(502).json({ error: err?.message || 'فشل البحث العميق' });
   }
 });
 
@@ -1937,13 +1977,53 @@ app.post('/api/image/v2/generate', async (req, res) => {
     const model = String(req.body?.model || '');
     const width = Math.min(Math.max(parseInt(req.body?.width) || 1024, 256), 2048);
     const height = Math.min(Math.max(parseInt(req.body?.height) || 1024, 256), 2048);
+    const n = Math.min(Math.max(parseInt(req.body?.n) || 1, 1), 6);
+    const negativePrompt = String(req.body?.negativePrompt || '').slice(0, 500);
+    const seedRaw = parseInt(req.body?.seed);
+    const seed = Number.isFinite(seedRaw) ? seedRaw : undefined;
     const { generateImageSmart } = await import('./functions/api/imageEngine');
-    const result = await generateImageSmart(model, prompt, width, height);
+    const result = await generateImageSmart(model, prompt, { width, height, n, negativePrompt, seed });
     return res.json({ success: true, ...result, prompt, timestamp: Date.now() });
   } catch (err: any) {
     console.error('Image v2 generation error:', err);
     return res.status(502).json({ error: err?.message || 'فشل توليد الصورة' });
   }
+});
+
+// ==========================================
+// Media Memory (Area 3) — remembers generated/uploaded images per chat
+// so the user can ask to edit "the previous image" cumulatively.
+// ==========================================
+app.post('/api/media/record', (req, res) => {
+  try {
+    const chatId = String(req.body?.chatId || req.body?.chat_id || '');
+    if (!chatId) return res.status(400).json({ error: 'chatId مطلوب' });
+    const { url, prompt, model, seed, provider } = req.body;
+    if (!url || !prompt) return res.status(400).json({ error: 'url و prompt مطلوبان' });
+    recordMedia(chatId, {
+      url: String(url),
+      prompt: String(prompt),
+      model: String(model || 'unknown'),
+      seed: seed != null ? seed : undefined,
+      provider: provider ? String(provider) : undefined,
+      createdAt: Date.now(),
+    });
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'فشل حفظ ذاكرة الوسائط' });
+  }
+});
+
+app.get('/api/media/list', (req, res) => {
+  const chatId = String(req.query.chatId || req.query.chat_id || '');
+  if (!chatId) return res.status(400).json({ error: 'chatId مطلوب' });
+  return res.json({ items: listMedia(chatId) });
+});
+
+app.post('/api/context/clear', (req, res) => {
+  const chatId = req.body?.chatId || req.body?.chat_id;
+  clearContext(chatId);
+  return res.json({ success: true });
 });
 
 // ==========================================

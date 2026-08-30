@@ -2,6 +2,28 @@
 @import "highlight.js/styles/github-dark.css";
 @import "katex/dist/katex.min.css";
 
+/* ── شريط الأدوات للجوال (Area 1) ──
+   تمرير أفقي سلس، إخفاء شريط التمرير، ماسك تدرّج على الأطراف،
+   وتفعيل gesture التمرير الأفقي على اللمس. */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.scroll-mask-x {
+  /* ماسك يخفي حواف الشريط تدريجياً في كلا الاتجاهين (RTL/LTR) */
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+}
+.touch-pan-x {
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Restore Tailwind v4 CSS-variable registrations that the build minifier drops.
    Without these, `translate-*` / `scale-*` / `rotate-*` utilities silently no-op
    (e.g. `--tw-translate-y` is undefined, making `translate: var(--tw-translate-x)
@@ -480,7 +502,8 @@ body[data-theme="light"] .modal-themed {
 
 /* Mobile safe-area bottom padding (for the fixed-bottom composer) */
 .pb-safe {
-  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  /* Respect the OS home-indicator / virtual-keyboard safe area (2026/2027 standard) */
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
 }
 
 /* Guard against horizontal overflow from wide media inside bubbles */

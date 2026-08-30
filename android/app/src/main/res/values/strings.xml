@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">MijlAi</string>
+    <!-- The deployed web app URL the WebView loads. Set this to your production URL. -->
+    <string name="app_url">https://YOUR_DEPLOYED_APP_URL</string>
+</resources>

@@ -413,7 +413,9 @@ class LLMEngine:
 
         try:
             import aiohttp as _aio
-            timeout = _aio.ClientTimeout(total=120, connect=10)
+            # Long-context / analytical replies can run well beyond 2 min — give the
+            # upstream plenty of headroom so the SSE stream is never cut mid-answer.
+            timeout = _aio.ClientTimeout(total=180, connect=10)
             async with _aio.ClientSession(timeout=timeout) as http:
                 for current_model in models_to_try:
                     try:
@@ -468,10 +470,13 @@ class LLMEngine:
                                     token_offset += 1
                                     buffer_counter += 1
 
-                                    if buffer_counter >= 2:
+                                    if buffer_counter >= 1:
                                         await self.store.update_checkpoint(task_id, checkpoint_buffer, token_offset - buffer_counter)
                                         checkpoint_buffer = ""
                                         buffer_counter = 0
+                                        # Yield to the loop so the SSE polling task can
+                                        # push this token to the browser without waiting.
+                                        await asyncio.sleep(0)
 
                         flushed = think_extractor.flush()
                         if flushed["think"]:
@@ -506,10 +511,11 @@ class LLMEngine:
                         checkpoint_buffer += chunk_text
                         token_offset += 1
                         buffer_counter += 1
-                        if buffer_counter >= 2:
+                        if buffer_counter >= 1:
                             await self.store.update_checkpoint(task_id, checkpoint_buffer, token_offset - buffer_counter)
                             checkpoint_buffer = ""
                             buffer_counter = 0
+                            await asyncio.sleep(0)
 
                 if checkpoint_buffer:
                     await self.store.update_checkpoint(task_id, checkpoint_buffer, token_offset - buffer_counter)

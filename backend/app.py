@@ -154,7 +154,7 @@ async def stream_task_events(task_id: str, offset: int = 0):
     # 300s guard so slow local models (big GGUF, first-token latency) can finish;
     # long idle gaps are also forgiven by resetting elapsed whenever tokens arrive.
     timeout_seconds = 300
-    poll_interval = 0.05
+    poll_interval = 0.03
     elapsed = 0.0
 
     while elapsed < timeout_seconds:

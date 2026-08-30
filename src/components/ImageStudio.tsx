@@ -8,6 +8,9 @@ interface ImageModelInfo {
   label: string;
   tier: 'pro' | 'standard' | 'fast';
   avgSeconds?: number;
+  provider?: string;
+  requiresKey?: boolean;
+  keyConfigured?: boolean;
 }
 
 interface GeneratedImage {
@@ -16,14 +19,25 @@ interface GeneratedImage {
   prompt: string;
   model: string;
   label: string;
+  provider?: string;
   elapsed_ms: number;
   width?: number;
   height?: number;
+  fallback?: boolean;
 }
+
+const ASPECT_RATIOS = [
+  { id: '1:1', label: 'مربع', w: 1024, h: 1024 },
+  { id: '16:9', label: 'أفقي', w: 1344, h: 768 },
+  { id: '9:16', label: 'عمودي', w: 768, h: 1344 },
+  { id: '4:3', label: '4:3', w: 1152, h: 896 },
+  { id: '3:4', label: '3:4', w: 896, h: 1152 },
+];
 
 interface ImageStudioProps {
   isOpen: boolean;
   onClose: () => void;
+  chatId?: string;
 }
 
 const TIER_BADGE: Record<string, { label: string; icon: React.ComponentType<any>; cls: string }> = {
@@ -37,13 +51,17 @@ const TIER_BADGE: Record<string, { label: string; icon: React.ComponentType<any>
  * يولّد عبر طبقة النماذج الموثقة فقط (كل نموذج اجتاز اختبار 5/5 صور حقيقية).
  * المفاتيح لا تغادر السيرفر: كل الطلبات تمر عبر /api/image/v2/*.
  */
-export const ImageStudio: React.FC<ImageStudioProps> = ({ isOpen, onClose }) => {
+export const ImageStudio: React.FC<ImageStudioProps> = ({ isOpen, onClose, chatId }) => {
   const [models, setModels] = useState<ImageModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [aspect, setAspect] = useState(ASPECT_RATIOS[0]);
+  const [negativePrompt, setNegativePrompt] = useState('');
+  const [seed, setSeed] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -70,7 +88,14 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ isOpen, onClose }) => 
       const res = await fetch('/api/image/v2/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: p, model: selectedModel }),
+        body: JSON.stringify({
+          prompt: p,
+          model: selectedModel,
+          width: aspect.w,
+          height: aspect.h,
+          negativePrompt,
+          seed: seed.trim() ? parseInt(seed, 10) : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || `فشل التوليد (${res.status})`);
@@ -80,11 +105,32 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ isOpen, onClose }) => 
         prompt: p,
         model: data.model,
         label: data.label,
+        provider: data.provider,
         elapsed_ms: data.elapsed_ms,
         width: data.width,
         height: data.height,
+        fallback: data.fallback,
       }, ...prev]);
-      toast.success(`تم التوليد في ${(data.elapsed_ms / 1000).toFixed(1)} ثانية`);
+      // Area 3: save to media memory for cumulative editing ("edit the previous image")
+      if (chatId) {
+        fetch('/api/media/record', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chatId,
+            url: data.url,
+            prompt: p,
+            model: data.model,
+            seed: data.seed,
+            provider: data.provider,
+          }),
+        }).catch(() => {});
+      }
+      if (data.fallback) {
+        toast.error(`المزوّد المفضّل غير متاح — تم التوليد عبر «${data.label}» (مجاني)`);
+      } else {
+        toast.success(`تم التوليد في ${(data.elapsed_ms / 1000).toFixed(1)} ثانية`);
+      }
     } catch (err: any) {
       toast.error(err.message || 'فشل توليد الصورة');
     } finally {
@@ -138,6 +184,7 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ isOpen, onClose }) => 
               const tier = TIER_BADGE[m.tier] || TIER_BADGE.standard;
               const TierIcon = tier.icon;
               const active = selectedModel === m.id;
+              const keyMissing = m.requiresKey && m.keyConfigured === false;
               return (
                 <button
                   key={m.id}
@@ -151,10 +198,62 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ isOpen, onClose }) => 
                 >
                   <TierIcon className={`w-3.5 h-3.5 ${active ? 'text-white' : ''}`} />
                   {m.label}
+                  {keyMissing && <span className="text-[9px] text-amber-500" title="يحتاج مفتاح خادم — سيعود تلقائياً للمجاني">🔑</span>}
                 </button>
               );
             })}
           </div>
+
+          {/* Aspect ratio */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {ASPECT_RATIOS.map(a => {
+              const active = aspect.id === a.id;
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => setAspect(a)}
+                  className={`h-7 px-2.5 rounded-lg text-[11px] font-semibold border transition-all ${
+                    active ? 'bg-slate-800 text-white border-slate-800' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  {a.label} <span className="opacity-60">{a.id}</span>
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setShowAdvanced(v => !v)}
+              className="h-7 px-2.5 rounded-lg text-[11px] font-semibold border border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-700 transition-all"
+            >
+              {showAdvanced ? 'إخفاء المتقدّم' : 'متقدّم'}
+            </button>
+          </div>
+
+          {showAdvanced && (
+            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <input
+                value={negativePrompt}
+                onChange={(e) => setNegativePrompt(e.target.value)}
+                placeholder="وصف سلبي (ما تريد تجنّبه): تشوّه، أطراف زائدة، جودة رديئة…"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  value={seed}
+                  onChange={(e) => setSeed(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="بذرة عشوائية (اختياري — لنتيجة ثابتة)"
+                  inputMode="numeric"
+                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] text-slate-700 outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+                <button
+                  onClick={() => setSeed(String(Math.floor(Math.random() * 2_147_483_647)))}
+                  className="h-9 px-3 rounded-xl text-[11px] font-semibold border border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-700"
+                  title="بذرة عشوائية"
+                >
+                  🎲
+                </button>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={handleGenerate}
@@ -187,7 +286,7 @@ export const ImageStudio: React.FC<ImageStudioProps> = ({ isOpen, onClose }) => 
                 <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-2.5 pt-6">
                   <p className="text-[10px] text-white/90 truncate" title={img.prompt}>{img.prompt}</p>
                   <div className="flex items-center justify-between mt-1">
-                    <span className="text-[9px] text-white/70">{img.label} · {(img.elapsed_ms / 1000).toFixed(1)}ث</span>
+                    <span className="text-[9px] text-white/70">{img.label} · {(img.elapsed_ms / 1000).toFixed(1)}ث{img.fallback ? ' · احتياطي' : ''}</span>
                     <a
                       href={img.url}
                       target="_blank"

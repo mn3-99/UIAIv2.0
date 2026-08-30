@@ -33,7 +33,7 @@ export const SkillsBar: React.FC<SkillsBarProps> = ({ registry, onToggleSkill, o
   );
 
   return (
-    <div className="flex items-center gap-1.5 mt-1.5 px-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }} dir="rtl">
+    <div className="flex items-center gap-1.5 mt-1.5 px-1 overflow-x-auto flex-nowrap no-scrollbar scroll-mask-x touch-pan-x" dir="rtl">
       {quickItems.map(item => {
         const Icon = SKILL_ICONS[item.icon] || Sparkles;
         const isPlugin = item.type === 'plugin';
@@ -42,7 +42,7 @@ export const SkillsBar: React.FC<SkillsBarProps> = ({ registry, onToggleSkill, o
             key={item.id}
             onClick={() => isPlugin ? onTriggerPlugin(item.action!) : onToggleSkill(item.id)}
             title={`${item.name} — ${item.desc}`}
-            className="shrink-0 h-7 px-2 rounded-full flex items-center gap-1.5 text-[11px] font-semibold transition-all duration-200 border bg-indigo-50/70 text-indigo-700 border-indigo-200/60 hover:bg-indigo-100 hover:scale-[1.03] active:scale-95"
+            className="shrink-0 h-7 min-h-[42px] px-2.5 rounded-full flex items-center gap-1.5 text-[11px] font-semibold transition-all duration-200 border bg-indigo-50/70 text-indigo-700 border-indigo-200/60 hover:bg-indigo-100 hover:scale-[1.03] active:scale-95"
           >
             <Icon className="w-3.5 h-3.5" strokeWidth={2.2} />
             <span className="whitespace-nowrap">{item.name}</span>
@@ -54,7 +54,7 @@ export const SkillsBar: React.FC<SkillsBarProps> = ({ registry, onToggleSkill, o
       <button
         onClick={onOpenManager}
         title="إدارة المهارات والإضافات"
-        className="shrink-0 h-7 px-2.5 rounded-full flex items-center gap-1.5 text-[11px] font-bold transition-all duration-200 border bg-slate-50 text-slate-600 border-slate-200/70 hover:bg-slate-100 hover:text-slate-800 hover:scale-[1.03] active:scale-95 mr-auto"
+        className="shrink-0 h-7 min-h-[42px] px-2.5 rounded-full flex items-center gap-1.5 text-[11px] font-bold transition-all duration-200 border bg-slate-50 text-slate-600 border-slate-200/70 hover:bg-slate-100 hover:text-slate-800 hover:scale-[1.03] active:scale-95 ms-auto"
       >
         <Plus className="w-3.5 h-3.5" strokeWidth={2.4} />
         <span>المزيد</span>

@@ -4,6 +4,7 @@ import { ChatMessage } from '../types';
 import { RichMarkdown } from './RichMarkdown';
 import { ThinkingPanel } from './ThinkingPanel';
 import { ThinkingSteps } from './ThinkingSteps';
+import { DeepSearchPanel } from './DeepSearchPanel';
 import { WaitingIndicator, WaitingLines } from './WaitingAnimations';
 import { MessageReactions } from './MessageReactions';
 import { copyText } from '../utils/clipboard';
@@ -254,6 +255,14 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                   thinking={message.thinking}
                   isThinking={isThinkingActive}
                   durationMs={message.thinkingDurationMs}
+                />
+              )}
+
+              {/* Deep Search reasoning panel (Area 2) */}
+              {!isUser && !!message.deepSearch?.reasoning_steps?.length && (
+                <DeepSearchPanel
+                  reasoningSteps={message.deepSearch.reasoning_steps}
+                  references={message.deepSearch.references}
                 />
               )}
 

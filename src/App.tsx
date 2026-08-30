@@ -21,6 +21,7 @@ import { ArenaPairView } from './components/ArenaPairView';
 import { SkillsBar } from './components/SkillsBar';
 import { SkillsManagerModal } from './components/SkillsManagerModal';
 import { OnboardingModal, isOnboardingDone } from './components/OnboardingModal';
+import { AndroidAppBanner } from './components/AndroidAppBanner';
 import { ImageStudio } from './components/ImageStudio';
 import { applyTheme, isDarkTheme } from './utils/theme';
 import { GEMS, getGemPrompt } from './utils/gems';
@@ -577,40 +578,50 @@ export default function App() {
     setTimeout(() => scrollToBottom(true), 50);
 
     try {
-      // Agentic Web Search: enrich the prompt with live results before sending
+      // Agentic Deep Search (Area 2): enrich the prompt with live results before sending
       let finalPrompt = textToSend.trim();
       let searchSources: { title: string; url: string; snippet?: string }[] | undefined;
+      let deepSearchMeta: any = undefined;
 
       if (webSearchEnabled) {
         try {
-          const searchRes = await fetch('/api/search', {
+          const chatMsgs = chats.find((c) => c.id === targetChatId)?.messages || [];
+          const history = chatMsgs.slice(-10).map((m) => ({
+            role: m.role,
+            content: typeof m.content === 'string' ? m.content : '',
+          }));
+          const searchRes = await fetch('/api/search/deep', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: textToSend.trim(), max_results: 5 })
+            body: JSON.stringify({ query: textToSend.trim(), max_results: 8, history }),
           });
           if (searchRes.ok) {
-            const searchData = await searchRes.json();
-            const results: any[] = searchData?.results || [];
-            if (results.length > 0) {
-              searchSources = results.map((r: any) => ({ title: r.title || '', url: r.url || '', snippet: r.snippet || '' }));
-              const contextBlock = results
-                .map((r: any, i: number) => `[${i + 1}] ${r.title}\n${r.url}\n${(r.snippet || '').slice(0, 300)}`)
-                .join('\n\n');
-              finalPrompt = `استعن بمصادر الويب التالية عند الإجابة، واستشهد بأرقامها [1] [2] عند الحاجة:\n\n${contextBlock}\n\n---\n\nسؤال المستخدم: ${textToSend.trim()}`;
+            const sd: any = await searchRes.json();
+            if (sd?.needs_search && sd?.references?.length) {
+              const refs: { num: number; title: string; url: string }[] = sd.references;
+              searchSources = refs.map((r) => ({ title: r.title || '', url: r.url || '', snippet: '' }));
+              const refBlock = refs.map((r) => `[${r.num}] ${r.title}\n${r.url}`).join('\n');
+              finalPrompt = `استعن بمصادر الويب التالية عند الإجابة، واستشهد بأرقامها [1] [2] عند الحاجة:\n\n${refBlock}\n\n---\n\nسؤال المستخدم: ${textToSend.trim()}`;
+              deepSearchMeta = { needs_search: true, reasoning_steps: sd.reasoning_steps || [], references: refs };
+            } else if (sd?.results?.length) {
+              searchSources = sd.results.map((r: any) => ({ title: r.title || '', url: r.url || '', snippet: r.snippet || '' }));
+              if (sd?.reasoning_steps) deepSearchMeta = { needs_search: !!sd.results.length, reasoning_steps: sd.reasoning_steps, references: sd.references || [] };
             }
           }
         } catch (searchErr) {
-          console.warn('Web search failed, continuing without context:', searchErr);
+          console.warn('Deep search failed, continuing without context:', searchErr);
         }
       }
 
-      // Attach search sources to the assistant bubble when they exist
-      if (searchSources?.length) {
+      // Attach search sources + deep-search metadata to the assistant bubble when they exist
+      if (searchSources?.length || deepSearchMeta) {
         setChats(prev => prev.map(c => {
           if (c.id !== targetChatId) return c;
           return {
             ...c,
-            messages: c.messages.map(m => m.id === assistantMsgId ? { ...m, searchSources } : m)
+            messages: c.messages.map(m => m.id === assistantMsgId
+              ? { ...m, searchSources: searchSources || m.searchSources, deepSearch: deepSearchMeta || m.deepSearch }
+              : m)
           };
         }));
       }
@@ -1400,7 +1411,8 @@ ${h.text}`)
   };
 
   return (
-    <div className="w-full h-screen flex bg-white overflow-hidden antialiased selection:bg-blue-100 font-sans">
+    <div className="w-full h-dvh flex bg-white overflow-hidden antialiased selection:bg-blue-100 font-sans">
+      <AndroidAppBanner />
       <NetworkStatusBanner isOnline={isOnline} />
 
       {!isUnlocked && (
@@ -1692,7 +1704,7 @@ ${h.text}`)
       />
       <FilesModal isOpen={isFilesOpen} onClose={() => setIsFilesOpen(false)} />
       <GemsModal isOpen={isGemsOpen} onClose={() => setIsGemsOpen(false)} onSelectGem={setActiveGemId} activeGemId={activeGemId} />
-      <ImageStudio isOpen={isImageStudioOpen} onClose={() => setIsImageStudioOpen(false)} />
+      <ImageStudio isOpen={isImageStudioOpen} onClose={() => setIsImageStudioOpen(false)} chatId={activeChatId || undefined} />
       <UpgradeModal isOpen={isUpgradeOpen} onClose={() => setIsUpgradeOpen(false)} />
       <PromptEditModal
         isOpen={isPromptEditOpen}

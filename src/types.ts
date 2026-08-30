@@ -18,6 +18,12 @@ export interface ChatMessage {
   thinking?: string;
   thinkingDurationMs?: number;
   searchSources?: SearchSource[];
+  /** Area 2: structured deep-search output (reasoning steps + numbered references) */
+  deepSearch?: {
+    needs_search: boolean;
+    reasoning_steps?: { step: number; title: string; detail: string }[];
+    references?: { num: number; title: string; url: string }[];
+  };
   attachments?: FileAttachment[];
   /** Heuristic follow-up question chips attached after the answer completes */
   followUps?: string[];

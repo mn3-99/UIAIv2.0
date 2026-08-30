@@ -41,6 +41,38 @@ from provider_monitor import start_background_monitor_loop
 from db_manager import ActiveModelManager
 from background_worker import run_background_pipeline, schedule_worker
 
+# ---------------------------------------------------------------------------
+# Persistent HTTP/2 client for direct OpenAI-compatible endpoints.
+# Re-using one AsyncClient across requests (instead of opening a brand-new
+# session per call) keeps the TLS + TCP handshake warm, which is the single
+# biggest source of first-token latency for the mijlai-* agents.
+# ---------------------------------------------------------------------------
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+    logger.warning("[g4f_provider] httpx not installed — direct endpoints will fall back to aiohttp.")
+
+_HTTPX_CLIENT: Optional["httpx.AsyncClient"] = None
+
+def get_httpx_client() -> "httpx.AsyncClient":
+    """Return a process-wide, HTTP/2-capable async client (lazily created)."""
+    global _HTTPX_CLIENT
+    if _HTTPX_CLIENT is None or _HTTPX_CLIENT.is_closed:
+        # Generous timeouts: long analytical replies need headroom; connect is tight.
+        _HTTPX_CLIENT = httpx.AsyncClient(
+            http2=True,
+            timeout=httpx.Timeout(connect=10, read=180, write=30, pool=30),
+            limits=httpx.Limits(
+                max_connections=100,
+                max_keepalive_connections=40,
+                keepalive_expiry=60.0,
+            ),
+            follow_redirects=True,
+        )
+    return _HTTPX_CLIENT
+
 # Configure logging
 logging.basicConfig(
     level=logging.ERROR,
@@ -197,7 +229,7 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
     },
     {
         "name": "pollinations",
-        "url": "https://text.pollinations.ai/openai",
+        "url": "https://text.pollinations.ai/v1",
         "api_key": None,
         # Keyless GPT-backed endpoint, streams SSE
         "models": ["openai", "openai-fast", "openai-large", "mistral", "qwen-coder", "llama"],
@@ -388,24 +420,27 @@ async def attempt_direct_chat(request, messages, temperature, stream,
             headers["Authorization"] = f"Bearer {ep['api_key']}"
 
         try:
-            # Local llama.cpp can be slower on shared CPU — give it more headroom
-            timeout = aiohttp.ClientTimeout(total=300 if ep.get("local") else 90, connect=10)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(ep["url"], json=body, headers=headers) as upstream:
-                    if upstream.status != 200:
-                        logger.debug(f"[direct:{ep['name']}] HTTP {upstream.status}")
+            if HTTPX_AVAILABLE:
+                # Warm HTTP/2 connection pool — no per-request TLS/TCP handshake.
+                client = get_httpx_client()
+                async with client.stream("POST", ep["url"], json=body, headers=headers) as upstream:
+                    if upstream.status_code != 200:
+                        logger.debug(f"[direct:{ep['name']}] HTTP {upstream.status_code}")
                         endpoint_breaker.record_failure(ep["name"])
                         continue
 
                     if not stream:
-                        data = await upstream.json()
+                        raw = await upstream.aread()
+                        try:
+                            data = json.loads(raw.decode("utf-8", errors="ignore"))
+                        except Exception:
+                            data = {}
                         msg = {}
                         try:
                             msg = data["choices"][0]["message"]
                         except Exception:
                             pass
                         content = (msg.get("content") or "").strip()
-                        # Fall back to reasoning text when the model only reasoned
                         if not content:
                             content = (msg.get("reasoning") or "").strip()
                         if not content:
@@ -440,8 +475,8 @@ async def attempt_direct_chat(request, messages, temperature, stream,
                     chat_id = f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}"
                     sent_any = False
 
-                    async for raw_line in upstream.content:
-                        line = raw_line.decode("utf-8", errors="ignore").strip()
+                    async for line in upstream.aiter_lines():
+                        line = line.strip()
                         if not line.startswith("data:"):
                             continue
                         data_str = line[5:].strip()
@@ -457,14 +492,9 @@ async def attempt_direct_chat(request, messages, temperature, stream,
 
                         # Forward model reasoning as agentic thinking frames
                         if reasoning:
-                            think_payload = {
-                                "id": chat_id,
-                                "object": "chat.completion.chunk",
-                                "created": int(time.time()),
-                                "model": f"direct:{ep['name']}:{payload_model}",
-                                "choices": [{"index": 0, "delta": {"reasoning_content": reasoning}, "finish_reason": None}]
-                            }
-                            await response.write(f"data: {json.dumps({'t': 'think', 'd': reasoning}, ensure_ascii=False)}\n\n".encode("utf-8"))
+                            await response.write(
+                                f"data: {json.dumps({'t': 'think', 'd': reasoning}, ensure_ascii=False)}\n\n".encode("utf-8")
+                            )
 
                         if delta:
                             sent_any = True
@@ -475,7 +505,12 @@ async def attempt_direct_chat(request, messages, temperature, stream,
                                 "model": f"direct:{ep['name']}:{payload_model}",
                                 "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
                             }
-                            await response.write(f"data: {json.dumps(chunk_payload, ensure_ascii=False)}\n\n".encode("utf-8"))
+                            await response.write(
+                                f"data: {json.dumps(chunk_payload, ensure_ascii=False)}\n\n".encode("utf-8")
+                            )
+                            # Yield to the loop so aiohttp flushes this SSE frame to
+                            # the socket immediately instead of socket-buffering it.
+                            await asyncio.sleep(0)
 
                     if not sent_any:
                         try:
@@ -488,6 +523,98 @@ async def attempt_direct_chat(request, messages, temperature, stream,
                     await response.write(b"data: [DONE]\n\n")
                     await response.write_eof()
                     return response
+            else:
+                # Fallback to aiohttp when httpx is unavailable.
+                import aiohttp
+                timeout = aiohttp.ClientTimeout(total=300 if ep.get("local") else 180, connect=10)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(ep["url"], json=body, headers=headers) as upstream:
+                        if upstream.status != 200:
+                            logger.debug(f"[direct:{ep['name']}] HTTP {upstream.status}")
+                            endpoint_breaker.record_failure(ep["name"])
+                            continue
+
+                        if not stream:
+                            data = await upstream.json()
+                            msg = {}
+                            try:
+                                msg = data["choices"][0]["message"]
+                            except Exception:
+                                pass
+                            content = (msg.get("content") or "").strip()
+                            if not content:
+                                content = (msg.get("reasoning") or "").strip()
+                            if not content:
+                                content = str(data)[:500]
+                            if not content.strip():
+                                continue
+                            endpoint_breaker.record_success(ep["name"])
+                            return web.json_response({
+                                "id": f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}",
+                                "object": "chat.completion",
+                                "created": int(time.time()),
+                                "model": f"direct:{ep['name']}:{payload_model}",
+                                "choices": [{
+                                    "index": 0,
+                                    "message": {"role": "assistant", "content": content},
+                                    "finish_reason": "stop"
+                                }]
+                            })
+
+                        response = web.StreamResponse(
+                            status=200, reason="OK",
+                            headers={
+                                "Content-Type": "text/event-stream",
+                                "Cache-Control": "no-cache",
+                                "Connection": "keep-alive",
+                                "X-Accel-Buffering": "no"
+                            }
+                        )
+                        await response.prepare(request)
+                        chat_id = f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}"
+                        sent_any = False
+                        async for raw_line in upstream.content:
+                            line = raw_line.decode("utf-8", errors="ignore").strip()
+                            if not line.startswith("data:"):
+                                continue
+                            data_str = line[5:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                obj = json.loads(data_str)
+                                delta_obj = obj.get("choices", [{}])[0].get("delta", {})
+                                delta = delta_obj.get("content") or ""
+                                reasoning = delta_obj.get("reasoning") or delta_obj.get("reasoning_content") or ""
+                            except Exception:
+                                continue
+                            if reasoning:
+                                await response.write(
+                                    f"data: {json.dumps({'t': 'think', 'd': reasoning}, ensure_ascii=False)}\n\n".encode("utf-8")
+                                )
+                            if delta:
+                                sent_any = True
+                                chunk_payload = {
+                                    "id": chat_id,
+                                    "object": "chat.completion.chunk",
+                                    "created": int(time.time()),
+                                    "model": f"direct:{ep['name']}:{payload_model}",
+                                    "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}]
+                                }
+                                await response.write(
+                                    f"data: {json.dumps(chunk_payload, ensure_ascii=False)}\n\n".encode("utf-8")
+                                )
+                                await asyncio.sleep(0)
+                        if not sent_any:
+                            try:
+                                response.force_close()
+                            except Exception:
+                                pass
+                            endpoint_breaker.record_failure(ep["name"])
+                            continue
+                        endpoint_breaker.record_success(ep["name"])
+                        await response.write(b"data: [DONE]\n\n")
+                        await response.write_eof()
+                        return response
         except Exception as err:
             logger.debug(f"[direct:{ep['name']}] failed: {err}")
             endpoint_breaker.record_failure(ep["name"])
@@ -867,6 +994,34 @@ async def handle_search(request: web.Request) -> web.Response:
     })
 
 
+async def handle_deep_search(request: web.Request) -> web.Response:
+    """
+    Agentic Deep Search (Area 2): adaptive router + query rewriting + 15-20
+    results fused by RRF + deep scraping of top links. Returns reasoning steps
+    and numbered references [1]..[N].
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    query = (body.get("query") or "").strip()
+    max_results = min(int(body.get("max_results", 8) or 8), 12)
+    history = body.get("history") or []
+    if not query:
+        return web.json_response({"error": "query is required"}, status=400)
+    try:
+        from features.deep_search import deep_search_engine
+    except Exception as e:
+        logger.debug(f"deep_search import failed: {e}")
+        return await handle_search(request)
+    try:
+        result = await deep_search_engine.run(query, history=history, top_n=max_results)
+    except Exception as e:
+        logger.error(f"deep_search failed: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+    return web.json_response(result)
+
+
 async def init_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/health", handle_health)
@@ -874,6 +1029,8 @@ async def init_app() -> web.Application:
     app.router.add_get("/api/models", handle_models)
     app.router.add_post("/search", handle_search)
     app.router.add_post("/api/search", handle_search)
+    app.router.add_post("/search/deep", handle_deep_search)
+    app.router.add_post("/api/search/deep", handle_deep_search)
     app.router.add_get("/provider-health", handle_provider_health)
     app.router.add_get("/api/provider-health", handle_provider_health)
     app.router.add_post("/chat/completions", handle_chat_completions)
