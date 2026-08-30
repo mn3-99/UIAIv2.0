@@ -226,6 +226,23 @@ def _meta_ai_key() -> Optional[str]:
     return None
 
 
+def _openrouter_key() -> Optional[str]:
+    """Read the OpenRouter API key from env, falling back to .env."""
+    key = os.getenv("OPENROUTER_API_KEY")
+    if key:
+        return key.strip().strip('"').strip("'")
+    try:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        with open(env_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("OPENROUTER_API_KEY="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return None
+
+
 _MIJLAI_PWR_URL = "https://l3y3mfzeo7nw5yxxenvf7xbw.agents.do-ai.run/api/v1/chat/completions"
 
 
@@ -322,6 +339,25 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         "api_key": _meta_ai_key(),
         "models": ["mijlai-qwen-lalo", "muse-spark-1.2"],
         "default_model": "muse-spark-1.2",
+    },
+    {
+        # OpenRouter Free: 21+ free models including Gemma, Nemotron, MiniMax
+        "name": "openrouter-free",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "api_key": _openrouter_key(),
+        "models": [
+            "google/gemma-4-31b-it:free",
+            "google/gemma-4-26b-a4b-it:free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "nvidia/nemotron-3.5-lightning:free",
+            "minimax/minimax-m3:free",
+            "minimax/minimax-m2.7:free",
+            "liquid/lfm-2.5-2.6b:free",
+            "poolside/laguna-s-2.1:free",
+            "z-ai/glm-5.2:free",
+        ],
+        "default_model": "google/gemma-4-31b-it:free",
     },
 ]
 
