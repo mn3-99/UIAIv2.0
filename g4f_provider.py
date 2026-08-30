@@ -243,6 +243,23 @@ def _openrouter_key() -> Optional[str]:
     return None
 
 
+def _llm7_key() -> Optional[str]:
+    """Read the LLM7.io API key from env, falling back to .env."""
+    key = os.getenv("LLM7_API_KEY")
+    if key:
+        return key.strip().strip('"').strip("'")
+    try:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        with open(env_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("LLM7_API_KEY="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return None
+
+
 _MIJLAI_PWR_URL = "https://l3y3mfzeo7nw5yxxenvf7xbw.agents.do-ai.run/api/v1/chat/completions"
 
 
@@ -280,9 +297,18 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
     {
         "name": "llm7",
         "url": "https://api.llm7.io/v1/chat/completions",
-        "api_key": os.getenv("LLM7_API_KEY", "unused"),  # anonymous ~60 req/h; free token at token.llm7.io
+        "api_key": _llm7_key(),
         "models": ["DeepSeek-V4-Flash-0731", "gpt-4o-mini", "gemini-flash", "deepseek-r1"],
         "default_model": "DeepSeek-V4-Flash-0731",
+    },
+    {
+        # MijlAI-lalo-fast: LLM7.io hosted Llama 3.1 8B Turbo (fast, cheap, tools-capable).
+        # Guest-only model — visible to unregistered visitors.
+        "name": "mijlai-lalo-fast",
+        "url": "https://api.llm7.io/v1/chat/completions",
+        "api_key": _llm7_key(),
+        "models": ["mijlai-lalo-fast", "meta-Llama-3.1-8B-Instruct-Turbo"],
+        "default_model": "meta-Llama-3.1-8B-Instruct-Turbo",
     },
     {
         # MijlAI-PWR: dedicated DigitalOcean GenAI agent (OpenAI-compatible).

@@ -18,6 +18,7 @@ export const APP_CONFIG = {
       requiresApiKey: false,
       isFree: true,
       models: [
+        { id: "direct:mijlai-lalo-fast", name: "MijlAI-lalo-fast (Llama 3.1 8B)", provider: "g4f", icon: "zap", is_free: true, category: "Fast" },
         { id: "direct:mijlai-mini", name: "MijlAI-Mini (DigitalOcean)", provider: "g4f", icon: "zap", is_free: false, category: "Custom" },
         { id: "direct:mijlai-flash", name: "MijlAI-Flash (DigitalOcean)", provider: "g4f", icon: "sparkles", is_free: false, category: "Custom" },
         { id: "direct:mijlai-pro", name: "MijlAI-Pro (DigitalOcean)", provider: "g4f", icon: "brain", is_free: false, category: "Custom" },

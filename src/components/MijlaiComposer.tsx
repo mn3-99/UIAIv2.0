@@ -37,6 +37,8 @@ interface MijlaiComposerProps {
   skillsBar?: React.ReactNode;
   /** عدد الرسائل المنتظرة في الطابور */
   queueCount?: number;
+  /** هل المستخدم زائر (غير مسجل) — يُقيّد النماذج المتاحة */
+  isGuest?: boolean;
 }
 
 export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
@@ -63,7 +65,8 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
   arenaModelB = 'pro',
   onSelectArenaModel,
   skillsBar,
-  queueCount = 0
+  queueCount = 0,
+  isGuest = false
 }) => {
   const [isAttachOpen, setIsAttachOpen] = useState(false);
   const [isTierOpen, setIsTierOpen] = useState(false);
@@ -275,6 +278,11 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
   };
 
   const verifiedModelsMap: Record<string, { label: string; shortName: string; icon: any; color: string; desc: string; realModel: string; badge: string }> = {
+    'lalo-fast': {
+      label: 'MijlAI-lalo-fast', shortName: 'Lalo', icon: Zap, color: 'text-cyan-600',
+      desc: 'نموذج سريع ومجاني — Llama 3.1 8B Turbo عبر LLM7.io',
+      realModel: 'meta-Llama-3.1-8B-Instruct-Turbo · LLM7', badge: '⚡ مجاني · سريع'
+    },
     'mini': {
       label: 'MijlAI-Mini', shortName: 'Mini', icon: Zap, color: 'text-emerald-600',
       desc: 'خفيف وسريع التدفق — للمهام اليومية الفورية (وكيل MijlAI المخصص)',
@@ -296,6 +304,11 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
       realModel: 'MijlAI-PWR · DigitalOcean', badge: '🛡 وكيل مخصص · حصري'
     }
   };
+
+  // للزوار غير المسجلين: إظهار MijlAI-lalo-fast فقط
+  const visibleModelsMap = isGuest
+    ? { 'lalo-fast': verifiedModelsMap['lalo-fast'] }
+    : verifiedModelsMap;
 
   const isLocalTier = selectedTier.startsWith('local:');
   const localModelName = localModels.find((m) => m.id === selectedTier)?.name;
@@ -531,8 +544,10 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                     e.stopPropagation();
                   }}
                 >
-                  <div className="px-2 py-1 text-[11px] font-bold text-slate-400 sticky top-0 bg-white/90 backdrop-blur-sm">نماذج MijlAI — مُقاسة ومرتبة حسب الأداء الفعلي</div>
-                  {Object.entries(verifiedModelsMap).map(([key, item], idx) => {
+                  <div className="px-2 py-1 text-[11px] font-bold text-slate-400 sticky top-0 bg-white/90 backdrop-blur-sm">
+                    {isGuest ? 'نموذج مجاني متاح — سجّل للحصول على المزيد' : 'نماذج MijlAI — مُقاسة ومرتبة حسب الأداء الفعلي'}
+                  </div>
+                  {Object.entries(visibleModelsMap).map(([key, item], idx) => {
                     const Icon = item.icon;
                     const isSelected = selectedTier === key;
                     return (

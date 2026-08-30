@@ -57,7 +57,7 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>('Mhmod');
 
-  // Model Tier state: pwr, mini, flash, pro
+  // Model Tier state: pwr, mini, flash, pro, lalo-fast
   const [selectedTier, setSelectedTier] = useState<string>('pwr');
 
   // Focus Mode (distraction-free): hides sidebar & header
@@ -158,7 +158,8 @@ export default function App() {
     'direct:mijlai-mini': 'mini',
     'direct:mijlai-flash': 'flash',
     'direct:mijlai-pro': 'pro',
-    'direct:mijlai-pwr': 'pwr'
+    'direct:mijlai-pwr': 'pwr',
+    'direct:mijlai-lalo-fast': 'lalo-fast'
   };
 
   // Apply the saved theme (body[data-theme] drives the CSS variables; 'system'
@@ -307,6 +308,13 @@ export default function App() {
     })();
   }, []);
 
+  // للزوار غير المسجلين: تعيين النموذج الافتراضي إلى lalo-fast
+  useEffect(() => {
+    if (currentUser === null && selectedTier !== 'lalo-fast') {
+      setSelectedTier('lalo-fast');
+    }
+  }, [currentUser]);
+
   // Pull server chats on boot (merge: newer updatedAt wins, server copy included)
   useEffect(() => {
     (async () => {
@@ -387,6 +395,8 @@ export default function App() {
         return 'direct:mijlai-pro';
       case 'pwr':
         return 'direct:mijlai-pwr';
+      case 'lalo-fast':
+        return 'direct:mijlai-lalo-fast';
       default:
         return tier.startsWith('local:') ? tier : 'direct:mijlai-pwr';
     }
@@ -1568,6 +1578,24 @@ ${h.text}`)
                 <MijlaiLogo size="hero" />
               </div>
 
+              {/* رسالة ترحيب للزوار غير المسجلين */}
+              {currentUser === null && (
+                <div className="w-full max-w-[760px] md:w-[75%] mb-4 px-4 py-3 bg-gradient-to-r from-blue-50/80 to-emerald-50/80 border border-blue-200/50 rounded-2xl text-center animate-in fade-in duration-500">
+                  <p className="text-[13px] text-slate-700 leading-relaxed font-medium">
+                    <span className="text-blue-700 font-bold">مرحبًا بك في MijlAI.</span>{' '}
+                    يمكنك الآن تجربة نموذج{' '}
+                    <span className="text-emerald-700 font-bold">MijlAI-lalo-fast</span>{' '}
+                    السريع. بعد التسجيل، ستحصل على وصول كامل إلى مجموعة متنوعة من النماذج المتقدمة التي تتميز بدقة أعلى، وقدرات تخصيص أوسع، ودعم للغات متعددة، وتحليل سياقي محسن.
+                  </p>
+                  <button
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="mt-2.5 inline-flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold rounded-xl shadow-sm transition-colors"
+                  >
+                    تسجيل الدخول
+                  </button>
+                </div>
+              )}
+
               {/* Quick-start prompt chips — lower the "blank page" barrier */}
               <div className="w-full max-w-[760px] md:w-[75%] mb-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {STARTER_PROMPTS.map((p, i) => {
@@ -1620,6 +1648,7 @@ ${h.text}`)
                 onSelectArenaModel={(side, tier) => side === 'a' ? setArenaModelA(tier) : setArenaModelB(tier)}
                 skillsBar={skillsBarElement}
                 queueCount={messageQueue.length}
+                isGuest={currentUser === null}
               />
             </div>
           )}
@@ -1667,6 +1696,7 @@ ${h.text}`)
                 onSelectArenaModel={(side, tier) => side === 'a' ? setArenaModelA(tier) : setArenaModelB(tier)}
                 skillsBar={skillsBarElement}
                 queueCount={messageQueue.length}
+                isGuest={currentUser === null}
               />
             </div>
           )}
