@@ -85,7 +85,7 @@ fun ImageStudioScreen(onBack: () -> Unit) {
                         .onFailure { err = it.message }
                     loading = false
                 }
-            }, Modifier.fillMaxWidth()) {
+            }, modifier = Modifier.fillMaxWidth()) {
                 if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("توليد")
             }
             Spacer(Modifier.height(12.dp))

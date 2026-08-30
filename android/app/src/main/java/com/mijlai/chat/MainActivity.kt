@@ -3,6 +3,7 @@ package com.mijlai.chat
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Image
@@ -10,12 +11,14 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
-import com.mijlai.chat.data.AppPrefs
+import com.mijlai.chat.AppPrefs
 import com.mijlai.chat.ui.ChatScreen
 import com.mijlai.chat.ui.DeepSearchScreen
 import com.mijlai.chat.ui.ImageStudioScreen
-import com.mijlai.chat.ui.MijlAiTheme
+import com.mijlai.chat.ui.theme.MijlAiTheme
 import com.mijlai.chat.ui.SettingsScreen
 
 enum class Screen { Chat, Images, Search, Settings }
@@ -23,6 +26,7 @@ enum class Screen { Chat, Images, Search, Settings }
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         AppPrefs.init(this)
         setContent {
             MijlAiTheme {

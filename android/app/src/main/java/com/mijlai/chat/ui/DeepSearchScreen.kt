@@ -43,7 +43,7 @@ fun DeepSearchScreen(onBack: () -> Unit) {
                         .onFailure { err = it.message }
                     loading = false
                 }
-            }, Modifier.fillMaxWidth()) {
+            }, modifier = Modifier.fillMaxWidth()) {
                 if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("بحث")
             }
             err?.let { Text(it, color = Color(0xFFDC2626)) }

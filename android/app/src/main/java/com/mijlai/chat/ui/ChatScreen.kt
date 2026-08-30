@@ -32,7 +32,7 @@ import com.mijlai.chat.ChatViewModel
 private val TIERS = listOf(
     Tier("mini", "MijlAi Mini", Icons.Filled.Bolt),
     Tier("flash", "MijlAi Flash", Icons.Filled.AutoAwesome),
-    Tier("pro", "MijlAi Pro", Icons.Filled.Crown),
+    Tier("pro", "MijlAi Pro", Icons.Filled.WorkspacePremium),
     Tier("pwr", "MijlAi PWR", Icons.Filled.Star),
 )
 
