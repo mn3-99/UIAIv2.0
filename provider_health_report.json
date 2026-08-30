@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-30T01:33:48.294257+00:00",
+  "timestamp": "2026-08-30T02:33:57.682177+00:00",
   "summary": {
     "total_providers_discovered": 45,
     "total_healthy_providers": 1,
@@ -13,7 +13,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 27,
       "success_rate_24h": 100.0,
-      "avg_latency_ms_24h": 1930.74,
+      "avg_latency_ms_24h": 1943.03,
       "is_demoted": false
     }
   ],
@@ -25,7 +25,7 @@
       "total_checks_24h": 135,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 56.51,
+      "avg_latency_ms_24h": 56.57,
       "is_demoted": true
     },
     {
@@ -34,7 +34,7 @@
       "total_checks_24h": 135,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 1010.69,
+      "avg_latency_ms_24h": 1010.96,
       "is_demoted": true
     },
     {
@@ -52,7 +52,7 @@
       "total_checks_24h": 135,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 281.73,
+      "avg_latency_ms_24h": 281.78,
       "is_demoted": true
     },
     {
@@ -79,7 +79,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 194.33,
+      "avg_latency_ms_24h": 180.89,
       "is_demoted": true
     },
     {
@@ -88,7 +88,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 211.73,
+      "avg_latency_ms_24h": 196.87,
       "is_demoted": true
     },
     {
@@ -97,7 +97,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 207.88,
+      "avg_latency_ms_24h": 201.61,
       "is_demoted": true
     },
     {
@@ -106,7 +106,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 255.66,
+      "avg_latency_ms_24h": 254.84,
       "is_demoted": true
     },
     {
@@ -115,7 +115,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 15.08,
+      "avg_latency_ms_24h": 15.22,
       "is_demoted": true
     },
     {
@@ -124,7 +124,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 39.72,
+      "avg_latency_ms_24h": 39.28,
       "is_demoted": true
     },
     {
@@ -133,7 +133,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 49.64,
+      "avg_latency_ms_24h": 48.95,
       "is_demoted": true
     },
     {
@@ -142,7 +142,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 38.06,
+      "avg_latency_ms_24h": 38.37,
       "is_demoted": true
     },
     {
@@ -151,7 +151,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 23.39,
+      "avg_latency_ms_24h": 37.56,
       "is_demoted": true
     },
     {
@@ -160,7 +160,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 235.93,
+      "avg_latency_ms_24h": 231.06,
       "is_demoted": true
     },
     {
@@ -169,7 +169,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 161.18,
+      "avg_latency_ms_24h": 186.67,
       "is_demoted": true
     },
     {
@@ -178,7 +178,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 140.84,
+      "avg_latency_ms_24h": 157.71,
       "is_demoted": true
     },
     {
@@ -187,7 +187,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 0.41,
+      "avg_latency_ms_24h": 0.49,
       "is_demoted": true
     },
     {
@@ -196,7 +196,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 14.65,
+      "avg_latency_ms_24h": 14.76,
       "is_demoted": true
     }
   ],
@@ -207,7 +207,7 @@
       "total_checks_24h": 135,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 56.51,
+      "avg_latency_ms_24h": 56.57,
       "is_demoted": true
     },
     {
@@ -216,7 +216,7 @@
       "total_checks_24h": 135,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 1010.69,
+      "avg_latency_ms_24h": 1010.96,
       "is_demoted": true
     },
     {
@@ -234,7 +234,7 @@
       "total_checks_24h": 135,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 281.73,
+      "avg_latency_ms_24h": 281.78,
       "is_demoted": true
     },
     {
@@ -261,7 +261,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 194.33,
+      "avg_latency_ms_24h": 180.89,
       "is_demoted": true
     },
     {
@@ -270,7 +270,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 211.73,
+      "avg_latency_ms_24h": 196.87,
       "is_demoted": true
     },
     {
@@ -279,7 +279,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 207.88,
+      "avg_latency_ms_24h": 201.61,
       "is_demoted": true
     },
     {
@@ -288,7 +288,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 255.66,
+      "avg_latency_ms_24h": 254.84,
       "is_demoted": true
     },
     {
@@ -297,7 +297,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 15.08,
+      "avg_latency_ms_24h": 15.22,
       "is_demoted": true
     },
     {
@@ -306,7 +306,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 39.72,
+      "avg_latency_ms_24h": 39.28,
       "is_demoted": true
     },
     {
@@ -315,7 +315,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 27,
       "success_rate_24h": 100.0,
-      "avg_latency_ms_24h": 1930.74,
+      "avg_latency_ms_24h": 1943.03,
       "is_demoted": false
     },
     {
@@ -324,7 +324,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 49.64,
+      "avg_latency_ms_24h": 48.95,
       "is_demoted": true
     },
     {
@@ -333,7 +333,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 38.06,
+      "avg_latency_ms_24h": 38.37,
       "is_demoted": true
     },
     {
@@ -342,7 +342,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 23.39,
+      "avg_latency_ms_24h": 37.56,
       "is_demoted": true
     },
     {
@@ -351,7 +351,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 235.93,
+      "avg_latency_ms_24h": 231.06,
       "is_demoted": true
     },
     {
@@ -360,7 +360,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 161.18,
+      "avg_latency_ms_24h": 186.67,
       "is_demoted": true
     },
     {
@@ -369,7 +369,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 140.84,
+      "avg_latency_ms_24h": 157.71,
       "is_demoted": true
     },
     {
@@ -378,7 +378,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 0.41,
+      "avg_latency_ms_24h": 0.49,
       "is_demoted": true
     },
     {
@@ -387,7 +387,7 @@
       "total_checks_24h": 27,
       "success_checks_24h": 0,
       "success_rate_24h": 0.0,
-      "avg_latency_ms_24h": 14.65,
+      "avg_latency_ms_24h": 14.76,
       "is_demoted": true
     }
   ]

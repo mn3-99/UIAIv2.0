@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">MijlAi</string>
-    <!-- The deployed web app URL the WebView loads. Set this to your production URL. -->
-    <string name="app_url">https://YOUR_DEPLOYED_APP_URL</string>
+    <!-- Default backend base URL. Override in Settings inside the app. -->
+    <string name="default_base_url">https://mijlai.duckdns.org</string>
 </resources>
