@@ -27,3 +27,7 @@ secrets/
 
 # Python virtualenv (machine-specific, never commit)
 venv/
+providers/.manus_keys
+providers/.mistral_key
+providers/.alibaba_zen_key
+providers/.manus_key
