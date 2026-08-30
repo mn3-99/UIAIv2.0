@@ -209,6 +209,23 @@ def _mijlai_pro_key() -> Optional[str]:
     return _mijlai_pwr_key()
 
 
+def _meta_ai_key() -> Optional[str]:
+    """Read the Meta AI API key from env, falling back to .env."""
+    key = os.getenv("META_AI_API_KEY")
+    if key:
+        return key.strip().strip('"').strip("'")
+    try:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        with open(env_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("META_AI_API_KEY="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return None
+
+
 _MIJLAI_PWR_URL = "https://l3y3mfzeo7nw5yxxenvf7xbw.agents.do-ai.run/api/v1/chat/completions"
 
 
@@ -289,6 +306,22 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         "models": ["mijlai-pro"],
         "default_model": "mijlai-pro",
         "no_system_role": True,
+    },
+    {
+        # Meta AI (Muse Spark): Free Meta AI API with Llama models.
+        "name": "meta-ai",
+        "url": "https://api.meta.ai/v1/chat/completions",
+        "api_key": _meta_ai_key(),
+        "models": ["muse-spark-1.2", "muse-spark-1.1", "muse-spark-1.2-contributor"],
+        "default_model": "muse-spark-1.2",
+    },
+    {
+        # MijlAI-Qwen-lalo: Meta AI Muse Spark endpoint (custom name).
+        "name": "mijlai-qwen-lalo",
+        "url": "https://api.meta.ai/v1/chat/completions",
+        "api_key": _meta_ai_key(),
+        "models": ["mijlai-qwen-lalo", "muse-spark-1.2"],
+        "default_model": "muse-spark-1.2",
     },
 ]
 
