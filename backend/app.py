@@ -501,6 +501,206 @@ if FASTAPI_AVAILABLE and app is not None:
         return {"success": ok}
 
     # ==========================================
+    # Enhanced Admin Dashboard Routes (JWT-protected, admin role only)
+    # ==========================================
+    @app.get("/api/admin/system/health", dependencies=[Depends(require_admin)])
+    async def admin_system_health():
+        """Get comprehensive system health metrics."""
+        import psutil
+        import os
+        
+        try:
+            # System metrics
+            cpu_usage = psutil.cpu_percent(interval=0.1)
+            memory = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+            
+            # Process info
+            process = psutil.Process(os.getpid())
+            process_memory = process.memory_info()
+            
+            # Network connections (approximate active connections)
+            connections = len(psutil.net_connections())
+            
+            # Calculate uptime (from process start)
+            uptime_seconds = time.time() - process.create_time()
+            
+            return {
+                "status": "healthy",
+                "uptime": uptime_seconds,
+                "cpu_usage": cpu_usage,
+                "memory_usage": memory.percent,
+                "disk_usage": disk.percent,
+                "active_connections": connections,
+                "requests_per_minute": 0,  # Will be tracked separately
+                "avg_response_time": 0,  # Will be tracked separately
+                "error_rate": 0,  # Will be tracked separately
+                "process_memory_mb": round(process_memory.rss / 1024 / 1024, 2),
+                "total_memory_gb": round(memory.total / 1024 / 1024 / 1024, 2),
+                "available_memory_gb": round(memory.available / 1024 / 1024 / 1024, 2),
+                "disk_total_gb": round(disk.total / 1024 / 1024 / 1024, 2),
+                "disk_used_gb": round(disk.used / 1024 / 1024 / 1024, 2),
+                "disk_free_gb": round(disk.free / 1024 / 1024 / 1024, 2)
+            }
+        except Exception as e:
+            return {
+                "status": "degraded",
+                "uptime": 0,
+                "cpu_usage": 0,
+                "memory_usage": 0,
+                "disk_usage": 0,
+                "active_connections": 0,
+                "requests_per_minute": 0,
+                "avg_response_time": 0,
+                "error_rate": 0,
+                "error": str(e)
+            }
+
+    @app.get("/api/admin/models/analytics", dependencies=[Depends(require_admin)])
+    async def admin_models_analytics():
+        """Get model usage analytics."""
+        try:
+            with db_mgr._get_conn() as conn:
+                # Get model usage from telemetry logs
+                cursor = conn.execute("""
+                    SELECT 
+                        model_id,
+                        COUNT(*) as total_requests,
+                        COUNT(DISTINCT user_id) as unique_users,
+                        MIN(timestamp) as first_used,
+                        MAX(timestamp) as last_used
+                    FROM user_activity_logs 
+                    WHERE model_id IS NOT NULL
+                    GROUP BY model_id
+                    ORDER BY total_requests DESC
+                    LIMIT 20
+                """)
+                rows = cursor.fetchall()
+                
+                models = []
+                for row in rows:
+                    models.append({
+                        "model_id": row[0],
+                        "model_name": row[0].split(":")[-1] if ":" in row[0] else row[0],
+                        "total_requests": row[1],
+                        "unique_users": row[2],
+                        "first_used": row[3],
+                        "last_used": row[4],
+                        "total_tokens": 0,  # Would need separate tracking
+                        "avg_latency": 0,  # Would need separate tracking
+                        "error_count": 0,  # Would need separate tracking
+                        "success_rate": 95.0,  # Placeholder
+                        "cost_estimate": 0.0  # Would need pricing data
+                    })
+                
+                return models
+        except Exception as e:
+            return []
+
+    @app.get("/api/admin/user/activity", dependencies=[Depends(require_admin)])
+    async def admin_user_activity():
+        """Get user activity over time."""
+        try:
+            with db_mgr._get_conn() as conn:
+                # Get daily activity for last 7 days
+                cursor = conn.execute("""
+                    SELECT 
+                        DATE(timestamp) as date,
+                        COUNT(DISTINCT user_id) as active_users,
+                        COUNT(*) as total_messages,
+                        SUM(CASE WHEN action = 'register' THEN 1 ELSE 0 END) as new_registrations
+                    FROM user_activity_logs 
+                    WHERE timestamp >= datetime('now', '-7 days')
+                    GROUP BY DATE(timestamp)
+                    ORDER BY date ASC
+                """)
+                rows = cursor.fetchall()
+                
+                activity = []
+                for row in rows:
+                    activity.append({
+                        "date": row[0],
+                        "active_users": row[1],
+                        "total_messages": row[2],
+                        "new_registrations": row[3] or 0
+                    })
+                
+                return activity
+        except Exception as e:
+            return []
+
+    @app.get("/api/admin/security/events", dependencies=[Depends(require_admin)])
+    async def admin_security_events():
+        """Get security-related events."""
+        try:
+            with db_mgr._get_conn() as conn:
+                # Get failed login attempts and suspicious activity
+                cursor = conn.execute("""
+                    SELECT 
+                        id,
+                        action,
+                        user_id,
+                        email,
+                        ip_address,
+                        country,
+                        device_info,
+                        timestamp,
+                        'medium' as severity
+                    FROM user_activity_logs 
+                    WHERE action IN ('failed_login', 'login', 'blocked_attempt')
+                    ORDER BY timestamp DESC
+                    LIMIT 50
+                """)
+                rows = cursor.fetchall()
+                
+                events = []
+                for row in rows:
+                    event_type = 'failed_login' if 'failed' in (row[1] or '') else 'suspicious_activity'
+                    severity = 'high' if 'blocked' in (row[1] or '') else 'medium'
+                    
+                    events.append({
+                        "id": str(row[0]),
+                        "type": event_type,
+                        "user_id": row[2],
+                        "email": row[3],
+                        "ip_address": row[4] or '127.0.0.1',
+                        "country": row[5] or 'Unknown',
+                        "device_info": row[6],
+                        "timestamp": row[7],
+                        "severity": severity,
+                        "details": f"Action: {row[1]}"
+                    })
+                
+                return events
+        except Exception as e:
+            return []
+
+    @app.get("/api/admin/system/logs", dependencies=[Depends(require_admin)])
+    async def admin_system_logs():
+        """Get system logs."""
+        try:
+            # Return mock logs for now - in production, read from actual log files
+            logs = [
+                {
+                    "id": "1",
+                    "level": "info",
+                    "message": "System started successfully",
+                    "source": "server",
+                    "timestamp": time.time() - 3600
+                },
+                {
+                    "id": "2",
+                    "level": "info",
+                    "message": f"Active users: {len(db_mgr.get_all_users())}",
+                    "source": "auth",
+                    "timestamp": time.time() - 1800
+                }
+            ]
+            return logs
+        except Exception as e:
+            return []
+
+    # ==========================================
     # MCP Tools (Model Context Protocol — local stdio servers, no keys)
     # ==========================================
     class McpCallRequest(BaseModel):

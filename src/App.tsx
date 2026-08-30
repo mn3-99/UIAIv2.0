@@ -14,7 +14,7 @@ import {
   FilesModal, GemsModal, UpgradeModal, PromptEditModal, ProfileModal
 } from './components/MijlaiModals';
 import { AuthModal } from './components/AuthModal';
-import { AdminControlPanelModal } from './components/AdminControlPanelModal';
+import { AdminDashboard } from './components/AdminDashboard';
 import { ToastHost, toast } from './components/Toast';
 import { CommandPalette } from './components/CommandPalette';
 import { ArenaPairView } from './components/ArenaPairView';
@@ -1790,7 +1790,7 @@ ${h.text}`)
       />
 
       {/* Admin Control Panel & Monitoring Dashboard */}
-      <AdminControlPanelModal
+      <AdminDashboard
         isOpen={isAdminModalOpen}
         onClose={() => setIsAdminModalOpen(false)}
         currentUser={currentUser}

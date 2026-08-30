@@ -2135,6 +2135,38 @@ app.post(['/api/chat/completions', '/api/v1/chat/completions'], async (req, res)
     }
   }
 
+  // 1b) Remote MijlAI model (api.mhmodijla.com or direct IP)
+  if (model.startsWith('mhmodijla:') && process.env.MHMODIJLA_API_URL) {
+    const remoteModel = model.replace(/^mhmodijla:/, '');
+    const baseUrl = process.env.MHMODIJLA_API_URL.replace(/\/$/, '');
+    try {
+      const upstreamUrl = `${baseUrl}/v1/chat/completions`;
+      const body: any = { ...req.body, model: remoteModel, messages: injectMijlAiSystem(req.body.messages || []) };
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      console.log(`[Mhmodijla] Proxy: '${model}' -> ${upstreamUrl} model='${remoteModel}' stream=${stream}`);
+      const upstream = await fetch(upstreamUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+      if (!upstream.ok) {
+        const errText = await upstream.text();
+        return res.status(502).json({ error: { message: `فشل الاتصال بالخادم البعيد (${upstream.status}): ${errText.slice(0, 300)}`, type: 'mhmodijla_error' } });
+      }
+      res.status(200);
+      res.setHeader('Content-Type', upstream.headers.get('content-type') || (stream ? 'text/event-stream' : 'application/json'));
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('X-Accel-Buffering', 'no');
+      if (stream) {
+        if (!upstream.body) return res.status(500).json({ error: { message: 'No stream reader available' } });
+        await pipeUpstreamStream(req, res, upstream);
+        return;
+      } else {
+        const data = await upstream.json();
+        return res.json(data);
+      }
+    } catch (err: any) {
+      console.error('[Mhmodijla] Proxy error:', err?.message || err);
+      return res.status(500).json({ error: { message: err?.message || 'خطأ أثناء الاتصال بالخادم البعيد', type: 'mhmodijla_proxy_error' } });
+    }
+  }
+
   // 2) Local models (llama.cpp / Ollama / vLLM) via discovery
   if (model.startsWith('local:') || req.body.provider === 'llama' || getLocalModelInfo(model)) {
     try {

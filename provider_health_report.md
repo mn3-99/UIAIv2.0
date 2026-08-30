@@ -1,6 +1,6 @@
 # 📊 تقرير صحة واستقرار مزودي الذكاء الاصطناعي (AI Provider Health Report)
 
-**تاريخ التحديث:** `2026-08-30T02:33:57.682177+00:00`  
+**تاريخ التحديث:** `2026-08-30T19:29:24.567169+00:00`  
 **حالة النظام العامة:**  
 - 🔍 **إجمالي المزودين المكتشفين:** 45
 - ✅ **المزودون المستقرون (نسبة نجاح ≥ 70%):** 1
@@ -12,7 +12,7 @@
 ## 🏆 أفضل 10 مزودين استقرارًا (Top 10 Stable Providers)
 | # | المزود | النموذج | نسبة النجاح (24 ساعة) | متوسط الاستجابة | الحالة |
 |---|---|---|---|---|---|
-| 1 | **g4f-AutoRouter (gpt-4)** | `gpt-4` | **100.0%** | 1943.03ms | 🟢 مستقر |
+| 1 | **g4f-AutoRouter (gpt-4)** | `gpt-4` | **100.0%** | 1794.0ms | 🟢 مستقر |
 
 ---
 
@@ -24,26 +24,26 @@ _لم يتم اكتشاف مزودين جدد غير معروفين في هذه 
 ## ⚠️ المزودون الذين تم تخفيض ترتيبهم (< 70% Success Rate)
 | المزود | النموذج | نسبة النجاح | الفحوصات الناجحة / الإجمالي | حالة التخفيض |
 |---|---|---|---|---|
-| **AnyProvider** | `MijlAI-3.7-sonnet` | **0.0%** | 0/135 | 🔴 تم التخفيض |
-| **BlackForestLabs_Flux1Dev** | `MijlAI-3.7-sonnet` | **0.0%** | 0/135 | 🔴 تم التخفيض |
-| **BlackForestLabs_Flux1KontextDev** | `MijlAI-3.7-sonnet` | **0.0%** | 0/135 | 🔴 تم التخفيض |
-| **CachedSearch** | `MijlAI-3.7-sonnet` | **0.0%** | 0/135 | 🔴 تم التخفيض |
-| **Claude** | `MijlAI-3.7-sonnet` | **0.0%** | 0/135 | 🔴 تم التخفيض |
-| **CohereForAI_C4AI_Command** | `MijlAI-3.7-sonnet` | **0.0%** | 0/135 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (MijlAI-3-opus)** | `MijlAI-3-opus` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (MijlAI-3.5-haiku)** | `MijlAI-3.5-haiku` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (MijlAI-3.5-sonnet)** | `MijlAI-3.5-sonnet` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (MijlAI-3.7-sonnet)** | `MijlAI-3.7-sonnet` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (deepseek-r1)** | `deepseek-r1` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (deepseek-v3)** | `deepseek-v3` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (gpt-4o)** | `gpt-4o` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (gpt-4o-mini)** | `gpt-4o-mini` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (kimi)** | `kimi` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (kimi-k1.5)** | `kimi-k1.5` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (kimi-k3)** | `kimi-k3` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (moonshot)** | `moonshot` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (o3-mini)** | `o3-mini` | **0.0%** | 0/27 | 🔴 تم التخفيض |
-| **g4f-AutoRouter (qwen-2.5-coder-32b)** | `qwen-2.5-coder-32b` | **0.0%** | 0/27 | 🔴 تم التخفيض |
+| **AnyProvider** | `MijlAI-3.7-sonnet` | **0.0%** | 0/249 | 🔴 تم التخفيض |
+| **BlackForestLabs_Flux1Dev** | `MijlAI-3.7-sonnet` | **0.0%** | 0/246 | 🔴 تم التخفيض |
+| **BlackForestLabs_Flux1KontextDev** | `MijlAI-3.7-sonnet` | **0.0%** | 0/249 | 🔴 تم التخفيض |
+| **CachedSearch** | `MijlAI-3.7-sonnet` | **0.0%** | 0/248 | 🔴 تم التخفيض |
+| **Claude** | `MijlAI-3.7-sonnet` | **0.0%** | 0/249 | 🔴 تم التخفيض |
+| **CohereForAI_C4AI_Command** | `MijlAI-3.7-sonnet` | **0.0%** | 0/247 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (MijlAI-3-opus)** | `MijlAI-3-opus` | **0.0%** | 0/53 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (MijlAI-3.5-haiku)** | `MijlAI-3.5-haiku` | **0.0%** | 0/53 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (MijlAI-3.5-sonnet)** | `MijlAI-3.5-sonnet` | **0.0%** | 0/53 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (MijlAI-3.7-sonnet)** | `MijlAI-3.7-sonnet` | **0.0%** | 0/53 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (deepseek-r1)** | `deepseek-r1` | **0.0%** | 0/53 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (deepseek-v3)** | `deepseek-v3` | **0.0%** | 0/52 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (gpt-4o)** | `gpt-4o` | **0.0%** | 0/53 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (gpt-4o-mini)** | `gpt-4o-mini` | **0.0%** | 0/53 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (kimi)** | `kimi` | **0.0%** | 0/53 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (kimi-k1.5)** | `kimi-k1.5` | **0.0%** | 0/53 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (kimi-k3)** | `kimi-k3` | **0.0%** | 0/53 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (moonshot)** | `moonshot` | **0.0%** | 0/53 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (o3-mini)** | `o3-mini` | **0.0%** | 0/53 | 🔴 تم التخفيض |
+| **g4f-AutoRouter (qwen-2.5-coder-32b)** | `qwen-2.5-coder-32b` | **0.0%** | 0/52 | 🔴 تم التخفيض |
 
 ---
 
