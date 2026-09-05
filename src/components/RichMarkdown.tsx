@@ -1,5 +1,52 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import hljs from 'highlight.js/lib/common';
+// highlight.js core + hand-picked languages only (instead of lib/common's ~38
+// languages). Cuts vendor-markdown from ~237KB to ~200KB. Languages chosen for
+// typical chat content: js/ts/python/bash/json/html/css/sql + the other
+// mainstream languages common in dev chats + markdown/plaintext.
+import hljs from 'highlight.js/lib/core';
+import hlBash from 'highlight.js/lib/languages/bash';
+import hlC from 'highlight.js/lib/languages/c';
+import hlCpp from 'highlight.js/lib/languages/cpp';
+import hlCsharp from 'highlight.js/lib/languages/csharp';
+import hlCss from 'highlight.js/lib/languages/css';
+import hlDiff from 'highlight.js/lib/languages/diff';
+import hlDockerfile from 'highlight.js/lib/languages/dockerfile';
+import hlGo from 'highlight.js/lib/languages/go';
+import hlIni from 'highlight.js/lib/languages/ini';
+import hlJava from 'highlight.js/lib/languages/java';
+import hlJavascript from 'highlight.js/lib/languages/javascript';
+import hlJson from 'highlight.js/lib/languages/json';
+import hlMarkdown from 'highlight.js/lib/languages/markdown';
+import hlPhp from 'highlight.js/lib/languages/php';
+import hlPlaintext from 'highlight.js/lib/languages/plaintext';
+import hlPython from 'highlight.js/lib/languages/python';
+import hlRust from 'highlight.js/lib/languages/rust';
+import hlSql from 'highlight.js/lib/languages/sql';
+import hlTypescript from 'highlight.js/lib/languages/typescript';
+import hlXml from 'highlight.js/lib/languages/xml'; // covers html/xhtml
+import hlYaml from 'highlight.js/lib/languages/yaml';
+
+hljs.registerLanguage('javascript', hlJavascript); // aliases: js, jsx, mjs, cjs
+hljs.registerLanguage('typescript', hlTypescript); // aliases: ts, tsx, mts, cts
+hljs.registerLanguage('python', hlPython);         // aliases: py
+hljs.registerLanguage('bash', hlBash);             // aliases: sh, zsh, shell
+hljs.registerLanguage('json', hlJson);
+hljs.registerLanguage('xml', hlXml);               // aliases: html, xhtml, svg…
+hljs.registerLanguage('css', hlCss);
+hljs.registerLanguage('sql', hlSql);
+hljs.registerLanguage('markdown', hlMarkdown);     // aliases: md
+hljs.registerLanguage('plaintext', hlPlaintext);   // aliases: text, txt
+hljs.registerLanguage('c', hlC);
+hljs.registerLanguage('cpp', hlCpp);               // aliases: cc, c++, hpp…
+hljs.registerLanguage('csharp', hlCsharp);         // aliases: cs, c#
+hljs.registerLanguage('java', hlJava);
+hljs.registerLanguage('go', hlGo);                 // aliases: golang
+hljs.registerLanguage('rust', hlRust);             // aliases: rs
+hljs.registerLanguage('php', hlPhp);
+hljs.registerLanguage('yaml', hlYaml);             // aliases: yml
+hljs.registerLanguage('diff', hlDiff);
+hljs.registerLanguage('dockerfile', hlDockerfile);
+hljs.registerLanguage('ini', hlIni);               // aliases: toml
 import { renderSanitizedMarkdown } from '../utils/sanitizer';
 import { copyText } from '../utils/clipboard';
 
