@@ -106,8 +106,9 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
         }`}
       />
 
-      {/* Drawer — single full panel with every function; slides in from the right.
-          Fixed over the content so opening it never shifts the layout. */}
+      {/* Drawer — single full panel with every function; slides in from the inline-start
+          edge (right in RTL, left in LTR). Fixed over the content so opening it
+          never shifts the layout. translateX handled by .drawer-closed CSS var. */}
       <aside
         id="mijlai_sidebar"
         role="dialog"
@@ -116,8 +117,7 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
         aria-hidden={!isOpen}
         tabIndex={-1}
         inert={!isOpen}
-        style={{ transform: isOpen ? 'translateX(0)' : 'translateX(100%)' }}
-        className={`fixed top-0 bottom-0 right-0 z-50 flex h-full w-[300px] max-w-[85vw] flex-col bg-white shadow-2xl select-none transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]`}
+        className={`fixed top-0 bottom-0 start-0 z-50 flex h-full w-[300px] max-w-[85vw] flex-col bg-white shadow-2xl select-none transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${isOpen ? 'translate-x-0' : 'drawer-closed'}`}
       >
         {/* Header — logo + close */}
         <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-4">
@@ -163,17 +163,17 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
           {isHistoryOpen && (
             <section aria-label="سجل المحادثات" className="mt-3 border-t border-slate-100 pt-3">
               <div className="relative mb-2">
-                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+                <Search className="w-4 h-4 text-slate-400 absolute start-3 top-2.5" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="بحث في السجل..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl ps-9 pe-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500"
                 />
               </div>
 
-              <div className="space-y-1 max-h-[38vh] overflow-y-auto pl-1">
+              <div className="space-y-1 max-h-[38vh] overflow-y-auto pe-1">
                 {filteredChats.length === 0 ? (
                   <div className="text-center py-6 text-slate-400 text-xs">
                     {searchQuery ? 'لا توجد نتائج' : 'لا توجد محادثات مسجلة'}

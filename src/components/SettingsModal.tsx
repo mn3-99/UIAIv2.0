@@ -437,7 +437,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 
                 {loadingModels ? (
                   <div className="flex items-center justify-center py-4 text-slate-400 text-xs">
-                    <RefreshCw className="w-4 h-4 animate-spin text-emerald-400 mr-2" />
+                    <RefreshCw className="w-4 h-4 animate-spin text-emerald-400 me-2" />
                     جاري تحميل النماذج...
                   </div>
                 ) : modelsError ? (
@@ -511,7 +511,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {/* System (follows OS) */}
                 <button
                   onClick={() => handleThemeChange('system')}
-                  className={`p-4 rounded-xl border text-right transition-all space-y-2 ${
+                  className={`p-4 rounded-xl border text-start transition-all space-y-2 ${
                     settings.theme === 'system'
                       ? 'border-blue-500 bg-blue-500/10 shadow-lg'
                       : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
@@ -532,7 +532,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {/* Light */}
                 <button
                   onClick={() => handleThemeChange('light')}
-                  className={`p-4 rounded-xl border text-right transition-all space-y-2 ${
+                  className={`p-4 rounded-xl border text-start transition-all space-y-2 ${
                     settings.theme === 'light'
                       ? 'border-blue-500 bg-blue-500/10 shadow-lg'
                       : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
@@ -553,7 +553,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {/* Dark */}
                 <button
                   onClick={() => handleThemeChange('dark')}
-                  className={`p-4 rounded-xl border text-right transition-all space-y-2 ${
+                  className={`p-4 rounded-xl border text-start transition-all space-y-2 ${
                     settings.theme === 'dark'
                       ? 'border-blue-500 bg-blue-500/10 shadow-lg'
                       : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
@@ -574,7 +574,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {/* Theme A: Emerald Slate */}
                 <button
                   onClick={() => handleThemeChange('emerald-slate')}
-                  className={`p-4 rounded-xl border text-right transition-all space-y-2 ${
+                  className={`p-4 rounded-xl border text-start transition-all space-y-2 ${
                     settings.theme === 'emerald-slate'
                       ? 'border-emerald-500 bg-emerald-950/30 shadow-lg shadow-emerald-950/40'
                       : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
@@ -595,7 +595,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {/* Theme B: Obsidian Amber */}
                 <button
                   onClick={() => handleThemeChange('obsidian-amber')}
-                  className={`p-4 rounded-xl border text-right transition-all space-y-2 ${
+                  className={`p-4 rounded-xl border text-start transition-all space-y-2 ${
                     settings.theme === 'obsidian-amber'
                       ? 'border-amber-500 bg-amber-950/30 shadow-lg shadow-amber-950/40'
                       : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
@@ -688,7 +688,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   onClick={onExportBackup}
-                  className="p-4 bg-slate-950/60 border border-slate-800 hover:border-emerald-500/50 rounded-xl text-right space-y-1 transition-all"
+                  className="p-4 bg-slate-950/60 border border-slate-800 hover:border-emerald-500/50 rounded-xl text-start space-y-1 transition-all"
                 >
                   <div className="font-bold text-emerald-400">تصدير النسخة الاحتياطية (JSON)</div>
                   <div className="text-[11px] text-slate-400">تحميل كافة المحادثات والإعدادات في ملف واحد.</div>
@@ -696,7 +696,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <button
                   onClick={onImportBackup}
-                  className="p-4 bg-slate-950/60 border border-slate-800 hover:border-emerald-500/50 rounded-xl text-right space-y-1 transition-all"
+                  className="p-4 bg-slate-950/60 border border-slate-800 hover:border-emerald-500/50 rounded-xl text-start space-y-1 transition-all"
                 >
                   <div className="font-bold text-sky-400">استيراد نسخة احتياطية</div>
                   <div className="text-[11px] text-slate-400">استرجاع محادثات سابقة من ملف JSON.</div>

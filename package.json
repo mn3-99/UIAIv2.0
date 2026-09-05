@@ -10,7 +10,7 @@
     "analyze": "ANALYZE=1 vite build",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.cjs",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && node scripts/check-physical-props.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",

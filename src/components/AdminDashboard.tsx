@@ -364,7 +364,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="text-right mr-4">
+            <div className="text-start me-4">
               <div className="text-[10px] text-slate-400">آخر تحديث</div>
               <div className="text-xs font-bold text-slate-300">{new Date().toLocaleTimeString('ar-EG')}</div>
             </div>
@@ -563,13 +563,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-4">
                 <div className="relative flex-1">
-                  <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+                  <Search className="w-4 h-4 text-slate-400 absolute start-3 top-3" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="البحث باسم المستخدم، البريد، عنوان IP، أو نوع الجهاز..."
-                    className="w-full pr-9 pl-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    className="w-full ps-9 pe-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                   />
                 </div>
                 <div className="text-xs text-slate-500">
@@ -579,7 +579,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-right text-xs">
+                  <table className="w-full text-start text-xs">
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-bold">
                         <th className="p-3">المستخدم والبريد</th>
@@ -777,7 +777,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-right text-xs">
+                  <table className="w-full text-start text-xs">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
                         <th className="p-3">النوع</th>
@@ -956,7 +956,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
                 <div className="overflow-x-auto max-h-[60vh]">
-                  <table className="w-full text-right text-xs">
+                  <table className="w-full text-start text-xs">
                     <thead className="sticky top-0 bg-slate-50">
                       <tr className="border-b border-slate-200 text-slate-600 font-bold">
                         <th className="p-3">المستوى</th>

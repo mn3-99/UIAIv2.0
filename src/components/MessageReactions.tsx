@@ -71,7 +71,7 @@ export const MessageReactions: React.FC<MessageReactionsProps> = ({
           </button>
 
           {showPicker && (
-            <div className="absolute bottom-full left-0 mb-2 flex items-center gap-1 px-2 py-1.5 rounded-2xl bg-white border border-slate-200 shadow-xl scale-in-bounce z-50">
+            <div className="absolute bottom-full start-0 mb-2 flex items-center gap-1 px-2 py-1.5 rounded-2xl bg-white border border-slate-200 shadow-xl scale-in-bounce z-50">
               {REACTIONS.map((reaction) => (
                 <button
                   key={reaction.emoji}

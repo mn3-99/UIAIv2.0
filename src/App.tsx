@@ -1490,7 +1490,7 @@ ${h.text}`)
         {!focusMode && (
           <button
             onClick={() => { setFocusMode(true); setIsSidebarOpen(false); }}
-            className="absolute bottom-4 left-4 md:bottom-auto md:top-4 md:right-24 z-20 h-8 w-8 rounded-full bg-white/90 hover:bg-white text-slate-600 hover:text-blue-600 border border-slate-200/80 shadow-2xs hover:shadow-md flex items-center justify-center transition-all backdrop-blur-md"
+            className="absolute bottom-4 end-4 md:bottom-auto md:top-4 md:start-24 z-20 h-8 w-8 rounded-full bg-white/90 hover:bg-white text-slate-600 hover:text-blue-600 border border-slate-200/80 shadow-2xs hover:shadow-md flex items-center justify-center transition-all backdrop-blur-md"
             title="وضع التركيز الخالي من المشتتات (Ctrl+Shift+F)"
           >
             <Maximize2 className="w-3.5 h-3.5" />
@@ -1501,7 +1501,7 @@ ${h.text}`)
         {focusMode && (
           <button
             onClick={() => setFocusMode(false)}
-            className="absolute top-4 left-4 z-30 h-9 px-3 rounded-full bg-white/90 border border-slate-200 shadow-md flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-blue-600 transition-all backdrop-blur-md"
+            className="absolute top-4 end-4 z-30 h-9 px-3 rounded-full bg-white/90 border border-slate-200 shadow-md flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-blue-600 transition-all backdrop-blur-md"
             title="الخروج من وضع التركيز (Esc أو Ctrl+Shift+F)"
           >
             <Minimize2 className="w-3.5 h-3.5" />
@@ -1612,7 +1612,7 @@ ${h.text}`)
                           if (el) el.setSelectionRange(el.value.length, el.value.length);
                         });
                       }}
-                      className="group flex items-start gap-2.5 text-right p-3 bg-white/70 hover:bg-white border border-slate-200/80 hover:border-blue-300 rounded-2xl transition-all duration-200 active:scale-[0.98] shadow-sm hover:shadow-md text-xs text-slate-600 hover:text-slate-900"
+                      className="group flex items-start gap-2.5 text-start p-3 bg-white/70 hover:bg-white border border-slate-200/80 hover:border-blue-300 rounded-2xl transition-all duration-200 active:scale-[0.98] shadow-sm hover:shadow-md text-xs text-slate-600 hover:text-slate-900"
                     >
                       <span className="shrink-0 w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
                         <Icon className="w-3.5 h-3.5" />
@@ -1705,7 +1705,7 @@ ${h.text}`)
         {showScrollToBottom && (
           <button
             onClick={() => scrollToBottom(true)}
-            className="absolute bottom-20 left-6 p-2.5 bg-blue-600 text-white rounded-full shadow-lg transition-all z-20 hover:bg-blue-700"
+            className="absolute bottom-20 end-6 p-2.5 bg-blue-600 text-white rounded-full shadow-lg transition-all z-20 hover:bg-blue-700"
           >
             <ArrowDown className="w-4 h-4" />
           </button>

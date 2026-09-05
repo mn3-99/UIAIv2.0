@@ -137,7 +137,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
               aria-selected={idx === activeIdx}
               onMouseEnter={() => setActiveIdx(idx)}
               onClick={() => { onClose(); item.run(); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-right transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-start transition-colors ${
                 idx === activeIdx ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-100'
               }`}
             >

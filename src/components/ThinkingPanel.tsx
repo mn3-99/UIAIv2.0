@@ -81,7 +81,7 @@ export const ThinkingPanel: React.FC<ThinkingPanelProps> = React.memo(({ thinkin
         type="button"
         onClick={() => setExpanded(e => !e)}
         dir="rtl"
-        className="relative w-full flex items-center gap-2.5 px-4 py-3 text-right select-none hover:bg-white/40 dark:hover:bg-white/5 transition-colors"
+        className="relative w-full flex items-center gap-2.5 px-4 py-3 text-start select-none hover:bg-white/40 dark:hover:bg-white/5 transition-colors"
       >
         {/* Pulsing orb */}
         <span className={`relative flex items-center justify-center w-7 h-7 rounded-full shrink-0 ${isThinking ? 'animate-pulse' : ''}`}
