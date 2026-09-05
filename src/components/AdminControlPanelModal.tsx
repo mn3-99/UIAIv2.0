@@ -280,13 +280,13 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
               {/* Search input */}
               <div className="flex items-center justify-between gap-4">
                 <div className="relative flex-1">
-                  <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+                  <Search className="w-4 h-4 text-slate-400 absolute start-3 top-3" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="البحث باسم المستخدم، البريد، عنوان IP، أو نوع الجهاز..."
-                    className="w-full pr-9 pl-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    className="w-full ps-9 pe-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                   />
                 </div>
               </div>
@@ -294,7 +294,7 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
               {/* Users Table */}
               <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-2xs">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-right text-xs">
+                  <table className="w-full text-start text-xs">
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-bold">
                         <th className="p-3">اسم المستخدم والبريد</th>
@@ -395,12 +395,12 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
                   <span>سجل المحادثات النشطة بالمشروع</span>
                 </h3>
 
-                <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto pe-1">
                   {analytics?.recent_chats?.map((chat: any) => (
                     <div
                       key={chat.chat_id}
                       onClick={() => handleViewChatMessages(chat)}
-                      className={`p-3 rounded-xl border text-right cursor-pointer transition-all ${
+                      className={`p-3 rounded-xl border text-start cursor-pointer transition-all ${
                         selectedChat?.chat_id === chat.chat_id
                           ? 'bg-blue-50 border-blue-300 shadow-2xs'
                           : 'bg-slate-50/80 hover:bg-slate-100 border-slate-200/60'
@@ -447,7 +447,7 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
                             {msg.sender_role === 'user' ? 'سؤال المستخدم:' : 'رد MijlAI:'}
                           </div>
                           <div className="whitespace-pre-wrap">{msg.content}</div>
-                          <div className="text-[9px] opacity-60 mt-1 text-left">{new Date(msg.timestamp).toLocaleTimeString('ar-EG')}</div>
+                          <div className="text-[9px] opacity-60 mt-1 text-end">{new Date(msg.timestamp).toLocaleTimeString('ar-EG')}</div>
                         </div>
                       ))}
                     </div>
@@ -477,7 +477,7 @@ export const AdminControlPanelModal: React.FC<AdminControlPanelModalProps> = ({
 
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-right text-xs">
+                  <table className="w-full text-start text-xs">
                     <thead>
                       <tr className="bg-slate-900 text-white font-bold border-b border-slate-800">
                         <th className="p-3">التطبيق / النموذج</th>

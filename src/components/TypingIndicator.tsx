@@ -25,7 +25,7 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
               <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center shadow-emerald-500/20">
                 <Sparkles className="w-4 h-4 text-white" />
               </div>
-              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white pulse-ring" />
+              <span className="absolute -bottom-0.5 -end-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white pulse-ring" />
             </div>
             
             <div className="flex flex-col gap-1">

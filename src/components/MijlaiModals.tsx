@@ -72,7 +72,7 @@ export const FilesModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onMouseDown={backdropClose(onClose)}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="قاعدة المعرفة" tabIndex={-1} className="bg-white rounded-3xl w-full max-w-lg shadow-2xl p-6 relative animate-in fade-in zoom-in duration-200 max-h-[85vh] overflow-y-auto">
-        <button onClick={onClose} aria-label="إغلاق" className="absolute left-4 top-4 text-slate-400 hover:text-slate-600">
+        <button onClick={onClose} aria-label="إغلاق" className="absolute start-4 top-4 text-slate-400 hover:text-slate-600">
           <X className="w-5 h-5" />
         </button>
         <div className="flex items-center gap-2 mb-1">
@@ -157,7 +157,7 @@ export const GemsModal: React.FC<{
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onMouseDown={backdropClose(onClose)}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="شخصيات MijlAi" tabIndex={-1} className="bg-white rounded-3xl w-full max-w-xl shadow-2xl p-6 relative">
-        <button onClick={onClose} aria-label="إغلاق" className="absolute left-4 top-4 text-slate-400 hover:text-slate-600">
+        <button onClick={onClose} aria-label="إغلاق" className="absolute start-4 top-4 text-slate-400 hover:text-slate-600">
           <X className="w-5 h-5" />
         </button>
         <div className="flex items-center gap-2 mb-4">
@@ -171,7 +171,7 @@ export const GemsModal: React.FC<{
               <button
                 key={g.id}
                 onClick={() => { onSelectGem?.(isActive ? null : g.id); onClose(); }}
-                className={`text-right border rounded-2xl p-4 hover:shadow-md transition-all cursor-pointer ${
+                className={`text-start border rounded-2xl p-4 hover:shadow-md transition-all cursor-pointer ${
                   isActive ? 'border-purple-500 bg-purple-50/60 shadow-sm' : 'border-slate-200 hover:border-purple-300 bg-slate-50/50'
                 }`}
               >
@@ -200,7 +200,7 @@ export const UpgradeModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onMouseDown={backdropClose(onClose)}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="الترقية إلى Pro" tabIndex={-1} className="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 relative">
-        <button onClick={onClose} aria-label="إغلاق" className="absolute left-4 top-4 text-slate-400 hover:text-slate-600">
+        <button onClick={onClose} aria-label="إغلاق" className="absolute start-4 top-4 text-slate-400 hover:text-slate-600">
           <X className="w-5 h-5" />
         </button>
         <div className="text-center py-2 space-y-3">
@@ -209,7 +209,7 @@ export const UpgradeModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
           </div>
           <h3 className="font-bold text-xl text-slate-900">Mijlai Pro</h3>
           <p className="text-xs text-slate-500">احصل على سرعة غير محدودة، أولوية المعالجة، ونماذج التفكير المعقدة</p>
-          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-right text-xs space-y-2 text-slate-700">
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-start text-xs space-y-2 text-slate-700">
             <div className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /><span>وصول كامل لنماذج Thinking و Pro</span></div>
             <div className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /><span>رفع ملفات غير محدود بحد أقصى 2GB</span></div>
             <div className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-600" /><span>دعم Canvas التفاعلي المتطور</span></div>
@@ -243,7 +243,7 @@ export const PromptEditModal: React.FC<{
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onMouseDown={backdropClose(onClose)}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="تخصيص أسلوب الردود" tabIndex={-1} className="bg-white rounded-3xl w-full max-w-lg shadow-2xl p-6 relative">
-        <button onClick={onClose} aria-label="إغلاق" className="absolute left-4 top-4 text-slate-400 hover:text-slate-600">
+        <button onClick={onClose} aria-label="إغلاق" className="absolute start-4 top-4 text-slate-400 hover:text-slate-600">
           <X className="w-5 h-5" />
         </button>
         <div className="flex items-center gap-2 mb-3">
@@ -312,7 +312,7 @@ export const ProfileModal: React.FC<{
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onMouseDown={backdropClose(onClose)}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="الملف الشخصي" tabIndex={-1} className="bg-white rounded-3xl w-full max-w-sm shadow-2xl p-6 relative text-center max-h-[88vh] overflow-y-auto">
-        <button onClick={onClose} aria-label="إغلاق" className="absolute left-4 top-4 text-slate-400 hover:text-slate-600">
+        <button onClick={onClose} aria-label="إغلاق" className="absolute start-4 top-4 text-slate-400 hover:text-slate-600">
           <X className="w-5 h-5" />
         </button>
         <div className="w-16 h-16 rounded-full bg-[#1e8e3e] text-white text-2xl font-bold flex items-center justify-center mx-auto mb-3 shadow-md">
@@ -320,7 +320,7 @@ export const ProfileModal: React.FC<{
         </div>
         <h3 className="font-bold text-lg text-slate-900 mb-1">{userName}</h3>
 
-        <div className="text-right space-y-2 mb-4 mt-3">
+        <div className="text-start space-y-2 mb-4 mt-3">
           <label className="text-xs font-semibold text-slate-700">تعديل الاسم المعروض:</label>
           <input
             type="text"
@@ -331,7 +331,7 @@ export const ProfileModal: React.FC<{
         </div>
 
         {/* Long-term memory panel */}
-        <div className="text-right mb-4">
+        <div className="text-start mb-4">
           <button
             onClick={() => setShowFacts(v => !v)}
             className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-blue-300 transition-colors"
@@ -355,7 +355,7 @@ export const ProfileModal: React.FC<{
               ) : (
                 facts.map(f => (
                   <div key={f.id} className="flex items-center justify-between gap-2 bg-emerald-50/60 border border-emerald-100 rounded-xl px-2.5 py-2">
-                    <span className="text-[11px] text-slate-700 text-right leading-relaxed flex-1">{f.fact}</span>
+                    <span className="text-[11px] text-slate-700 text-start leading-relaxed flex-1">{f.fact}</span>
                     <button
                       onClick={() => forgetFact(f.id)}
                       title="أنسَ هذه المعلومة"

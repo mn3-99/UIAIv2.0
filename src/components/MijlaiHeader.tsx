@@ -62,9 +62,9 @@ export const MijlaiHeader: React.FC<{
 
   return (
     <div className="absolute inset-x-0 top-0 pointer-events-none">
-      {/* Menu toggle — top-left, opposite the right-side drawer so it never
-          collides with the open sidebar (RTL: drawer lives on the right). */}
-      <div className="absolute top-4 left-4 md:top-6 md:left-7 z-[60] pointer-events-auto">
+      {/* Menu toggle — on the inline-end side, opposite the drawer (which lives
+          on the inline-start side) so it never collides with the open sidebar. */}
+      <div className="absolute top-4 end-4 md:top-6 md:end-7 z-[60] pointer-events-auto">
         <button
           id="sidebar_toggle_btn"
           onClick={onToggleSidebar}
@@ -82,8 +82,8 @@ export const MijlaiHeader: React.FC<{
         </button>
       </div>
 
-      {/* Top-right actions (Provider status + Auth + Export + New Chat) */}
-      <div className="absolute top-4 right-4 md:top-6 md:right-7 z-10 flex items-center gap-2.5 pointer-events-auto">
+      {/* Top inline-start actions (Provider status + Auth + Export + New Chat) */}
+      <div className="absolute top-4 start-4 md:top-6 md:start-7 z-10 flex items-center gap-2.5 pointer-events-auto">
         {/* Live provider reliability indicator */}
         <span
           title={`${meta.label}${status.detail ? `\n${status.detail}` : ''}`}

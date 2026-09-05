@@ -109,12 +109,12 @@ export const SkillsManagerModal: React.FC<SkillsManagerModalProps> = ({
           <div className="flex-1" />
           {/* Search */}
           <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-3.5 h-3.5 absolute start-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="بحث..."
-              className="h-8 w-36 pr-8 pl-3 rounded-full bg-slate-100 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
+              className="h-8 w-36 ps-8 pe-3 rounded-full bg-slate-100 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
             />
           </div>
         </div>
@@ -194,7 +194,7 @@ export const SkillsManagerModal: React.FC<SkillsManagerModalProps> = ({
                           }`}
                         >
                           <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-200 ${
-                            item.enabled ? 'right-0.5' : 'right-4'
+                            item.enabled ? 'start-0.5' : 'start-4'
                           }}`} />
                         </button>
                       </div>

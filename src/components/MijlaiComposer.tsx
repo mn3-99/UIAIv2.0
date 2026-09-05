@@ -433,7 +433,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
             <button
               id="attachment_menu"
               onClick={() => setIsAttachOpen(!isAttachOpen)}
-              className="w-10 h-10 min-w-[40px] rounded-full flex items-center justify-center text-[#5f6368] hover:bg-[#f1f3f4] transition-colors ml-0.5"
+              className="w-10 h-10 min-w-[40px] rounded-full flex items-center justify-center text-[#5f6368] hover:bg-[#f1f3f4] transition-colors ms-0.5"
               title="إرفاق ملف أو وسائط"
             >
               <Plus className="w-5 h-5" strokeWidth={2} />
@@ -444,7 +444,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                 <button
                   id="upload_file"
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-right transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-start transition-colors"
                 >
                   <FileText className="w-4 h-4 text-blue-600" />
                   <span>رفع مستند أو ملف</span>
@@ -453,7 +453,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                 <button
                   id="upload_image"
                   onClick={() => imageInputRef.current?.click()}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-right transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-start transition-colors"
                 >
                   <Image className="w-4 h-4 text-emerald-600" />
                   <span>رفع صورة لتحليلها</span>
@@ -467,7 +467,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                       imageInputRef.current.click();
                     }
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-right transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-start transition-colors"
                 >
                   <Camera className="w-4 h-4 text-purple-600" />
                   <span>التقاط صورة مباشرة</span>
@@ -490,7 +490,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                       });
                     }
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-right transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-start transition-colors"
                 >
                   <Wand2 className="w-4 h-4 text-pink-600" />
                   <span>توليد صورة بالذكاء الاصطناعي</span>
@@ -534,7 +534,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
 
               {isTierOpen && (
                 <div
-                  className="absolute end-0 bottom-12 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-right animate-in fade-in zoom-in-95 duration-150 overflow-y-auto scroll-smooth"
+                  className="absolute end-0 bottom-12 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-start animate-in fade-in zoom-in-95 duration-150 overflow-y-auto scroll-smooth"
                   style={{ maxHeight: 'min(420px, 55vh)', overscrollBehavior: 'contain', scrollbarWidth: 'thin' }}
                   onWheel={(e) => {
                     const el = e.currentTarget;
@@ -554,7 +554,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                       <button
                         key={key}
                         onClick={() => { onSelectTier(key); setIsTierOpen(false); }}
-                        className={`w-full text-right p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${isSelected ? 'bg-blue-50 text-blue-700 font-semibold' : 'hover:bg-slate-100 text-slate-700'}`}
+                        className={`w-full text-start p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${isSelected ? 'bg-blue-50 text-blue-700 font-semibold' : 'hover:bg-slate-100 text-slate-700'}`}
                       >
                         <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${item.color}`} />
                         <div className="flex-1 min-w-0">
@@ -583,7 +583,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                           <button
                             key={m.id}
                             onClick={() => { onSelectTier(m.id); setIsTierOpen(false); }}
-                            className={`w-full text-right p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${isSelected ? 'bg-emerald-50 text-emerald-700 font-semibold' : 'hover:bg-slate-100 text-slate-700'}`}
+                            className={`w-full text-start p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${isSelected ? 'bg-emerald-50 text-emerald-700 font-semibold' : 'hover:bg-slate-100 text-slate-700'}`}
                           >
                             <Cpu className={`w-4 h-4 mt-0.5 shrink-0 ${isSelected ? 'text-emerald-600' : 'text-emerald-500'}`} />
                             <div>
@@ -622,7 +622,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                           <button
                             key={tier}
                             onClick={() => { onSelectArenaModel?.(side, tier); setArenaPickerOpen(null); }}
-                            className={`w-full text-right px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${value === tier ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-100'}`}
+                            className={`w-full text-start px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${value === tier ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-100'}`}
                           >
                             {arenaTierShort(tier)}
                           </button>

@@ -273,13 +273,13 @@ export const AdminControlPanel: React.FC = () => {
 
         {/* Live Search Input */}
         <div className="relative w-64">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+          <Search className="w-4 h-4 text-slate-400 absolute start-3 top-2.5" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="تصفية بالحساب، الجهاز، IP أو الدولة..."
-            className="w-full pr-9 pl-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+            className="w-full ps-9 pe-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all"
           />
         </div>
       </div>
@@ -296,7 +296,7 @@ export const AdminControlPanel: React.FC = () => {
         {activeSubTab === 'metrics' && (
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
             <div className="overflow-x-auto">
-              <table className="w-full text-right text-xs">
+              <table className="w-full text-start text-xs">
                 <thead>
                   <tr className="bg-slate-900 text-white font-bold border-b border-slate-800">
                     <th className="p-3.5">المستخدم والبريد</th>
@@ -442,7 +442,7 @@ export const AdminControlPanel: React.FC = () => {
                 <span>سجل الأحداث والاستعلامات الحية (Live Message Logs Stream)</span>
               </h3>
               <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs">
+                <table className="w-full text-start text-xs">
                   <thead>
                     <tr className="bg-slate-100 text-slate-600 font-bold border-b">
                       <th className="p-2.5">المستخدم</th>
@@ -486,7 +486,7 @@ export const AdminControlPanel: React.FC = () => {
                 <MessageSquare className="w-4 h-4 text-blue-600" />
                 <span>سجل المحادثات النشطة</span>
               </h3>
-              <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[55vh] overflow-y-auto pe-1">
                 {Array.isArray(analytics?.recent_chats) && analytics.recent_chats.map((chat: any) => (
                   <div
                     key={chat.chat_id}

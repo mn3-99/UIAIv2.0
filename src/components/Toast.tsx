@@ -104,8 +104,10 @@ export const ToastHost: React.FC = () => {
 
   if (items.length === 0) return null;
 
+  // inset-x-0 + flex items-center: horizontal centering without physical
+  // left/translate hacks, identical in RTL and LTR.
   return (
-    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] flex flex-col items-center gap-2 pointer-events-none" aria-live="polite">
+    <div className="fixed bottom-24 inset-x-0 z-[200] flex flex-col items-center gap-2 pointer-events-none" aria-live="polite">
       {items.map((item) => (
         <ToastRow key={item.id} item={item} onDismiss={handleDismiss} />
       ))}
