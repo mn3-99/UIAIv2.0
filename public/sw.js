@@ -8,7 +8,15 @@ const STATIC_ASSETS = [
   '/icon-512.png',
   '/icon-maskable-192.png',
   '/icon-maskable-512.png',
-  '/apple-touch-icon.png'
+  '/apple-touch-icon.png',
+  // Self-hosted fonts (offline-first) — keep in sync with src/fonts.css
+  '/fonts/cairo-arabic.woff2',
+  '/fonts/cairo-latin.woff2',
+  '/fonts/cairo-latin-ext.woff2',
+  '/fonts/jakarta-latin.woff2',
+  '/fonts/jakarta-latin-ext.woff2',
+  '/fonts/jakarta-cyrillic-ext.woff2',
+  '/fonts/jakarta-vietnamese.woff2'
 ];
 
 self.addEventListener('install', (event) => {
