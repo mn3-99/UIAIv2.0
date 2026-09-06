@@ -1121,3 +1121,18 @@ body[data-theme="obsidian-amber"] .glow-blue {
 @media (prefers-reduced-motion: reduce) {
   .send-btn::after { animation: none; }
 }
+
+/* ── زر الإيقاف أثناء التوليد (stop_btn) ─────────────────────────────────
+   Explicit red gradient (no white pulse-ring disc that used to render as a
+   white "layer" over the button on mobile while waiting for the reply). */
+.stop-btn {
+  background-color: #dc2626; /* fallback */
+  background-image: linear-gradient(135deg, #f43f5e 0%, #dc2626 55%, #b91c1c 100%);
+  box-shadow: 0 6px 18px -6px rgba(239, 68, 68, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+    filter 0.18s ease, box-shadow 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.stop-btn:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.stop-btn:active { transform: scale(0.9); }
+.stop-btn svg { color: #fff; }

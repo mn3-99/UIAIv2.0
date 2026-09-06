@@ -625,7 +625,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
           {isGenerating ? (
             <button
               onClick={onStop}
-              className="w-10 h-10 min-h-[42px] sm:min-h-0 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-500 transition-all shadow-sm press-effect pulse-ring relative self-end mb-0.5 shrink-0"
+              className="stop-btn w-10 h-10 min-h-[42px] sm:min-h-0 rounded-full text-white flex items-center justify-center transition-all press-effect self-end mb-0.5 shrink-0"
               title="النموذج يعمل — اضغط للإيقاف"
               aria-label="النموذج يعمل حالياً، اضغط للإيقاف"
             >
