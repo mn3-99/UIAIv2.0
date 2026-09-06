@@ -4,13 +4,14 @@ import {
   Smartphone, Monitor, Globe, Search, Database, RefreshCw, BarChart2, Cpu, CheckCircle2,
   Sparkles, Layers, Download, AlertTriangle, Clock, TrendingUp, Zap, Server,
   Lock, Unlock, FileText, PieChart, ArrowUpRight, ArrowDownRight, Wifi, WifiOff,
-  Terminal, HardDrive, MemoryStick, Thermometer, BarChart, LineChart, AreaChart, Coins
+  Terminal, HardDrive, MemoryStick, Thermometer, BarChart, LineChart, AreaChart, Coins, Radio
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { useModalA11y } from '../utils/useModalA11y';
 import { toast } from './Toast';
 import { AuditLog } from './admin/AuditLog';
 import { UserDossier } from './admin/UserDossier';
+import { LiveActivity } from './admin/LiveActivity';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -18,7 +19,7 @@ interface AdminDashboardProps {
   currentUser: UserAccount | null;
 }
 
-type DashboardTab = 'overview' | 'users' | 'analytics' | 'security' | 'system' | 'logs' | 'settings' | 'audit';
+type DashboardTab = 'overview' | 'users' | 'analytics' | 'security' | 'system' | 'logs' | 'settings' | 'audit' | 'live';
 
 interface SystemHealth {
   status: 'healthy' | 'degraded' | 'down';
@@ -438,6 +439,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             { id: 'analytics', label: 'التحليلات', icon: BarChart2, color: 'from-purple-500 to-pink-500' },
             { id: 'security', label: 'الأمان', icon: Lock, color: 'from-red-500 to-orange-500' },
             { id: 'audit', label: 'التدقيق', icon: FileText, color: 'from-indigo-500 to-violet-500' },
+            { id: 'live', label: 'نشاط حي', icon: Radio, color: 'from-emerald-500 to-lime-500' },
             { id: 'system', label: 'النظام', icon: Server, color: 'from-cyan-500 to-blue-500' },
             { id: 'logs', label: 'السجلات', icon: Terminal, color: 'from-amber-500 to-yellow-500' },
             { id: 'settings', label: 'الإعدادات', icon: Settings, color: 'from-slate-500 to-gray-600' }
@@ -1131,6 +1133,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* Audit trail tab */}
           {activeTab === 'audit' && <AuditLog authFetch={authFetch} />}
+
+          {/* Live activity tab */}
+          {activeTab === 'live' && <LiveActivity authFetch={authFetch} />}
         </div>
 
         {/* Per-user control dossier drawer */}
