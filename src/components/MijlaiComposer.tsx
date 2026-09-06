@@ -3,11 +3,12 @@ import {
   Plus, Mic, MicOff, ChevronDown, FileText, Image,
   Camera, Send, Sparkles, Brain, Zap, Square,
   Globe, GripHorizontal, Cpu, Code, CornerDownLeft, Wand2,
-  X, Loader2, Swords, Rocket
+  X, Loader2, Swords, Rocket, Paperclip
 } from 'lucide-react';
 import { generateCompletions } from '../utils/completions';
 import { BookOpen } from 'lucide-react';
 import { TIERS, isGuestTier } from '../models/tiers';
+import { useComposerFocus } from './ComposerFocusContext';
 import { toast } from './Toast';
 
 interface MijlaiComposerProps {
@@ -73,6 +74,18 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
   const [isTierOpen, setIsTierOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
+
+  // Register a focus helper so the app (starter chips, plugin actions) can focus
+  // the composer via context instead of document.getElementById('main_input').
+  const { registerTextarea, focusComposer } = useComposerFocus();
+  useEffect(() => {
+    return registerTextarea(() => {
+      const ta = textareaRef.current;
+      ta?.focus();
+      ta?.setSelectionRange(ta.value.length, ta.value.length);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // True while a file is being dragged over the composer (drop-to-attach)
   const [isDropTarget, setIsDropTarget] = useState(false);
   const dragDepthRef = useRef(0);
@@ -328,7 +341,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
       <div
         className={`w-full bg-surface/95 rounded-3xl border transition-all duration-300 group relative flex flex-col shadow-md hover:shadow-xl hover-lift pb-safe ${
           isDropTarget
-            ? 'border-accent ring-4 ring-accent/50 shadow-xl scale-[1.01] glow-blue'
+            ? 'border-accent ring-4 ring-accent/50 shadow-xl scale-[1.01]'
             : isDragging
               ? 'border-accent shadow-blue-100 ring-2 ring-accent/35'
               : 'border-line/90'
@@ -361,7 +374,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
         {/* Drop overlay hint */}
         {isDropTarget && (
           <div className="absolute inset-0 z-10 rounded-3xl bg-accent-soft/80 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
-            <span className="text-sm font-bold text-accent">أفلت الملف هنا لإرفاقه 📎</span>
+            <span className="text-sm font-bold text-accent flex items-center gap-1.5"><Paperclip className="w-4 h-4" /> أفلت الملف هنا لإرفاقه</span>
           </div>
         )}
 
@@ -461,11 +474,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                       // No description yet — guide the user instead of a blocking prompt()
                       setInput('توليد صورة: ');
                       toast.info('اكتب وصف الصورة التي تريدها ثم أرسلها للتوليد');
-                      requestAnimationFrame(() => {
-                        const ta = document.getElementById('main_input') as HTMLTextAreaElement | null;
-                        ta?.focus();
-                        if (ta) ta.setSelectionRange(ta.value.length, ta.value.length);
-                      });
+                      requestAnimationFrame(() => focusComposer());
                     }
                   }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-card rounded-xl text-start transition-colors"

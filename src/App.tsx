@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowDown, Maximize2, Minimize2, SquarePen, Settings as SettingsIcon, Folder as FolderIcon, LayoutGrid as LayoutGridIcon, Download, Moon } from 'lucide-react';
+import { ArrowDown, Maximize2, Minimize2, SquarePen, Settings as SettingsIcon, Folder as FolderIcon, LayoutGrid as LayoutGridIcon, Download, Moon, Sparkles, X } from 'lucide-react';
 
 import { MijlaiSidebar } from './components/MijlaiSidebar';
 import { MijlaiHeader } from './components/MijlaiHeader';
@@ -28,6 +28,7 @@ import { loadSettings, loadChats, exportBackup, importBackup, hashPassword, safe
 import { tierToModelId, modelIdToTier } from './models/tiers';
 import { useChatEngine } from './hooks/useChatEngine';
 import { useChatPersistence } from './hooks/useChatPersistence';
+import { useComposerFocus } from './components/ComposerFocusContext';
 
 import { ChatSession, AppSettings, UserAccount } from './types';
 import { APP_CONFIG } from './config';
@@ -90,6 +91,8 @@ export default function App() {
       .map((m) => ({ id: m.id, name: m.name })),
     [availableModels]
   );
+
+  const { focusComposer } = useComposerFocus();
 
   // ── Persistence: drafts, localStorage, cloud sync, session restore ──
   useChatPersistence({
@@ -185,7 +188,7 @@ export default function App() {
         } else {
           setInput('توليد صورة: ');
           toast.info('اكتب وصف الصورة التي تريدها ثم أرسلها');
-          document.getElementById('main_input')?.focus();
+          focusComposer();
         }
         break;
       case 'tts':
@@ -502,11 +505,7 @@ export default function App() {
               onLogoClick={() => setSelectedTier('flash')}
               onPickPrompt={(text) => {
                 setInput(text);
-                requestAnimationFrame(() => {
-                  const el = document.getElementById('main_input') as HTMLTextAreaElement | null;
-                  el?.focus();
-                  if (el) el.setSelectionRange(el.value.length, el.value.length);
-                });
+                requestAnimationFrame(() => focusComposer());
               }}
               composer={<ComposerSlot variant="hero" engine={engine} ui={composerUi} />}
             />
@@ -516,9 +515,10 @@ export default function App() {
           {activeGemId && (
             <div className="w-full flex justify-center px-4 pt-2">
               <span className="inline-flex items-center gap-2 text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-600/10 text-purple-700 border border-purple-500/30">
-                <span>✦ شخصية نشطة: {GEMS.find(g => g.id === activeGemId)?.title}</span>
+                <Sparkles className="w-3 h-3" />
+                <span>شخصية نشطة: {GEMS.find(g => g.id === activeGemId)?.title}</span>
                 <button onClick={() => setActiveGemId(null)} aria-label="إلغاء الشخصية" className="hover:text-purple-900 transition-colors">
-                  ✕
+                  <X className="w-3 h-3" />
                 </button>
               </span>
             </div>

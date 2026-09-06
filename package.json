@@ -11,6 +11,7 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit && node scripts/check-physical-props.mjs",
+    "guard": "node scripts/ui-guardrails.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",

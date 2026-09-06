@@ -11,7 +11,7 @@ const SkeletonMessage: React.FC<SkeletonMessageProps> = ({ isUser = false }) => 
       <div className={`relative px-5 py-4.5 sm:px-6 sm:py-5 ${
         isUser
           ? 'bg-gradient-to-br from-blue-100 to-blue-200 rounded-[28px] rounded-br-md'
-          : 'bg-white/95 border border-slate-200/80 rounded-[28px] rounded-bl-md backdrop-blur-md'
+          : 'bg-white/95 border border-slate-200/80 rounded-[28px] rounded-bl-md'
       }`}>
         <div className="flex items-center gap-2 mb-3">
           <div className={`w-7 h-7 rounded-full skeleton ${
