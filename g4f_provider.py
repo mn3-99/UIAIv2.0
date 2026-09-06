@@ -137,6 +137,8 @@ MODEL_PROVIDER_ROUTES: Dict[str, List[str]] = {
 
 def resolve_providers_for_model(model_id: str) -> List[Any]:
     """Return ordered list of instantiated-capable provider classes for a model."""
+    if not G4F_AVAILABLE:
+        return []
     names = MODEL_PROVIDER_ROUTES.get(model_id, []) + DEFAULT_PROVIDER_ORDER
     resolved, seen = [], set()
     for name in names:
@@ -879,8 +881,9 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
                 add(mid, provider)
 
         # Ultimate safety nets (probed working endpoints with their native models)
-        add("gpt-4o-mini", g4f.Provider.Yqcloud)
-        add("command-a", g4f.Provider.CohereForAI_C4AI_Command)
+        if G4F_AVAILABLE:
+            add("gpt-4o-mini", g4f.Provider.Yqcloud)
+            add("command-a", g4f.Provider.CohereForAI_C4AI_Command)
         return attempts
 
     if stream:
