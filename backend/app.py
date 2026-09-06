@@ -495,7 +495,7 @@ if FASTAPI_AVAILABLE and app is not None:
 
     @app.get("/api/admin/quotas", dependencies=[Depends(require_admin)])
     async def admin_quotas():
-        return {"quotas": db_mgr.list_quotas()}
+        return {"default_limit": getattr(db_mgr, "DEFAULT_DAILY_QUOTA", 400), "quotas": db_mgr.list_quotas()}
 
     @app.post("/api/admin/user/{user_id}/quota", dependencies=[Depends(require_admin)])
     async def admin_set_quota(user_id: str, req: QuotaRequest, payload: dict = Depends(require_admin)):

@@ -10,6 +10,9 @@ from security.auth import SecureAuthManager
 logger = logging.getLogger("db_manager")
 DB_PATH = "app_database.db"
 
+# Big default daily quota granted to every user (admin can override per user, 0 = unlimited).
+DEFAULT_DAILY_QUOTA = 400
+
 class ActiveModelManager:
     """
     نظام لإدارة وقاعدة بيانات الموديلات المؤكدة والمفعلة (active_verified_models)
@@ -1038,19 +1041,27 @@ class ActiveModelManager:
             return False
 
     def consume_user_usage(self, user_id: str, n: int = 1) -> Dict[str, Any]:
-        """Rolls over per day; returns current {daily_limit, used, allowed}."""
+        """Rolls over per day; returns current {daily_limit, used, allowed}.
+        Every user gets a big DEFAULT_DAILY_QUOTA even before an admin touches
+        their row (a row is created lazily on first use)."""
         today = datetime.now().strftime('%Y-%m-%d')
         with self._get_conn() as conn:
             row = conn.execute(
                 "SELECT daily_limit, used, period_start FROM user_quotas WHERE user_id = ?", (user_id,)
             ).fetchone()
-            if not row:
-                return {"allowed": True, "daily_limit": 0, "used": 0}
-            daily_limit, used, period = row["daily_limit"], row["used"], row["period_start"]
-            if period != today:
+            if row:
+                daily_limit, used, period = row["daily_limit"], row["used"], row["period_start"]
+                if period != today:
+                    used = 0
+                    conn.execute("UPDATE user_quotas SET used = ?, period_start = ? WHERE user_id = ?",
+                                 (0, today, user_id))
+            else:
+                daily_limit = DEFAULT_DAILY_QUOTA
                 used = 0
-                conn.execute("UPDATE user_quotas SET used = ?, period_start = ? WHERE user_id = ?",
-                             (0, today, user_id))
+                conn.execute(
+                    "INSERT INTO user_quotas (user_id, daily_limit, used, period_start) VALUES (?, ?, 0, ?)",
+                    (user_id, int(daily_limit), today)
+                )
             if daily_limit and daily_limit > 0 and used + int(n) > daily_limit:
                 return {"allowed": False, "daily_limit": daily_limit, "used": used}
             conn.execute("UPDATE user_quotas SET used = used + ? WHERE user_id = ?", (int(n), user_id))
