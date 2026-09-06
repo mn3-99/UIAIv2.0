@@ -20,6 +20,9 @@ export const AuditLog: React.FC<{ authFetch: AuthFetch }> = ({ authFetch }) => {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [searchQ, setSearchQ] = useState('');
+  const [searchResults, setSearchResults] = useState<any[] | null>(null);
+  const [searching, setSearching] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,8 +48,24 @@ export const AuditLog: React.FC<{ authFetch: AuthFetch }> = ({ authFetch }) => {
   const actionLabel = (a: string) =>
     ({ 'user.role_or_status': 'تغيير صلاحية/حالة', 'user.delete': 'حذف مستخدم',
        'chat.delete': 'حذف محادثة', 'system.settings': 'تعديل إعدادات',
-       'system.db.vacuum': 'صيانة قاعدة البيانات',
+       'system.db.vacuum': 'صيانة قاعدة البيانات', 'system.backup': 'نسخة احتياطية',
        'memory.fact.delete': 'حذف ذكرى', 'rag.document.delete': 'حذف مستند RAG' } as Record<string, string>)[a] || a;
+
+  const doSearch = async () => {
+    if (!searchQ.trim() || searchQ.trim().length < 2) return;
+    setSearching(true);
+    try {
+      const res = await authFetch(`/api/admin/search?q=${encodeURIComponent(searchQ.trim())}&limit=60`);
+      if (!res.ok) throw new Error();
+      const j = await res.json();
+      setSearchResults(Array.isArray(j.results) ? j.results : []);
+    } catch {
+      toast.error('فشل البحث');
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -74,6 +93,40 @@ export const AuditLog: React.FC<{ authFetch: AuthFetch }> = ({ authFetch }) => {
             تحديث
           </button>
         </div>
+      </div>
+
+      <div className="bg-gradient-to-l from-indigo-50 to-violet-50 border border-indigo-100 rounded-2xl p-3 space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            value={searchQ}
+            onChange={(e) => { setSearchQ(e.target.value); setSearchResults(null); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') void doSearch(); }}
+            placeholder="بحث شامل في كل محادثات كل المستخدمين (طبّق Enter)…"
+            className="flex-1 min-w-[200px] px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+          <button
+            onClick={() => void doSearch()}
+            disabled={searching || searchQ.trim().length < 2}
+            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1.5"
+          >
+            <Search className="w-3.5 h-3.5" /> {searching ? 'جارٍ البحث…' : 'بحث شامل'}
+          </button>
+        </div>
+        {searchResults !== null && (
+          <div className="bg-white/80 rounded-xl border border-indigo-100 max-h-60 overflow-y-auto">
+            {searchResults.length === 0 && <p className="p-3 text-[11px] text-slate-400">لا نتائج.</p>}
+            {searchResults.map((r: any, i: number) => (
+              <div key={i} className="px-3 py-2 border-b border-slate-100 last:border-0 text-[11px]">
+                <div className="flex items-center gap-2 text-slate-500">
+                  <span className="font-bold text-indigo-600">{r.user_email || r.user_id || '—'}</span>
+                  <span className="text-slate-400">{r.sender_role === 'user' ? 'مستخدم' : 'MijlAi'}</span>
+                  <code className="text-[9px] bg-slate-100 px-1 rounded">{String(r.chat_id || '').slice(0, 24)}</code>
+                </div>
+                <p className="text-slate-700 mt-0.5 break-words">{String(r.content || '').slice(0, 400)}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-sm">

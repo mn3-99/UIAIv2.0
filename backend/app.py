@@ -455,12 +455,28 @@ if FASTAPI_AVAILABLE and app is not None:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"فشلت الصيانة: {e}")
 
-    # ==========================================
-    # Admin Super-Control (2026): audit trail, per-user dossier, content control
-    # ==========================================
+    @app.get("/api/admin/backup", dependencies=[Depends(require_admin)])
+    async def admin_backup(payload: dict = Depends(require_admin)):
+        """Consistent SQLite snapshot download (WAL-safe via backup API)."""
+        from fastapi.responses import FileResponse
+        path = db_mgr.create_backup()
+        if not path:
+            raise HTTPException(status_code=500, detail="فشل إنشاء النسخة الاحتياطية")
+        db_mgr.add_admin_audit(
+            payload.get("user_id"), payload.get("email"), "system.backup",
+            "system", None, f"downloaded {os.path.basename(path)}"
+        )
+        return FileResponse(path, media_type="application/octet-stream",
+                            filename=os.path.basename(path))
     @app.get("/api/admin/audit", dependencies=[Depends(require_admin)])
     async def admin_audit(limit: int = 120):
         return {"events": db_mgr.get_admin_audit(limit=min(max(limit, 1), 500))}
+
+    @app.get("/api/admin/search", dependencies=[Depends(require_admin)])
+    async def admin_search(q: str = "", limit: int = 60):
+        """Search any message content across all users (admin forensic search)."""
+        results = db_mgr.search_all_messages(q, limit=min(max(limit, 1), 200))
+        return {"query": q, "results": results}
 
     @app.get("/api/admin/user/{user_id}/dossier", dependencies=[Depends(require_admin)])
     async def admin_user_dossier(user_id: str):

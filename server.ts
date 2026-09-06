@@ -1781,6 +1781,30 @@ app.use(['/api/auth', '/api/admin', '/api/sync', '/api/memory', '/api/rag', '/ap
     }
 
     const fastRes = await fetch(targetUrl, options);
+
+    // Binary/download passthrough (e.g. DB backup) — proxy must not JSON-parse it.
+    if ((req.originalUrl || req.path).includes('/api/admin/backup')) {
+      if (!fastRes.ok) {
+        return res.status(fastRes.status).json({ error: 'فشل إنشاء النسخة الاحتياطية' });
+      }
+      const ct = fastRes.headers.get('content-type');
+      const cd = fastRes.headers.get('content-disposition');
+      if (ct) res.setHeader('Content-Type', ct);
+      if (cd) res.setHeader('Content-Disposition', cd);
+      res.status(200);
+      const reader = fastRes.body?.getReader();
+      if (reader) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            res.write(Buffer.from(value));
+          }
+        } catch { /* ignore stream error */ }
+      }
+      return res.end();
+    }
+
     const text = await fastRes.text();
     try {
       const data = JSON.parse(text);

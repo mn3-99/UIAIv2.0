@@ -951,3 +951,40 @@ class ActiveModelManager:
                 return True
         except Exception:
             return False
+
+    def create_backup(self, target_path: str = None) -> Optional[str]:
+        """Consistent SQLite snapshot (safe with WAL) via the backup API."""
+        try:
+            if not target_path:
+                os.makedirs("workspaces", exist_ok=True)
+                target_path = f"workspaces/backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            src = sqlite3.connect(self.db_path)
+            dst = sqlite3.connect(target_path)
+            with dst:
+                src.backup(dst)
+            src.close()
+            dst.close()
+            return target_path
+        except Exception as e:
+            logger.warning(f"backup failed: {e}")
+            return None
+
+    def search_all_messages(self, q: str, limit: int = 60) -> List[Dict[str, Any]]:
+        """Admin full-text-ish search across every user's chat messages."""
+        q = (q or "").strip()
+        if not q or len(q) < 2:
+            return []
+        like = f"%{q}%"
+        try:
+            with self._get_conn() as conn:
+                rows = conn.execute(
+                    "SELECT m.id, m.chat_id, m.user_id, m.sender_role, m.content, m.model_id, m.timestamp, "
+                    "       c.title AS chat_title, c.email AS user_email "
+                    "FROM message_records m LEFT JOIN chat_records c ON c.chat_id = m.chat_id AND c.user_id = m.user_id "
+                    "WHERE m.content LIKE ? ORDER BY m.id DESC LIMIT ?",
+                    (like, int(limit))
+                ).fetchall()
+                return [dict(r) for r in rows]
+        except Exception as e:
+            logger.warning(f"search_all_messages failed: {e}")
+            return []

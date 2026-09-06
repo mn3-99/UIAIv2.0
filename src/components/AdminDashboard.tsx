@@ -230,6 +230,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   }, [authFetch]);
 
+  const downloadBackup = useCallback(async () => {
+    try {
+      const res = await authFetch('/api/admin/backup');
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `mijlai_backup_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '_')}.db`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success('تم تحميل النسخة الاحتياطية');
+    } catch {
+      toast.error('فشل إنشاء النسخة الاحتياطية');
+    }
+  }, [authFetch]);
+
   // User management functions
   const handleUpdateRoleOrStatus = useCallback(async (userId: string, role?: string, status?: string) => {
     try {
@@ -1053,7 +1072,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     />
                   </div>
 
-                  <div className="pt-4 border-t flex justify-between">
+                  <div className="pt-4 border-t flex flex-wrap gap-2 justify-between">
                     <button
                       onClick={saveSystemSettings}
                       disabled={settingsSaving || !settingsLoaded}
@@ -1062,14 +1081,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {settingsSaving ? 'جاري الحفظ…' : 'حفظ التغييرات'}
                     </button>
 
-                    <button
-                      onClick={runDbVacuum}
-                      disabled={vacuuming}
-                      className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-bold transition-all flex items-center gap-1.5"
-                    >
-                      <Database className="w-4 h-4 text-slate-500" />
-                      <span>{vacuuming ? 'جاري الصيانة…' : 'ضغط وتنظيف DB'}</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => void downloadBackup()}
+                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all flex items-center gap-1.5 shadow-sm"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>نسخة احتياطية DB</span>
+                      </button>
+                      <button
+                        onClick={runDbVacuum}
+                        disabled={vacuuming}
+                        className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-bold transition-all flex items-center gap-1.5"
+                      >
+                        <Database className="w-4 h-4 text-slate-500" />
+                        <span>{vacuuming ? 'جاري الصيانة…' : 'ضغط وتنظيف DB'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

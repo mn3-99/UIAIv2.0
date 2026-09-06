@@ -28,6 +28,26 @@ export const UserDossier: React.FC<{ userId: string; authFetch: AuthFetch; onClo
     const [loading, setLoading] = useState(true);
     const [tab, setTab] = useState<'chats' | 'memory' | 'rag'>('chats');
     const [confirmId, setConfirmId] = useState<string | null>(null);
+    const [openChat, setOpenChat] = useState<string | null>(null);
+    const [chatMsgs, setChatMsgs] = useState<Record<string, any[]>>({});
+    const [loadingMsgs, setLoadingMsgs] = useState(false);
+
+    const toggleChatMsgs = async (chatId: string) => {
+      if (openChat === chatId) { setOpenChat(null); return; }
+      setOpenChat(chatId);
+      if (chatMsgs[chatId]) return;
+      setLoadingMsgs(true);
+      try {
+        const res = await authFetch(`/api/admin/chat_messages/${encodeURIComponent(chatId)}`);
+        if (!res.ok) throw new Error();
+        const j = await res.json();
+        setChatMsgs((p) => ({ ...p, [chatId]: Array.isArray(j) ? j : (j.messages || []) }));
+      } catch {
+        toast.error('تعذر تحميل رسائل المحادثة');
+      } finally {
+        setLoadingMsgs(false);
+      }
+    };
 
     const load = useCallback(async () => {
       setLoading(true);
@@ -110,17 +130,33 @@ export const UserDossier: React.FC<{ userId: string; authFetch: AuthFetch; onClo
                   <Section title={`محادثات (${data.chats.length})`} icon={<MessageSquare className="w-3.5 h-3.5 text-indigo-500" />}>
                     {data.chats.length === 0 && <p className="text-xs text-slate-400">لا توجد محادثات.</p>}
                     {data.chats.map((c: any) => (
-                      <div key={c.chat_id} className="flex items-center justify-between gap-2 bg-white rounded-xl border border-slate-200 px-3 py-2">
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-slate-700 truncate">{c.title || c.chat_id}</div>
-                          <div className="text-[10px] text-slate-400">{c.message_count} رسالة · {c.updated_at || ''} {c.deleted ? '· (محذوف)' : ''}</div>
+                      <div key={c.chat_id} className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2 bg-white rounded-xl border border-slate-200 px-3 py-2">
+                          <button onClick={() => void toggleChatMsgs(c.chat_id)} className="min-w-0 text-start flex-1">
+                            <div className="text-xs font-bold text-slate-700 truncate">{c.title || c.chat_id}</div>
+                            <div className="text-[10px] text-slate-400">{c.message_count} رسالة · {c.updated_at || ''} {c.deleted ? '· (محذوف)' : ''}</div>
+                          </button>
+                          <button
+                            onClick={() => confirmId === c.chat_id ? del(`/api/admin/user/${userId}/chat/${encodeURIComponent(c.chat_id)}`) : setConfirmId(c.chat_id)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${confirmId === c.chat_id ? 'bg-red-600 text-white' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
+                          >
+                            {confirmId === c.chat_id ? 'تأكيد' : <Trash2 className="w-3 h-3" />}
+                          </button>
                         </div>
-                        <button
-                          onClick={() => confirmId === c.chat_id ? del(`/api/admin/user/${userId}/chat/${encodeURIComponent(c.chat_id)}`) : setConfirmId(c.chat_id)}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${confirmId === c.chat_id ? 'bg-red-600 text-white' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
-                        >
-                          {confirmId === c.chat_id ? 'تأكيد' : <Trash2 className="w-3 h-3" />}
-                        </button>
+                        {openChat === c.chat_id && (
+                          <div className="bg-white rounded-xl border border-slate-200 p-2 space-y-1 max-h-72 overflow-y-auto">
+                            {loadingMsgs && <p className="text-[11px] text-slate-400">جاري تحميل الرسائل…</p>}
+                            {(chatMsgs[c.chat_id] || []).map((m: any, i: number) => (
+                              <div key={i} className={`text-[11px] rounded-lg px-2 py-1 ${m.sender_role === 'user' ? 'bg-blue-50 text-blue-800' : 'bg-slate-100 text-slate-700'}`}>
+                                <span className="font-bold">{m.sender_role === 'user' ? 'مستخدم' : 'MijlAi'}: </span>
+                                <span className="break-words">{String(m.content || '').slice(0, 500)}</span>
+                              </div>
+                            ))}
+                            {!loadingMsgs && (chatMsgs[c.chat_id] || []).length === 0 && (
+                              <p className="text-[11px] text-slate-400">لا توجد رسائل مفهرسة لهذه المحادثة.</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </Section>
