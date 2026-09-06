@@ -83,6 +83,18 @@ async def run_send_message(prompt: str, messages: Optional[list], chat_id: Optio
     if not user_prompt or not user_prompt.strip():
         return {"error": "Prompt cannot be empty"}, 400
 
+    # Admin control: enforce live block + per-user daily quota (guests excluded)
+    actor = (user_id or "guest").strip()
+    if actor and actor != "guest":
+        try:
+            if db_mgr.is_user_blocked(actor):
+                return {"error": "تم حظر حسابك — تواصل مع الأدمن"}, 403
+            usage = db_mgr.consume_user_usage(actor, n=1)
+            if not usage.get("allowed"):
+                return {"error": f"وصلت للحد اليومي ({usage.get('daily_limit')} رسالة) — عد غداً"}, 429
+        except Exception as qerr:
+            logger.debug(f"quota/block check skipped: {qerr}")
+
     task_id = f"task_{uuid.uuid4().hex[:12]}"
 
     # Log user message & telemetry in database
@@ -222,6 +234,9 @@ if FASTAPI_AVAILABLE and app is not None:
         user_id: str
         role: Optional[str] = None
         status: Optional[str] = None
+
+    class QuotaRequest(BaseModel):
+        daily_limit: int = 0
 
     @app.on_event("startup")
     async def startup_event():
@@ -477,6 +492,19 @@ if FASTAPI_AVAILABLE and app is not None:
         """Search any message content across all users (admin forensic search)."""
         results = db_mgr.search_all_messages(q, limit=min(max(limit, 1), 200))
         return {"query": q, "results": results}
+
+    @app.get("/api/admin/quotas", dependencies=[Depends(require_admin)])
+    async def admin_quotas():
+        return {"quotas": db_mgr.list_quotas()}
+
+    @app.post("/api/admin/user/{user_id}/quota", dependencies=[Depends(require_admin)])
+    async def admin_set_quota(user_id: str, req: QuotaRequest, payload: dict = Depends(require_admin)):
+        ok = db_mgr.set_user_quota(user_id, int(req.daily_limit))
+        db_mgr.add_admin_audit(
+            payload.get("user_id"), payload.get("email"), "user.quota",
+            "user", user_id, f"daily_limit={int(req.daily_limit)} (0=بدون حد)"
+        )
+        return {"success": ok, "daily_limit": int(req.daily_limit)}
 
     @app.get("/api/admin/user/{user_id}/dossier", dependencies=[Depends(require_admin)])
     async def admin_user_dossier(user_id: str):

@@ -101,6 +101,14 @@ class ActiveModelManager:
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_audit_time ON admin_audit_log(created_at)")
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_quotas (
+                    user_id TEXT PRIMARY KEY,
+                    daily_limit INTEGER DEFAULT 0,
+                    used INTEGER DEFAULT 0,
+                    period_start TEXT DEFAULT ''
+                )
+            """)
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS rag_documents (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id TEXT NOT NULL,
@@ -987,4 +995,82 @@ class ActiveModelManager:
                 return [dict(r) for r in rows]
         except Exception as e:
             logger.warning(f"search_all_messages failed: {e}")
+            return []
+
+    # ==================================================================
+    # Per-user daily quotas + live block enforcement
+    # ==================================================================
+
+    def get_user_quota(self, user_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            with self._get_conn() as conn:
+                row = conn.execute(
+                    "SELECT user_id, daily_limit, used, period_start FROM user_quotas WHERE user_id = ?",
+                    (user_id,)
+                ).fetchone()
+                if not row:
+                    return None
+                return {"user_id": row["user_id"], "daily_limit": row["daily_limit"],
+                        "used": row["used"], "period_start": row["period_start"]}
+        except Exception:
+            return None
+
+    def set_user_quota(self, user_id: str, daily_limit: int) -> bool:
+        try:
+            with self._get_conn() as conn:
+                if daily_limit and daily_limit > 0:
+                    row = conn.execute(
+                        "SELECT 1 FROM user_quotas WHERE user_id = ?", (user_id,)
+                    ).fetchone()
+                    if row:
+                        conn.execute("UPDATE user_quotas SET daily_limit = ? WHERE user_id = ?",
+                                     (int(daily_limit), user_id))
+                    else:
+                        conn.execute(
+                            "INSERT INTO user_quotas (user_id, daily_limit, used, period_start) VALUES (?, ?, 0, ?)",
+                            (user_id, int(daily_limit), datetime.now().strftime('%Y-%m-%d'))
+                        )
+                else:
+                    conn.execute("DELETE FROM user_quotas WHERE user_id = ?", (user_id,))
+                return True
+        except Exception as e:
+            logger.warning(f"set_user_quota failed: {e}")
+            return False
+
+    def consume_user_usage(self, user_id: str, n: int = 1) -> Dict[str, Any]:
+        """Rolls over per day; returns current {daily_limit, used, allowed}."""
+        today = datetime.now().strftime('%Y-%m-%d')
+        with self._get_conn() as conn:
+            row = conn.execute(
+                "SELECT daily_limit, used, period_start FROM user_quotas WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            if not row:
+                return {"allowed": True, "daily_limit": 0, "used": 0}
+            daily_limit, used, period = row["daily_limit"], row["used"], row["period_start"]
+            if period != today:
+                used = 0
+                conn.execute("UPDATE user_quotas SET used = ?, period_start = ? WHERE user_id = ?",
+                             (0, today, user_id))
+            if daily_limit and daily_limit > 0 and used + int(n) > daily_limit:
+                return {"allowed": False, "daily_limit": daily_limit, "used": used}
+            conn.execute("UPDATE user_quotas SET used = used + ? WHERE user_id = ?", (int(n), user_id))
+            return {"allowed": True, "daily_limit": daily_limit, "used": used + int(n)}
+
+    def is_user_blocked(self, user_id: str) -> bool:
+        try:
+            with self._get_conn() as conn:
+                row = conn.execute("SELECT status FROM users WHERE id = ?", (user_id,)).fetchone()
+                return bool(row and row["status"] == "blocked")
+        except Exception:
+            return False
+
+    def list_quotas(self) -> List[Dict[str, Any]]:
+        try:
+            with self._get_conn() as conn:
+                rows = conn.execute(
+                    "SELECT q.user_id, q.daily_limit, q.used, q.period_start, u.username, u.email "
+                    "FROM user_quotas q LEFT JOIN users u ON u.id = q.user_id ORDER BY q.daily_limit DESC"
+                ).fetchall()
+                return [dict(r) for r in rows]
+        except Exception:
             return []

@@ -4,7 +4,7 @@ import {
   Smartphone, Monitor, Globe, Search, Database, RefreshCw, BarChart2, Cpu, CheckCircle2,
   Sparkles, Layers, Download, AlertTriangle, Clock, TrendingUp, Zap, Server,
   Lock, Unlock, FileText, PieChart, ArrowUpRight, ArrowDownRight, Wifi, WifiOff,
-  Terminal, HardDrive, MemoryStick, Thermometer, BarChart, LineChart, AreaChart
+  Terminal, HardDrive, MemoryStick, Thermometer, BarChart, LineChart, AreaChart, Coins
 } from 'lucide-react';
 import { UserAccount } from '../types';
 import { useModalA11y } from '../utils/useModalA11y';
@@ -246,6 +246,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       toast.success('تم تحميل النسخة الاحتياطية');
     } catch {
       toast.error('فشل إنشاء النسخة الاحتياطية');
+    }
+  }, [authFetch]);
+
+  const handleSetQuota = useCallback(async (user: any) => {
+    const raw = window.prompt(`الحد اليومي للرسائل للمستخدم «${user.username || user.email || user.id}» (0 = بدون حد):`, '0');
+    if (raw === null) return;
+    const n = parseInt(raw, 10);
+    if (Number.isNaN(n)) { toast.error('أدخل رقماً صحيحاً'); return; }
+    try {
+      const res = await authFetch(`/api/admin/user/${encodeURIComponent(user.id)}/quota`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ daily_limit: n })
+      });
+      if (!res.ok) throw new Error();
+      toast.success(n > 0 ? `تم تعيين الحصة: ${n} رسالة/يوم` : 'أُلغي الحد اليومي');
+    } catch {
+      toast.error('فشل تعيين الحصة');
     }
   }, [authFetch]);
 
@@ -660,6 +678,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td className="p-3">
                             <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => void handleSetQuota(user)}
+                                className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 transition-colors"
+                                title="حد يومي للرسائل (حصة)"
+                              >
+                                <Coins className="w-3.5 h-3.5" />
+                              </button>
                               <button
                                 onClick={() => setDossierUserId(user.id)}
                                 className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
