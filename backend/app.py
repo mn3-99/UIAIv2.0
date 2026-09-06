@@ -393,13 +393,23 @@ if FASTAPI_AVAILABLE and app is not None:
         return db_mgr.get_all_users()
 
     @app.post("/api/admin/user/role_or_status", dependencies=[Depends(require_admin)])
-    async def update_user_role_status(req: UserRoleStatusRequest):
+    async def update_user_role_status(req: UserRoleStatusRequest, payload: dict = Depends(require_admin)):
         success = db_mgr.update_user_status_or_role(req.user_id, req.role, req.status)
+        if success:
+            db_mgr.add_admin_audit(
+                payload.get("user_id"), payload.get("email"), "user.role_or_status",
+                "user", req.user_id, f"role={req.role} status={req.status}"
+            )
         return {"success": success}
 
     @app.delete("/api/admin/user/{user_id}", dependencies=[Depends(require_admin)])
-    async def delete_user(user_id: str):
+    async def delete_user(user_id: str, payload: dict = Depends(require_admin)):
         success = db_mgr.delete_user(user_id)
+        if success:
+            db_mgr.add_admin_audit(
+                payload.get("user_id"), payload.get("email"), "user.delete",
+                "user", user_id, "deleted user + related rows"
+            )
         return {"success": success}
 
     @app.get("/api/admin/analytics", dependencies=[Depends(require_admin)])
@@ -418,24 +428,84 @@ if FASTAPI_AVAILABLE and app is not None:
         return {"settings": db_mgr.get_system_settings()}
 
     @app.post("/api/admin/settings", dependencies=[Depends(require_admin)])
-    async def admin_set_settings(req: AdminSettingsRequest):
+    async def admin_set_settings(req: AdminSettingsRequest, payload: dict = Depends(require_admin)):
         # Only allow a known whitelist of keys to avoid settings-table abuse
         allowed = {"site_title", "default_system_prompt", "allow_registrations", "require_email_verification"}
         clean = {k: str(v)[:2000] for k, v in req.settings.items() if k in allowed}
         db_mgr.set_system_settings(clean)
+        db_mgr.add_admin_audit(
+            payload.get("user_id"), payload.get("email"), "system.settings",
+            "system", None, "updated keys: " + ",".join(sorted(clean.keys()))
+        )
         return {"success": True, "updated": sorted(clean.keys())}
 
     @app.post("/api/admin/db/vacuum", dependencies=[Depends(require_admin)])
-    async def admin_db_vacuum():
+    async def admin_db_vacuum(payload: dict = Depends(require_admin)):
         """Real SQLite maintenance: WAL checkpoint + VACUUM to reclaim space."""
         try:
             with db_mgr._get_conn() as conn:
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
                 conn.execute("VACUUM;")
             size_kb = round(os.path.exists(db_mgr.db_path) and os.path.getsize(db_mgr.db_path) / 1024 or 0, 1)
+            db_mgr.add_admin_audit(
+                payload.get("user_id"), payload.get("email"), "system.db.vacuum",
+                "system", None, f"db size {size_kb}KB"
+            )
             return {"success": True, "size_kb": size_kb}
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"فشلت الصيانة: {e}")
+
+    # ==========================================
+    # Admin Super-Control (2026): audit trail, per-user dossier, content control
+    # ==========================================
+    @app.get("/api/admin/audit", dependencies=[Depends(require_admin)])
+    async def admin_audit(limit: int = 120):
+        return {"events": db_mgr.get_admin_audit(limit=min(max(limit, 1), 500))}
+
+    @app.get("/api/admin/user/{user_id}/dossier", dependencies=[Depends(require_admin)])
+    async def admin_user_dossier(user_id: str):
+        dossier = db_mgr.get_user_dossier(user_id)
+        if not dossier.get("user"):
+            raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+        return dossier
+
+    @app.delete("/api/admin/user/{user_id}/chat/{chat_id}", dependencies=[Depends(require_admin)])
+    async def admin_delete_user_chat(user_id: str, chat_id: str, payload: dict = Depends(require_admin)):
+        ok = db_mgr.delete_user_chat(user_id, chat_id)
+        if ok:
+            db_mgr.add_admin_audit(
+                payload.get("user_id"), payload.get("email"), "chat.delete",
+                "chat", chat_id, f"user={user_id}"
+            )
+        return {"success": ok}
+
+    @app.get("/api/admin/user/{user_id}/facts", dependencies=[Depends(require_admin)])
+    async def admin_user_facts(user_id: str):
+        return {"facts": db_mgr.get_user_facts(user_id, limit=200)}
+
+    @app.delete("/api/admin/user/{user_id}/fact/{fact_id}", dependencies=[Depends(require_admin)])
+    async def admin_delete_user_fact(user_id: str, fact_id: int, payload: dict = Depends(require_admin)):
+        ok = db_mgr.delete_user_fact(user_id, fact_id)
+        if ok:
+            db_mgr.add_admin_audit(
+                payload.get("user_id"), payload.get("email"), "memory.fact.delete",
+                "fact", str(fact_id), f"user={user_id}"
+            )
+        return {"success": ok}
+
+    @app.get("/api/admin/user/{user_id}/rag", dependencies=[Depends(require_admin)])
+    async def admin_user_rag(user_id: str):
+        return {"documents": db_mgr.get_user_rag_docs(user_id)}
+
+    @app.delete("/api/admin/user/{user_id}/rag/{doc_id}", dependencies=[Depends(require_admin)])
+    async def admin_delete_user_rag(user_id: str, doc_id: int, payload: dict = Depends(require_admin)):
+        ok = db_mgr.delete_user_rag_doc(user_id, doc_id)
+        if ok:
+            db_mgr.add_admin_audit(
+                payload.get("user_id"), payload.get("email"), "rag.document.delete",
+                "rag_doc", str(doc_id), f"user={user_id}"
+            )
+        return {"success": ok}
 
     # ==========================================
     # Long-term Memory Routes ("ماذا تعرف عني؟")

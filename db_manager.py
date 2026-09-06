@@ -85,6 +85,21 @@ class ActiveModelManager:
                     PRIMARY KEY (user_id, chat_id)
                 )
             """)
+            # Admin audit trail — every sensitive admin action (who/when/what).
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS admin_audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    admin_user_id TEXT,
+                    admin_email TEXT,
+                    action TEXT NOT NULL,
+                    target_type TEXT,
+                    target_id TEXT,
+                    detail TEXT,
+                    ip_address TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_audit_time ON admin_audit_log(created_at)")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS rag_documents (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -811,3 +826,128 @@ class ActiveModelManager:
                 return str(row[0])
             return None
 
+
+    # ==================================================================
+    # Admin: audit trail + per-user dossier (2026 admin super-control)
+    # ==================================================================
+
+    def add_admin_audit(self, admin_user_id: str, admin_email: str, action: str,
+                        target_type: str = None, target_id: str = None,
+                        detail: str = None, ip_address: str = None) -> None:
+        try:
+            with self._get_conn() as conn:
+                conn.execute(
+                    "INSERT INTO admin_audit_log (admin_user_id, admin_email, action, target_type, target_id, detail, ip_address) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (admin_user_id, admin_email, action, target_type, target_id,
+                     (detail or "")[:1000], ip_address or "")
+                )
+        except Exception as e:
+            logger.warning(f"audit write failed: {e}")
+
+    def get_admin_audit(self, limit: int = 120) -> List[Dict[str, Any]]:
+        try:
+            with self._get_conn() as conn:
+                conn.row_factory = None
+                rows = conn.execute(
+                    "SELECT id, admin_user_id, admin_email, action, target_type, target_id, detail, ip_address, created_at "
+                    "FROM admin_audit_log ORDER BY id DESC LIMIT ?", (int(limit),)
+                ).fetchall()
+                cols = ["id", "admin_user_id", "admin_email", "action", "target_type",
+                        "target_id", "detail", "ip_address", "created_at"]
+                return [dict(zip(cols, r)) for r in rows]
+        except Exception as e:
+            logger.warning(f"audit read failed: {e}")
+            return []
+
+    def get_user_dossier(self, user_id: str) -> Dict[str, Any]:
+        """A full control dossier for one user: identity, usage counts, chats
+        (meta), facts, RAG documents, summaries and last activity."""
+        with self._get_conn() as conn:
+            user = None
+            row = conn.execute(
+                "SELECT id, username, email, role, status, created_at, last_login, ip_address, country "
+                "FROM users WHERE id = ?", (user_id,)
+            ).fetchone()
+            if row:
+                user = {k: row[k] for k in row.keys()}
+
+            chat_count = conn.execute(
+                "SELECT COUNT(*) FROM chat_records WHERE user_id = ? AND deleted = 0", (user_id,)
+            ).fetchone()[0]
+            msg_count = conn.execute(
+                "SELECT COUNT(*) FROM message_records WHERE user_id = ?", (user_id,)
+            ).fetchone()[0]
+            last_activity = conn.execute(
+                "SELECT MAX(timestamp) FROM message_records WHERE user_id = ?", (user_id,)
+            ).fetchone()[0]
+
+            chats = []
+            for r in conn.execute(
+                "SELECT chat_id, title, message_count, created_at, updated_at, deleted "
+                "FROM chat_records WHERE user_id = ? ORDER BY updated_at DESC LIMIT 200", (user_id,)
+            ).fetchall():
+                chats.append({k: r[k] for k in r.keys()})
+
+            facts = []
+            for r in conn.execute(
+                "SELECT id, fact, source_chat_id, created_at FROM user_facts "
+                "WHERE user_id = ? AND active = 1 ORDER BY id DESC LIMIT 100", (user_id,)
+            ).fetchall():
+                facts.append({k: r[k] for k in r.keys()})
+
+            rag_docs = []
+            try:
+                for r in conn.execute(
+                    "SELECT id, name, chunk_count, created_at FROM rag_documents "
+                    "WHERE user_id = ? ORDER BY id DESC LIMIT 100", (user_id,)
+                ).fetchall():
+                    rag_docs.append({k: r[k] for k in r.keys()})
+            except Exception:
+                rag_docs = []
+
+            summaries = []
+            try:
+                for r in conn.execute(
+                    "SELECT chat_id, summary, updated_at FROM conversation_summaries "
+                    "WHERE user_id = ? LIMIT 50", (user_id,)
+                ).fetchall():
+                    summaries.append({k: r[k] for k in r.keys()})
+            except Exception:
+                summaries = []
+
+            return {
+                "user": user,
+                "chat_count": chat_count,
+                "message_count": msg_count,
+                "last_activity": last_activity,
+                "chats": chats,
+                "facts": facts,
+                "rag_documents": rag_docs,
+                "summaries": summaries,
+            }
+
+    def get_user_rag_docs(self, user_id: str) -> List[Dict[str, Any]]:
+        try:
+            with self._get_conn() as conn:
+                rows = conn.execute(
+                    "SELECT id, name, chunk_count, created_at FROM rag_documents "
+                    "WHERE user_id = ? ORDER BY id DESC LIMIT 200", (user_id,)
+                ).fetchall()
+                return [dict(r) for r in rows]
+        except Exception:
+            return []
+
+    def delete_user_rag_doc(self, user_id: str, doc_id: int) -> bool:
+        try:
+            with self._get_conn() as conn:
+                owner = conn.execute(
+                    "SELECT 1 FROM rag_documents WHERE id = ? AND user_id = ?", (doc_id, user_id)
+                ).fetchone()
+                if not owner:
+                    return False
+                conn.execute("DELETE FROM rag_chunks WHERE doc_id = ?", (doc_id,))
+                conn.execute("DELETE FROM rag_documents WHERE id = ?", (doc_id,))
+                return True
+        except Exception:
+            return False

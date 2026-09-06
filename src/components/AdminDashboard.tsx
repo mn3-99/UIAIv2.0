@@ -9,6 +9,8 @@ import {
 import { UserAccount } from '../types';
 import { useModalA11y } from '../utils/useModalA11y';
 import { toast } from './Toast';
+import { AuditLog } from './admin/AuditLog';
+import { UserDossier } from './admin/UserDossier';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -16,7 +18,7 @@ interface AdminDashboardProps {
   currentUser: UserAccount | null;
 }
 
-type DashboardTab = 'overview' | 'users' | 'analytics' | 'security' | 'system' | 'logs' | 'settings';
+type DashboardTab = 'overview' | 'users' | 'analytics' | 'security' | 'system' | 'logs' | 'settings' | 'audit';
 
 interface SystemHealth {
   status: 'healthy' | 'degraded' | 'down';
@@ -76,6 +78,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 }) => {
   const dialogRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [dossierUserId, setDossierUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -397,6 +400,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             { id: 'users', label: 'المستخدمين', icon: Users, color: 'from-emerald-500 to-teal-500' },
             { id: 'analytics', label: 'التحليلات', icon: BarChart2, color: 'from-purple-500 to-pink-500' },
             { id: 'security', label: 'الأمان', icon: Lock, color: 'from-red-500 to-orange-500' },
+            { id: 'audit', label: 'التدقيق', icon: FileText, color: 'from-indigo-500 to-violet-500' },
             { id: 'system', label: 'النظام', icon: Server, color: 'from-cyan-500 to-blue-500' },
             { id: 'logs', label: 'السجلات', icon: Terminal, color: 'from-amber-500 to-yellow-500' },
             { id: 'settings', label: 'الإعدادات', icon: Settings, color: 'from-slate-500 to-gray-600' }
@@ -637,6 +641,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td className="p-3">
                             <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => setDossierUserId(user.id)}
+                                className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors"
+                                title="دوسيير كامل (محادثات/ذاكرة/RAG/ملخصات)"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
                               <button
                                 onClick={() => handleUpdateRoleOrStatus(user.id, user.role === 'admin' ? 'user' : 'admin')}
                                 className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
@@ -1064,7 +1075,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
           )}
+
+          {/* Audit trail tab */}
+          {activeTab === 'audit' && <AuditLog authFetch={authFetch} />}
         </div>
+
+        {/* Per-user control dossier drawer */}
+        {dossierUserId && (
+          <UserDossier
+            userId={dossierUserId}
+            authFetch={authFetch}
+            onClose={() => setDossierUserId(null)}
+          />
+        )}
       </div>
     </div>
   );
