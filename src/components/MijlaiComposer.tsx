@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { generateCompletions } from '../utils/completions';
 import { BookOpen } from 'lucide-react';
+import { TIERS, isGuestTier } from '../models/tiers';
 import { toast } from './Toast';
 
 interface MijlaiComposerProps {
@@ -277,38 +278,15 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
     setIsAttachOpen(false);
   };
 
-  const verifiedModelsMap: Record<string, { label: string; shortName: string; icon: any; color: string; desc: string; realModel: string; badge: string }> = {
-    'lalo-fast': {
-      label: 'MijlAI-lalo-fast', shortName: 'Lalo', icon: Zap, color: 'text-cyan-600',
-      desc: 'نموذج سريع ومجاني — Llama 3.1 8B Turbo عبر LLM7.io',
-      realModel: 'meta-Llama-3.1-8B-Instruct-Turbo · LLM7', badge: '⚡ مجاني · سريع'
-    },
-    'mini': {
-      label: 'MijlAI-Mini', shortName: 'Mini', icon: Zap, color: 'text-accent',
-      desc: 'خفيف وسريع التدفق — للمهام اليومية الفورية (وكيل MijlAI المخصص)',
-      realModel: 'MijlAI-Mini · DigitalOcean', badge: '⚡ وكيل مخصص · عبر المحرك'
-    },
-    'flash': {
-      label: 'MijlAI-Flash', shortName: 'Flash', icon: Sparkles, color: 'text-amber-500',
-      desc: 'أسرع بداية رد يومي بتوازن ممتاز (وكيل MijlAI المخصص)',
-      realModel: 'MijlAI-Flash · DigitalOcean', badge: '⏱ وكيل مخصص · عبر المحرك'
-    },
-    'pro': {
-      label: 'MijlAI-Pro', shortName: 'Pro', icon: Brain, color: 'text-purple-600',
-      desc: 'الأقوى في التحليل والاستدلال والمهام المعقدة (وكيل MijlAI المخصص)',
-      realModel: 'MijlAI-Pro · DigitalOcean', badge: '★ وكيل مخصص · عبر المحرك'
-    },
-    'pwr': {
-      label: 'MijlAI-PWR', shortName: 'PWR', icon: Rocket, color: 'text-rose-600',
-      desc: 'وكيل MijlAI المخصص على DigitalOcean — نموذجك الخاص',
-      realModel: 'MijlAI-PWR · DigitalOcean', badge: '🛡 وكيل مخصص · حصري'
-    }
-  };
+  // Model metadata comes from the single source of truth in src/models/tiers.ts
+  // (was a per-render inline map here — recreated on every keystroke before).
+  const verifiedModelsMap = TIERS;
 
   // للزوار غير المسجلين: إظهار MijlAI-lalo-fast فقط
-  const visibleModelsMap = isGuest
-    ? { 'lalo-fast': verifiedModelsMap['lalo-fast'] }
-    : verifiedModelsMap;
+  const visibleModelsMap = useMemo(
+    () => Object.fromEntries(Object.entries(TIERS).filter(([, t]) => isGuestTier(t.id) || !isGuest)),
+    [isGuest]
+  );
 
   const isLocalTier = selectedTier.startsWith('local:');
   const localModelName = localModels.find((m) => m.id === selectedTier)?.name;
