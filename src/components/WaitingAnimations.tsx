@@ -42,9 +42,10 @@ export const EkgSignature: React.FC = () => (
     <svg width="180" height="52" viewBox="0 0 172 52" fill="none" className="ekg-svg">
       <defs>
         <linearGradient id="ekgGrad" x1="0" y1="0" x2="172" y2="0" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#3b82f6" />
-          <stop offset="0.55" stopColor="#6366f1" />
-          <stop offset="1" stopColor="#06b6d4" />
+          {/* theme-breathing stops: the accent gradient of the active theme */}
+          <stop offset="0" style={{ stopColor: 'var(--accent-grad-a)' }} />
+          <stop offset="0.55" style={{ stopColor: 'var(--accent-color)' }} />
+          <stop offset="1" style={{ stopColor: 'var(--accent-grad-b)' }} />
         </linearGradient>
       </defs>
       {/* الأثر الخافت (المسار الكامل كمرجع بصري) */}
@@ -59,7 +60,7 @@ export const EkgSignature: React.FC = () => (
         className="ekg-draw"
       />
       {/* النقطة المضيئة تتبع رأس الرسم بدقة عبر animateMotion الأصلي */}
-      <circle r="3.2" fill="#22d3ee" className="ekg-dot">
+      <circle r="3.2" fill="var(--accent-grad-b)" className="ekg-dot">
         <animateMotion dur="3.5s" repeatCount="indefinite" path={EKG_PATH} keyPoints="0;1;1" keyTimes="0;0.72;1" calcMode="linear" />
         <animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;0.05;0.7;0.85;1" dur="3.5s" repeatCount="indefinite" />
       </circle>

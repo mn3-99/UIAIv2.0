@@ -67,7 +67,7 @@ export const ThinkingPanel: React.FC<ThinkingPanelProps> = React.memo(({ thinkin
           className="absolute inset-0 rounded-2xl pointer-events-none"
           style={{
             padding: '1px',
-            background: 'linear-gradient(90deg,#8b5cf6,#3b82f6,#10b981,#8b5cf6)',
+            background: 'linear-gradient(90deg,var(--accent-grad-a),var(--accent-color),var(--accent-grad-b),var(--accent-grad-a))',
             backgroundSize: '300% 100%',
             animation: 'thinkBorderFlow 3s linear infinite',
             WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
@@ -85,7 +85,7 @@ export const ThinkingPanel: React.FC<ThinkingPanelProps> = React.memo(({ thinkin
       >
         {/* Pulsing orb */}
         <span className={`relative flex items-center justify-center w-7 h-7 rounded-full shrink-0 ${isThinking ? 'animate-pulse' : ''}`}
-          style={{ background: isThinking ? 'linear-gradient(135deg,#8b5cf6,#6366f1)' : 'linear-gradient(135deg,#94a3b8,#64748b)' }}>
+          style={{ background: isThinking ? 'linear-gradient(135deg,var(--accent-grad-a),var(--accent-grad-b))' : 'linear-gradient(135deg,var(--text-faint),var(--text-muted))' }}>
           {isThinking
             ? <Sparkles className="w-3.5 h-3.5 text-white" />
             : <Brain className="w-3.5 h-3.5 text-white" />}
@@ -93,7 +93,7 @@ export const ThinkingPanel: React.FC<ThinkingPanelProps> = React.memo(({ thinkin
 
         <span className="flex-1 min-w-0">
           <span className="block text-[13px] font-bold bg-clip-text text-transparent"
-            style={{ backgroundImage: isThinking ? 'linear-gradient(90deg,#7c3aed,#2563eb)' : 'none', color: isThinking ? undefined : '#475569' }}>
+            style={{ backgroundImage: isThinking ? 'linear-gradient(90deg,var(--accent-grad-a),var(--accent-grad-b))' : 'none', color: isThinking ? undefined : 'var(--text-muted)' }}>
             {isThinking ? STATUS_LABELS[statusIdx] : 'اكتمل التفكير'}
           </span>
           <span className="block text-[10px] text-slate-400 mt-0.5">

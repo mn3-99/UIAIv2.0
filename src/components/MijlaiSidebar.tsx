@@ -46,20 +46,20 @@ const NavItem: React.FC<NavItemProps> = ({ id, icon: Icon, label, onClick, activ
     role="menuitem"
     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 active:scale-[0.98] cursor-pointer ${
       active
-        ? 'bg-blue-50 text-blue-700'
-        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+        ? 'bg-accent-soft text-accent'
+        : 'text-main hover:bg-card hover:text-main'
     }`}
   >
     <span
       className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-        active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+        active ? 'bg-accent-soft text-accent' : 'bg-card text-muted'
       }`}
     >
       <Icon className="w-4 h-4" strokeWidth={2} />
     </span>
     <span className="truncate">{label}</span>
     {typeof badge === 'number' && badge > 0 && (
-      <span className="ms-auto text-[10px] font-bold bg-slate-200 text-slate-600 rounded-full px-1.5 py-0.5">
+      <span className="ms-auto text-[10px] font-bold bg-elevated text-muted rounded-full px-1.5 py-0.5">
         {badge}
       </span>
     )}
@@ -117,10 +117,10 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
         aria-hidden={!isOpen}
         tabIndex={-1}
         inert={!isOpen}
-        className={`fixed top-0 bottom-0 start-0 z-50 flex h-full w-[300px] max-w-[85vw] flex-col bg-white shadow-2xl select-none transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${isOpen ? 'translate-x-0' : 'drawer-closed'}`}
+        className={`fixed top-0 bottom-0 start-0 z-50 flex h-full w-[300px] max-w-[85vw] flex-col bg-surface shadow-2xl select-none transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${isOpen ? 'translate-x-0' : 'drawer-closed'}`}
       >
         {/* Header — logo + close */}
-        <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-4">
+        <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-4">
           <button
             id="logo_btn"
             onClick={onNewChat}
@@ -128,13 +128,13 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
             title="MijlAI الرئيسية"
           >
             <MijlaiLogo size="sm" />
-            <span className="text-lg font-extrabold text-slate-800">MijlAi</span>
+            <span className="text-lg font-extrabold text-main">MijlAi</span>
           </button>
           <button
             id="sidebar_close_btn"
             onClick={onCloseSidebar}
             aria-label="إغلاق الشريط الجانبي"
-            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors active:scale-95 cursor-pointer"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-card hover:text-main transition-colors active:scale-95 cursor-pointer"
           >
             <X className="w-4 h-4" strokeWidth={2} />
           </button>
@@ -161,21 +161,21 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
 
           {/* History section — expands inside the drawer */}
           {isHistoryOpen && (
-            <section aria-label="سجل المحادثات" className="mt-3 border-t border-slate-100 pt-3">
+            <section aria-label="سجل المحادثات" className="mt-3 border-t border-line pt-3">
               <div className="relative mb-2">
-                <Search className="w-4 h-4 text-slate-400 absolute start-3 top-2.5" />
+                <Search className="w-4 h-4 text-faint absolute start-3 top-2.5" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="بحث في السجل..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl ps-9 pe-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500"
+                  className="w-full bg-card border border-line rounded-xl ps-9 pe-3 py-2 text-sm text-main outline-none focus:border-accent"
                 />
               </div>
 
               <div className="space-y-1 max-h-[38vh] overflow-y-auto pe-1">
                 {filteredChats.length === 0 ? (
-                  <div className="text-center py-6 text-slate-400 text-xs">
+                  <div className="text-center py-6 text-faint text-xs">
                     {searchQuery ? 'لا توجد نتائج' : 'لا توجد محادثات مسجلة'}
                   </div>
                 ) : (
@@ -185,12 +185,12 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
                       onClick={() => onSelectChat(chat.id)}
                       className={`group flex items-center justify-between p-2.5 rounded-xl cursor-pointer text-xs transition-colors ${
                         activeChatId === chat.id
-                          ? 'bg-blue-50 text-blue-700 font-medium'
-                          : 'hover:bg-slate-200/60 text-slate-700'
+                          ? 'bg-accent-soft text-accent font-medium'
+                          : 'hover:bg-elevated/60 text-main'
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate">
-                        <MessageSquare className="w-4 h-4 shrink-0 text-slate-400 group-hover:text-blue-600" />
+                        <MessageSquare className="w-4 h-4 shrink-0 text-faint group-hover:text-accent" />
                         <span className="truncate">{chat.title || 'محادثة جديدة'}</span>
                       </div>
 
@@ -200,10 +200,10 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
                             e.stopPropagation();
                             onTogglePin(chat.id);
                           }}
-                          className="p-1 hover:text-blue-600"
+                          className="p-1 hover:text-accent"
                           title="تثبيت"
                         >
-                          <Pin className={`w-3.5 h-3.5 ${chat.pinned ? 'text-blue-600 fill-current' : ''}`} />
+                          <Pin className={`w-3.5 h-3.5 ${chat.pinned ? 'text-accent fill-current' : ''}`} />
                         </button>
                         <button
                           onClick={(e) => {
@@ -223,7 +223,7 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
 
               <button
                 onClick={onToggleHistory}
-                className="w-full mt-1 flex items-center justify-center gap-1 py-1.5 text-[11px] text-slate-400 hover:text-slate-600 transition-colors"
+                className="w-full mt-1 flex items-center justify-center gap-1 py-1.5 text-[11px] text-faint hover:text-muted transition-colors"
               >
                 <ChevronDown className="w-3.5 h-3.5" />
                 إغلاق السجل
@@ -233,7 +233,7 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
         </div>
 
         {/* Footer — settings + account */}
-        <div className="border-t border-slate-100 px-3 py-3 space-y-1">
+        <div className="border-t border-line px-3 py-3 space-y-1">
           <NavItem id="settings_btn" icon={Settings} label="الإعدادات" onClick={onOpenSettings} />
           {currentUser?.role === 'admin' && (
             <NavItem

@@ -72,7 +72,7 @@ export const MijlaiHeader: React.FC<{
           aria-expanded={isSidebarOpen}
           aria-controls="mijlai_sidebar"
           title={isSidebarOpen ? 'إغلاق الشريط الجانبي' : 'القائمة / الشريط الجانبي'}
-          className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-blue-600 border border-slate-200/80 shadow-2xs hover:shadow-md flex items-center justify-center transition-all duration-200 backdrop-blur-md active:scale-95 cursor-pointer"
+          className="w-8 h-8 rounded-full bg-surface/90 hover:bg-surface text-main hover:text-accent border border-line/80 shadow-2xs hover:shadow-md flex items-center justify-center transition-all duration-200 backdrop-blur-md active:scale-95 cursor-pointer"
         >
           {isSidebarOpen ? (
             <X className="w-4 h-4" strokeWidth={2} />
@@ -87,7 +87,7 @@ export const MijlaiHeader: React.FC<{
         {/* Live provider reliability indicator */}
         <span
           title={`${meta.label}${status.detail ? `\n${status.detail}` : ''}`}
-          className="h-8 px-2.5 rounded-full flex items-center gap-1.5 bg-white/90 border border-slate-200/80 shadow-2xs backdrop-blur-md text-[10px] font-bold text-slate-500"
+          className="h-8 px-2.5 rounded-full flex items-center gap-1.5 bg-surface/90 border border-line/80 shadow-2xs backdrop-blur-md text-[10px] font-bold text-muted"
         >
           <span className={`relative flex h-2 w-2`}>
             <span className={`absolute inline-flex h-full w-full rounded-full ${meta.color} opacity-60 animate-ping`} />
@@ -102,7 +102,7 @@ export const MijlaiHeader: React.FC<{
             id="export_chat_btn"
             onClick={onExportChat}
             title="تصدير المحادثة كملف Markdown"
-            className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-blue-600 border border-slate-200/80 shadow-2xs hover:shadow-md flex items-center justify-center transition-all duration-200 backdrop-blur-md active:scale-95 cursor-pointer"
+            className="w-8 h-8 rounded-full bg-surface/90 hover:bg-surface text-main hover:text-accent border border-line/80 shadow-2xs hover:shadow-md flex items-center justify-center transition-all duration-200 backdrop-blur-md active:scale-95 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" strokeWidth={2} />
           </button>
@@ -114,19 +114,19 @@ export const MijlaiHeader: React.FC<{
           onClick={onOpenAuthModal}
           className={`h-8 px-3 rounded-full flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs border backdrop-blur-md ${
             currentUser
-              ? 'bg-blue-50/90 text-blue-700 border-blue-200/80 hover:bg-blue-100'
-              : 'bg-white/90 text-slate-700 border-slate-200/80 hover:bg-white hover:text-blue-600'
+              ? 'bg-accent-soft/90 text-accent border-accent/35 hover:bg-accent-soft'
+              : 'bg-surface/90 text-main border-line/80 hover:bg-surface hover:text-accent'
           }`}
           title={currentUser ? `مسجل كـ: ${currentUser.username}` : 'تسجيل الدخول / Sign In'}
         >
           {currentUser ? (
             <>
-              <User className="w-3.5 h-3.5 text-blue-600" />
+              <User className="w-3.5 h-3.5 text-accent" />
               <span className="max-w-[100px] truncate">{currentUser.username}</span>
             </>
           ) : (
             <>
-              <LogIn className="w-3.5 h-3.5 text-slate-600" />
+              <LogIn className="w-3.5 h-3.5 text-muted" />
               <span>تسجيل الدخول</span>
             </>
           )}
@@ -136,7 +136,7 @@ export const MijlaiHeader: React.FC<{
         <button
           id="edit_prompt_pen_btn"
           onClick={onNewChat || onOpenEditPrompt}
-          className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-blue-600 border border-slate-200/80 shadow-2xs hover:shadow-md flex items-center justify-center transition-all duration-200 backdrop-blur-md active:scale-95 cursor-pointer"
+          className="w-8 h-8 rounded-full bg-surface/90 hover:bg-surface text-main hover:text-accent border border-line/80 shadow-2xs hover:shadow-md flex items-center justify-center transition-all duration-200 backdrop-blur-md active:scale-95 cursor-pointer"
           title="محادثة جديدة / كتابة جديدة"
         >
           <Pencil className="w-3.5 h-3.5" strokeWidth={2} />

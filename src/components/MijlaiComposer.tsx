@@ -284,7 +284,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
       realModel: 'meta-Llama-3.1-8B-Instruct-Turbo · LLM7', badge: '⚡ مجاني · سريع'
     },
     'mini': {
-      label: 'MijlAI-Mini', shortName: 'Mini', icon: Zap, color: 'text-emerald-600',
+      label: 'MijlAI-Mini', shortName: 'Mini', icon: Zap, color: 'text-accent',
       desc: 'خفيف وسريع التدفق — للمهام اليومية الفورية (وكيل MijlAI المخصص)',
       realModel: 'MijlAI-Mini · DigitalOcean', badge: '⚡ وكيل مخصص · عبر المحرك'
     },
@@ -313,7 +313,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
   const isLocalTier = selectedTier.startsWith('local:');
   const localModelName = localModels.find((m) => m.id === selectedTier)?.name;
   const currentTier = isLocalTier
-    ? { label: localModelName || 'نموذج محلي', shortName: 'محلي', icon: Cpu, color: 'text-emerald-600', desc: 'نموذج llama.cpp محلي — خاص وبدون إنترنت' }
+    ? { label: localModelName || 'نموذج محلي', shortName: 'محلي', icon: Cpu, color: 'text-accent', desc: 'نموذج llama.cpp محلي — خاص وبدون إنترنت' }
     : (verifiedModelsMap[selectedTier] || verifiedModelsMap['flash']);
 
   // Arena helpers: resolve any tier id (incl. local:) to a short display name
@@ -348,12 +348,12 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
 
       {/* Main Interactive Input Card — also a drop target for files */}
       <div
-        className={`w-full bg-white/95 rounded-3xl border transition-all duration-300 group relative flex flex-col shadow-md hover:shadow-xl hover-lift pb-safe ${
+        className={`w-full bg-surface/95 rounded-3xl border transition-all duration-300 group relative flex flex-col shadow-md hover:shadow-xl hover-lift pb-safe ${
           isDropTarget
-            ? 'border-blue-500 ring-4 ring-blue-300/50 shadow-xl scale-[1.01] glow-blue'
+            ? 'border-accent ring-4 ring-accent/50 shadow-xl scale-[1.01] glow-blue'
             : isDragging
-              ? 'border-blue-500 shadow-blue-100 ring-2 ring-blue-200'
-              : 'border-slate-200/90'
+              ? 'border-accent shadow-blue-100 ring-2 ring-accent/35'
+              : 'border-line/90'
         }`}
         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
         onDragEnter={(e) => {
@@ -382,8 +382,8 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
       >
         {/* Drop overlay hint */}
         {isDropTarget && (
-          <div className="absolute inset-0 z-10 rounded-3xl bg-blue-50/80 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
-            <span className="text-sm font-bold text-blue-700">أفلت الملف هنا لإرفاقه 📎</span>
+          <div className="absolute inset-0 z-10 rounded-3xl bg-accent-soft/80 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
+            <span className="text-sm font-bold text-accent">أفلت الملف هنا لإرفاقه 📎</span>
           </div>
         )}
 
@@ -391,17 +391,17 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
         <div
           onMouseDown={handleDragStart}
           onTouchStart={handleDragStart}
-          className="w-full h-3 cursor-row-resize flex items-center justify-center hover:bg-slate-100/80 rounded-t-3xl transition-colors group/drag py-1"
+          className="w-full h-3 cursor-row-resize flex items-center justify-center hover:bg-card/80 rounded-t-3xl transition-colors group/drag py-1"
           title="اسحب لأعلى أو لأسفل لتوسيع أو تصغير مربع الكتابة"
         >
-          <GripHorizontal className="w-5 h-3 text-slate-300 group-hover/drag:text-slate-500 transition-colors" />
+          <GripHorizontal className="w-5 h-3 text-faint group-hover/drag:text-muted transition-colors" />
         </div>
 
         {/* Attachment chips (uploaded files awaiting send) */}
         {(attachments.length > 0 || isUploading) && (
           <div className="mx-3 mb-1 flex flex-wrap items-center gap-1.5">
             {attachments.map(a => (
-              <span key={a.id} className="group relative flex items-center gap-1.5 px-2 py-1 rounded-xl border border-slate-200 bg-slate-50 text-[11px] text-slate-600 max-w-[220px]">
+              <span key={a.id} className="group relative flex items-center gap-1.5 px-2 py-1 rounded-xl border border-line bg-card text-[11px] text-muted max-w-[220px]">
                 {a.mime.startsWith('image/') && (
                   <img src={a.url} alt={a.name} className="w-5 h-5 rounded object-cover shrink-0" />
                 )}
@@ -410,7 +410,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                   <button
                     onClick={() => onRemoveAttachment(a.id)}
                     aria-label={`إزالة ${a.name}`}
-                    className="shrink-0 p-0.5 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                    className="shrink-0 p-0.5 rounded-lg text-faint hover:text-red-500 transition-colors"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -418,7 +418,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               </span>
             ))}
             {isUploading && (
-              <span className="flex items-center gap-1.5 px-2 py-1 rounded-xl border border-blue-200 bg-blue-50 text-[11px] text-blue-600">
+              <span className="flex items-center gap-1.5 px-2 py-1 rounded-xl border border-accent/35 bg-accent-soft text-[11px] text-accent">
                 <Loader2 className="w-3 h-3 animate-spin" /> جاري الرفع...
               </span>
             )}
@@ -433,29 +433,29 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
             <button
               id="attachment_menu"
               onClick={() => setIsAttachOpen(!isAttachOpen)}
-              className="w-10 h-10 min-w-[40px] rounded-full flex items-center justify-center text-[#5f6368] hover:bg-[#f1f3f4] transition-colors ms-0.5"
+              className="w-10 h-10 min-w-[40px] rounded-full flex items-center justify-center text-muted hover:bg-card transition-colors ms-0.5"
               title="إرفاق ملف أو وسائط"
             >
               <Plus className="w-5 h-5" strokeWidth={2} />
             </button>
 
             {isAttachOpen && (
-              <div className="absolute start-0 bottom-12 w-60 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-xs font-medium text-slate-700 animate-in fade-in zoom-in-95 duration-150">
+              <div className="absolute start-0 bottom-12 w-60 max-w-[calc(100vw-2rem)] bg-surface rounded-2xl shadow-2xl border border-line p-2 space-y-1 z-50 text-xs font-medium text-main animate-in fade-in zoom-in-95 duration-150">
                 <button
                   id="upload_file"
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-start transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-card rounded-xl text-start transition-colors"
                 >
-                  <FileText className="w-4 h-4 text-blue-600" />
+                  <FileText className="w-4 h-4 text-accent" />
                   <span>رفع مستند أو ملف</span>
                 </button>
 
                 <button
                   id="upload_image"
                   onClick={() => imageInputRef.current?.click()}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-start transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-card rounded-xl text-start transition-colors"
                 >
-                  <Image className="w-4 h-4 text-emerald-600" />
+                  <Image className="w-4 h-4 text-accent" />
                   <span>رفع صورة لتحليلها</span>
                 </button>
 
@@ -467,7 +467,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                       imageInputRef.current.click();
                     }
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-start transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-card rounded-xl text-start transition-colors"
                 >
                   <Camera className="w-4 h-4 text-purple-600" />
                   <span>التقاط صورة مباشرة</span>
@@ -490,7 +490,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                       });
                     }
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-100 rounded-xl text-start transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-card rounded-xl text-start transition-colors"
                 >
                   <Wand2 className="w-4 h-4 text-pink-600" />
                   <span>توليد صورة بالذكاء الاصطناعي</span>
@@ -509,7 +509,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
             onKeyDown={handleKeyDown}
             placeholder="اسأل MijlAi أي شيء..."
             rows={1}
-            className="flex-1 bg-transparent outline-none border-none text-[15px] md:text-[16px] text-slate-800 placeholder:text-slate-400 font-normal px-2 py-2 resize-none overflow-y-auto leading-relaxed transition-all duration-200 focus:placeholder:text-slate-300"
+            className="flex-1 bg-transparent outline-none border-none text-[15px] md:text-[16px] text-main placeholder:text-faint font-normal px-2 py-2 resize-none overflow-y-auto leading-relaxed transition-all duration-200 focus:placeholder:text-faint"
             style={{
               fontFamily: 'Inter, "Google Sans", sans-serif',
               height: composerHeight ? `${composerHeight}px` : undefined
@@ -522,19 +522,19 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               <button
                 id="model_selector"
                 onClick={() => setIsTierOpen(!isTierOpen)}
-                className="h-10 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-slate-700 hover:bg-slate-100 transition-colors border border-slate-200/60 bg-slate-50/50"
+                className="h-10 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-main hover:bg-card transition-colors border border-line/60 bg-card/50"
                 title="اختر النموذج الفعال"
               >
-                <span className="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center">
-                  <Sparkles className="w-2.5 h-2.5 text-blue-600" strokeWidth={2.4} />
+                <span className="w-4 h-4 rounded-full bg-accent-soft flex items-center justify-center">
+                  <Sparkles className="w-2.5 h-2.5 text-accent" strokeWidth={2.4} />
                 </span>
                 <span className="text-xs font-semibold">{currentTier.shortName}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-500" strokeWidth={2} />
+                <ChevronDown className="w-3.5 h-3.5 text-muted" strokeWidth={2} />
               </button>
 
               {isTierOpen && (
                 <div
-                  className="absolute end-0 bottom-12 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 space-y-1 z-50 text-start animate-in fade-in zoom-in-95 duration-150 overflow-y-auto scroll-smooth"
+                  className="absolute end-0 bottom-12 w-80 max-w-[calc(100vw-2rem)] bg-surface rounded-2xl shadow-2xl border border-line p-2 space-y-1 z-50 text-start animate-in fade-in zoom-in-95 duration-150 overflow-y-auto scroll-smooth"
                   style={{ maxHeight: 'min(420px, 55vh)', overscrollBehavior: 'contain', scrollbarWidth: 'thin' }}
                   onWheel={(e) => {
                     const el = e.currentTarget;
@@ -544,7 +544,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                     e.stopPropagation();
                   }}
                 >
-                  <div className="px-2 py-1 text-[11px] font-bold text-slate-400 sticky top-0 bg-white/90 backdrop-blur-sm">
+                  <div className="px-2 py-1 text-[11px] font-bold text-faint sticky top-0 bg-surface/90 backdrop-blur-sm">
                     {isGuest ? 'نموذج مجاني متاح — سجّل للحصول على المزيد' : 'نماذج MijlAI — مُقاسة ومرتبة حسب الأداء الفعلي'}
                   </div>
                   {Object.entries(visibleModelsMap).map(([key, item], idx) => {
@@ -554,19 +554,19 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                       <button
                         key={key}
                         onClick={() => { onSelectTier(key); setIsTierOpen(false); }}
-                        className={`w-full text-start p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${isSelected ? 'bg-blue-50 text-blue-700 font-semibold' : 'hover:bg-slate-100 text-slate-700'}`}
+                        className={`w-full text-start p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${isSelected ? 'bg-accent-soft text-accent font-semibold' : 'hover:bg-card text-main'}`}
                       >
                         <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${item.color}`} />
                         <div className="flex-1 min-w-0">
                           <div className="text-xs font-bold flex items-center justify-between gap-2">
                             <span>{item.label}</span>
-                            {idx === 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold shrink-0">الأسرع تدفقاً</span>}
+                            {idx === 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent-soft text-accent font-bold shrink-0">الأسرع تدفقاً</span>}
                             {key === 'coder' && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-100 text-cyan-700 font-bold shrink-0">أسرع استجابة</span>}
                           </div>
-                          <div className="text-[10px] text-slate-500 font-normal">{item.desc}</div>
+                          <div className="text-[10px] text-muted font-normal">{item.desc}</div>
                           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-mono" dir="ltr">{item.realModel}</span>
-                            <span className="text-[9px] text-slate-400">{item.badge}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-card text-muted font-mono" dir="ltr">{item.realModel}</span>
+                            <span className="text-[9px] text-faint">{item.badge}</span>
                           </div>
                         </div>
                       </button>
@@ -574,7 +574,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                   })}
                   {localModels.length > 0 && (
                     <>
-                      <div className="px-2 py-1 text-[11px] font-bold text-slate-400 border-t border-slate-100 mt-1 pt-2 flex items-center gap-1">
+                      <div className="px-2 py-1 text-[11px] font-bold text-faint border-t border-line mt-1 pt-2 flex items-center gap-1">
                         <Cpu className="w-3 h-3" /> نماذج محلية (llama.cpp)
                       </div>
                       {localModels.map((m) => {
@@ -583,12 +583,12 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                           <button
                             key={m.id}
                             onClick={() => { onSelectTier(m.id); setIsTierOpen(false); }}
-                            className={`w-full text-start p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${isSelected ? 'bg-emerald-50 text-emerald-700 font-semibold' : 'hover:bg-slate-100 text-slate-700'}`}
+                            className={`w-full text-start p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${isSelected ? 'bg-accent-soft text-accent font-semibold' : 'hover:bg-card text-main'}`}
                           >
-                            <Cpu className={`w-4 h-4 mt-0.5 shrink-0 ${isSelected ? 'text-emerald-600' : 'text-emerald-500'}`} />
+                            <Cpu className={`w-4 h-4 mt-0.5 shrink-0 ${isSelected ? 'text-accent' : 'text-emerald-500'}`} />
                             <div>
                               <div className="text-xs font-bold">{m.name}</div>
-                              <div className="text-[10px] text-slate-500 font-normal">يعمل محلياً على جهازك — خصوصية كاملة</div>
+                              <div className="text-[10px] text-muted font-normal">يعمل محلياً على جهازك — خصوصية كاملة</div>
                             </div>
                           </button>
                         );
@@ -609,7 +609,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                   <div className="relative" key={side}>
                     <button
                       onClick={() => setArenaPickerOpen(open ? null : side)}
-                      className={`h-10 min-h-[42px] sm:min-h-0 px-2 rounded-full flex items-center gap-1 text-[11px] font-bold border transition-colors ${side === 'a' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-purple-50 text-purple-700 border-purple-200'}`}
+                      className={`h-10 min-h-[42px] sm:min-h-0 px-2 rounded-full flex items-center gap-1 text-[11px] font-bold border transition-colors ${side === 'a' ? 'bg-accent-soft text-accent border-accent/35' : 'bg-purple-50 text-purple-700 border-purple-200'}`}
                       title={`نموذج ${side === 'a' ? 'الأول (أ)' : 'الثاني (ب)'} في المقارنة`}
                       aria-expanded={open}
                     >
@@ -617,12 +617,12 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                       <ChevronDown className="w-3 h-3" />
                     </button>
                     {open && (
-                      <div className="absolute start-0 bottom-12 w-56 max-h-64 overflow-y-auto bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="absolute start-0 bottom-12 w-56 max-h-64 overflow-y-auto bg-surface rounded-2xl shadow-2xl border border-line p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
                         {arenaTierList.map((tier) => (
                           <button
                             key={tier}
                             onClick={() => { onSelectArenaModel?.(side, tier); setArenaPickerOpen(null); }}
-                            className={`w-full text-start px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${value === tier ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-100'}`}
+                            className={`w-full text-start px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${value === tier ? 'bg-accent-soft text-accent' : 'text-main hover:bg-card'}`}
                           >
                             {arenaTierShort(tier)}
                           </button>
@@ -650,7 +650,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               <button
                 id="send_btn"
                 onClick={onSend}
-                className="w-10 h-10 min-h-[42px] sm:min-h-0 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 text-white flex items-center justify-center hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm press-effect scale-in-bounce glow-blue self-end mb-0.5 shrink-0"
+                className="w-10 h-10 min-h-[42px] sm:min-h-0 rounded-full bg-gradient-to-br from-[var(--accent-color)] to-[var(--accent-grad-b)] text-white flex items-center justify-center hover:from-[var(--accent-hover)] hover:to-[var(--accent-color)] transition-all shadow-sm press-effect scale-in-bounce glow-blue self-end mb-0.5 shrink-0"
                 title="إرسال"
               >
                 <Send className="w-3.5 h-3.5" />
@@ -666,7 +666,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               <button
                 key={`${s.text}-${i}`}
                 onClick={() => setInput(s.text)}
-                className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all bg-blue-50/70 text-blue-700 border-blue-200/70 hover:bg-blue-600 hover:text-white hover:border-blue-600"
+                className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all bg-accent-soft/70 text-accent border-accent/35 hover:bg-accent hover:text-white hover:border-accent"
                 title={`${s.reason} — انقر للقبول`}
               >
                 {i === 0 && (
@@ -697,7 +697,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
         )}
 
         {/* Row 2: Utility bar — mode toggles · voice input · status pills */}
-        <div className="px-3 pb-2 pt-2 border-t border-slate-100/80 flex items-center justify-between gap-2 flex-wrap max-sm:gap-1.5">
+        <div className="px-3 pb-2 pt-2 border-t border-line/80 flex items-center justify-between gap-2 flex-wrap max-sm:gap-1.5">
           
           {/* Left Controls: Web Search Grounding & Prompt Optimizer */}
           <div className="flex items-center gap-1.5 shrink-0 max-sm:flex-nowrap">
@@ -707,7 +707,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               className={`h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-medium transition-all ${
                 knowledgeEnabled
                   ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/80'
+                  : 'bg-card/80 text-muted hover:bg-elevated/80'
               }`}
               title="الإجابة من مستنداتك المفهرسة (RAG محلي)"
             >
@@ -720,8 +720,8 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               onClick={() => setWebSearchEnabled?.(!webSearchEnabled)}
               className={`h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-medium transition-all ${
                 webSearchEnabled
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/80'
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'bg-card/80 text-muted hover:bg-elevated/80'
               }`}
               title="تفعيل/تعطيل البحث المباشر عبر الويب"
             >
@@ -749,7 +749,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                 className={`h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-medium transition-all ${
                   arenaMode
                     ? 'bg-purple-600 text-white shadow-sm'
-                    : 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/80'
+                    : 'bg-card/80 text-muted hover:bg-elevated/80'
                 }`}
                 title="ساحة المقارنة: أرسل السؤال لنموذجين وقارن الإجابتين جنباً إلى جنب"
                 aria-pressed={arenaMode}
@@ -769,7 +769,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               className={`w-8 h-8 min-h-[42px] sm:min-h-0 rounded-full flex items-center justify-center transition-colors ${
                 isRecording
                   ? 'bg-red-100 text-red-600 animate-pulse'
-                  : 'text-slate-600 hover:bg-slate-100'
+                  : 'text-muted hover:bg-card'
               }`}
               title={isRecording ? 'إيقاف التسجيل' : 'الإملاء الصوتي'}
             >
