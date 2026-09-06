@@ -19,7 +19,7 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
   return (
     <div className="w-full flex justify-start my-4 fade-in-up">
       <div className="max-w-[88%] md:max-w-[82%]">
-        <div className="bg-white/95 border border-slate-200/80 text-slate-800 rounded-[28px] rounded-bl-md px-5 py-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] backdrop-blur-md">
+        <div className="bg-white/95 border border-slate-200/80 text-slate-800 rounded-[28px] rounded-bl-md px-5 py-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center shadow-emerald-500/20">

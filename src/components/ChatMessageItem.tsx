@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Copy, Check, RotateCcw, Edit3, User, AlertCircle, Sparkles, TerminalSquare, Globe, Loader2, RefreshCw, FileText, Volume2, Square } from 'lucide-react';
+import { Copy, Check, RotateCcw, Edit3, User, AlertCircle, Sparkles, TerminalSquare, Globe, Loader2, RefreshCw, FileText, Volume2, Square, Lightbulb } from 'lucide-react';
 import { ChatMessage } from '../types';
 import { RichMarkdown } from './RichMarkdown';
 import { ThinkingPanel } from './ThinkingPanel';
@@ -9,6 +9,8 @@ import { WaitingIndicator, WaitingLines } from './WaitingAnimations';
 import { MessageReactions } from './MessageReactions';
 import { copyText } from '../utils/clipboard';
 import { speakText, stopSpeaking } from '../utils/tts';
+import { safeHostname } from '../utils/url';
+import { MarkdownBoundary } from './MarkdownBoundary';
 import { toast } from './Toast';
 
 interface PythonRunResult {
@@ -148,7 +150,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
           className={`relative px-5 py-4.5 sm:px-6 sm:py-5 transition-all duration-200 ${
             isUser
               ? 'text-white rounded-[28px] rounded-br-md'
-              : 'bg-surface/95 border border-line/80 text-main rounded-[28px] rounded-bl-md shadow-[0_4px_24px_rgba(0,0,0,0.04)] backdrop-blur-md'
+              : 'bg-surface/95 border border-line/80 text-main rounded-[28px] rounded-bl-md shadow-[0_4px_24px_rgba(0,0,0,0.04)]'
           }`}
         >
           {/* Header Role info & Model Tag */}
@@ -282,7 +284,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                     <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
                       title={s.title}
                       className="max-w-[220px] truncate text-[10px] px-2.5 py-1 rounded-full bg-sky-50 border border-sky-200/70 text-sky-700 hover:bg-sky-100 transition-colors">
-                      {i + 1}. {s.title || new URL(s.url).hostname}
+                      {i + 1}. {s.title || safeHostname(s.url)}
                     </a>
                   ))}
                 </div>
@@ -294,7 +296,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                   <div className="flex-1">
                     <div className="font-semibold">حدث خطأ أثناء توليد الرد</div>
                     <div className="mt-1 opacity-90">{message.errorDetails || message.content}</div>
-                    <div className="mt-1.5 text-[10px] text-red-400/90">💡 جرّب إعادة المحاولة أو التبديل لنموذج آخر (Mini / Flash) من شريط الإدخال.</div>
+                    <div className="mt-1.5 text-[10px] text-red-400/90 flex items-center gap-1"><Lightbulb className="w-3 h-3" /> جرّب إعادة المحاولة أو التبديل لنموذج آخر (Mini / Flash) من شريط الإدخال.</div>
                     {onRegenerate && (
                       <button
                         onClick={onRegenerate}
@@ -308,7 +310,9 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                 </div>
               ) : message.isImage && !isUser ? (
                 <div className="relative">
-                  <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} />
+                  <MarkdownBoundary content={message.content}>
+                    <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} />
+                  </MarkdownBoundary>
                 </div>
               ) : isUser ? (
                 <div>
@@ -356,7 +360,9 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                   />
                 </div>
               ) : (
-                <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} onRunPython={handleRunPython} onOpenCanvas={onOpenCanvas} />
+                <MarkdownBoundary content={message.content}>
+                  <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} onRunPython={handleRunPython} onOpenCanvas={onOpenCanvas} />
+                </MarkdownBoundary>
               )}
 
               {/* Python execution outputs (agentic terminal) */}

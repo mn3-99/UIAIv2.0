@@ -582,9 +582,17 @@ body[data-theme="light"] .modal-themed {
 /* Glass morphism effect for cards and modals */
 .glass-effect {
   background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Browsers without backdrop-filter get a more opaque (but still readable) surface
+   instead of a see-through wash. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-effect {
+    background: rgba(255, 255, 255, 0.94);
+  }
 }
 
 body[data-theme="dark"] .glass-effect,
@@ -860,20 +868,13 @@ body[data-theme="obsidian-amber"] .glow-blue {
   }
 }
 
-/* Stagger animation for lists */
+/* Stagger animation for lists — delay comes from --stagger-i set in JSX,
+   so any number of children staggers without hand-written nth-child rules. */
 .stagger-item {
   opacity: 0;
   animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--stagger-i, 0) * 50ms);
 }
-
-.stagger-item:nth-child(1) { animation-delay: 0ms; }
-.stagger-item:nth-child(2) { animation-delay: 50ms; }
-.stagger-item:nth-child(3) { animation-delay: 100ms; }
-.stagger-item:nth-child(4) { animation-delay: 150ms; }
-.stagger-item:nth-child(5) { animation-delay: 200ms; }
-.stagger-item:nth-child(6) { animation-delay: 250ms; }
-.stagger-item:nth-child(7) { animation-delay: 300ms; }
-.stagger-item:nth-child(8) { animation-delay: 350ms; }
 
 /* Ripple effect */
 @keyframes ripple {
@@ -926,6 +927,7 @@ body[data-theme="obsidian-amber"] .glow-blue {
   stroke-dasharray: 640;
   stroke-dashoffset: 640;
   animation: ekg-draw 3.5s var(--ease-standard, ease) infinite;
+  will-change: stroke-dashoffset, opacity;
   filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.45));
 }
 @keyframes ekg-draw {
@@ -959,6 +961,7 @@ body[data-theme="obsidian-amber"] .glow-blue {
   margin: -3px 0 0 -3px;
   border-radius: 9999px;
   background: #22d3ee;
+  will-change: transform;
 }
 .orbit-dot-1 { animation: orbit-spin 2.4s linear infinite; transform-origin: 3px 3px; --orbit-r: 18px; }
 .orbit-dot-2 { animation: orbit-spin 3.2s linear infinite reverse; background: #818cf8; --orbit-r: 14px; }

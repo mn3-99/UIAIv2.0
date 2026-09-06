@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, Search, ListTree, Link2 } from 'lucide-react';
+import { safeHostname } from '../utils/url';
 
 interface ReasoningStep {
   step: number;
@@ -77,7 +78,7 @@ export const DeepSearchPanel: React.FC<DeepSearchPanelProps> = ({ reasoningSteps
                     title={r.title}
                     className="max-w-[240px] truncate text-[10px] px-2.5 py-1 rounded-full bg-white border border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-700 transition-colors"
                   >
-                    [{r.num}] {r.title || (r.url ? new URL(r.url).hostname : 'مرجع')}
+                    [{r.num}] {r.title || (r.url ? safeHostname(r.url) : 'مرجع')}
                   </a>
                 ))}
               </div>

@@ -219,7 +219,7 @@ export const UpgradeModal: React.FC<{ isOpen: boolean; onClose: () => void }> = 
               toast.success('شكراً لاهتمامك! باقة Pro ستتوفر قريباً — كل المزايا الحالية مجانية بالكامل حالياً 🎉');
               onClose();
             }}
-            className="w-full bg-[#1a73e8] hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors text-sm shadow-md"
+            className="w-full bg-accent hover:bg-accent-hover text-white font-bold py-3 rounded-xl transition-colors text-sm shadow-md"
           >
             اشترك الآن بـ $19/شهرياً
           </button>
@@ -315,7 +315,7 @@ export const ProfileModal: React.FC<{
         <button onClick={onClose} aria-label="إغلاق" className="absolute start-4 top-4 text-slate-400 hover:text-slate-600">
           <X className="w-5 h-5" />
         </button>
-        <div className="w-16 h-16 rounded-full bg-[#1e8e3e] text-white text-2xl font-bold flex items-center justify-center mx-auto mb-3 shadow-md">
+        <div className="w-16 h-16 rounded-full bg-accent text-white text-2xl font-bold flex items-center justify-center mx-auto mb-3 shadow-md">
           {nameInput ? nameInput.charAt(0).toUpperCase() : 'M'}
         </div>
         <h3 className="font-bold text-lg text-slate-900 mb-1">{userName}</h3>
