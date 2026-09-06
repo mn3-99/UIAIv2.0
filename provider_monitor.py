@@ -261,7 +261,7 @@ class ProviderMonitor:
 
         # 2) Extract active working g4f provider classes
         discovered_g4f_providers = []
-        if hasattr(g4f.Provider, "__providers__"):
+        if G4F_AVAILABLE and hasattr(g4f, "Provider") and hasattr(g4f.Provider, "__providers__"):
             for prov in g4f.Provider.__providers__:
                 if hasattr(prov, "working") and prov.working and hasattr(prov, "__name__"):
                     discovered_g4f_providers.append(prov)

@@ -322,8 +322,8 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         "name": "llm7",
         "url": "https://api.llm7.io/v1/chat/completions",
         "api_key": _llm7_key(),
-        "models": ["DeepSeek-V4-Flash-0731", "gpt-4o-mini", "gemini-flash", "deepseek-r1"],
-        "default_model": "DeepSeek-V4-Flash-0731",
+        "models": ["deepseek-v4-flash", "deepseek-v4-pro", "L3-8B-Lunaris-v1-Turbo", "gpt-4o-mini", "gemini-flash", "deepseek-r1"],
+        "default_model": "deepseek-v4-flash",
     },
     {
         # MijlAI-lalo-fast: LLM7.io hosted Llama 3.1 8B Turbo (fast, cheap, tools-capable).
@@ -331,8 +331,8 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         "name": "mijlai-lalo-fast",
         "url": "https://api.llm7.io/v1/chat/completions",
         "api_key": _llm7_key(),
-        "models": ["mijlai-lalo-fast", "meta-Llama-3.1-8B-Instruct-Turbo"],
-        "default_model": "meta-Llama-3.1-8B-Instruct-Turbo",
+        "models": ["mijlai-lalo-fast", "L3-8B-Lunaris-v1-Turbo"],
+        "default_model": "L3-8B-Lunaris-v1-Turbo",
     },
     {
         # MijlAI-PWR: dedicated DigitalOcean GenAI agent (OpenAI-compatible).
@@ -569,6 +569,12 @@ async def attempt_direct_chat(request, messages, temperature, stream,
         # Optional alias→slug mapping (e.g. nvidia-nim short names → real NIM slug)
         if ep.get("model_map") and payload_model in ep["model_map"]:
             payload_model = ep["model_map"][payload_model]
+        # If the frontend sent the endpoint *name* itself (e.g. `direct:meta-ai`
+        # or `direct:mijlai-lalo-fast`) rather than a real model, fall back to the
+        # endpoint's default model slug. Without this the upstream got the alias
+        # and returned 400/404.
+        elif payload_model == ep["name"]:
+            payload_model = ep["default_model"]
         ep_messages = fold_system_messages_for_agent(messages) if ep.get("no_system_role") else messages
         body = {
             "model": payload_model,
