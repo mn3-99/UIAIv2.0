@@ -226,6 +226,28 @@ def _meta_ai_key() -> Optional[str]:
     return None
 
 
+def _nvidia_key() -> Optional[str]:
+    """Read the NVIDIA NIM (build.nvidia.com) API key from env, falling back to .env.
+
+    The NVIDIA/Kimi model layer (kimi-k3, nemotron-*, minimax-m3, …) is served
+    through the OpenAI-compatible NIM endpoint. A free key is issued at
+    build.nvidia.com — no card required.
+    """
+    key = os.getenv("NVIDIA_API_KEY")
+    if key:
+        return key.strip().strip('"').strip("'")
+    try:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        with open(env_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("NVIDIA_API_KEY="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return None
+
+
 def _openrouter_key() -> Optional[str]:
     """Read the OpenRouter API key from env, falling back to .env."""
     key = os.getenv("OPENROUTER_API_KEY")
@@ -385,6 +407,45 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         ],
         "default_model": "google/gemma-4-31b-it:free",
     },
+    {
+        # NVIDIA NIM — the "Kimi/NVIDIA model layer" aggregated from the
+        # nvidia-kimi-mcp / nvidia-kimi-bridge / kimi-super-agent-hybrid repos.
+        # OpenAI-compatible endpoint on build.nvidia.com (free API key). The
+        # headline model is Moonshot Kimi K3 (moonshotai/kimi-k3); the rest are
+        # the curated NVIDIA build slugs those repos proxy (Nemotron, MiniMax-M3,
+        # Poolside Laguna, OpenAI gpt-oss, Muse Glimmer, Llama vision, etc.).
+        # `models` holds unique short aliases (direct:nv-*); `model_map` maps them
+        # to the real NIM slug sent upstream — avoids substring collisions with
+        # the openrouter-free entries above.
+        "name": "nvidia-nim",
+        "url": "https://integrate.api.nvidia.com/v1/chat/completions",
+        "api_key": _nvidia_key(),
+        "models": [
+            "nv-kimi-k3",
+            "nv-gpt-oss-20b",
+            "nv-nemotron-lightning",
+            "nv-muse-glimmer",
+            "nv-nemotron-3-ultra",
+            "nv-nemotron-3-super",
+            "nv-laguna",
+            "nv-minimax-m3",
+            "nv-llama-3.2-vision",
+            "nv-diffusiongemma",
+        ],
+        "default_model": "nv-kimi-k3",
+        "model_map": {
+            "nv-kimi-k3": "moonshotai/kimi-k3",
+            "nv-gpt-oss-20b": "openai/gpt-oss-20b",
+            "nv-nemotron-lightning": "nvidia/nemotron-3.5-lightning-30b-a3b",
+            "nv-muse-glimmer": "meta/muse-glimmer-30b",
+            "nv-nemotron-3-ultra": "nvidia/nemotron-3-ultra-550b-a55b",
+            "nv-nemotron-3-super": "nvidia/nemotron-3-super-120b-a12b",
+            "nv-laguna": "poolside/laguna-xs-2.1",
+            "nv-minimax-m3": "minimaxai/minimax-m3",
+            "nv-llama-3.2-vision": "meta/llama-3.2-11b-vision-instruct",
+            "nv-diffusiongemma": "google/diffusiongemma-26b-a4b-it",
+        },
+    },
 ]
 
 
@@ -503,6 +564,9 @@ async def attempt_direct_chat(request, messages, temperature, stream,
             logger.debug(f"[direct:{ep['name']}] circuit OPEN — skipping")
             continue
         payload_model = preferred_model or ep["default_model"]
+        # Optional alias→slug mapping (e.g. nvidia-nim short names → real NIM slug)
+        if ep.get("model_map") and payload_model in ep["model_map"]:
+            payload_model = ep["model_map"][payload_model]
         ep_messages = fold_system_messages_for_agent(messages) if ep.get("no_system_role") else messages
         body = {
             "model": payload_model,
