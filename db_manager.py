@@ -1085,3 +1085,18 @@ class ActiveModelManager:
                 return [dict(r) for r in rows]
         except Exception:
             return []
+
+    def recent_activity(self, limit: int = 40) -> List[Dict[str, Any]]:
+        """Latest requests across all users (live-ish feed for admin)."""
+        try:
+            with self._get_conn() as conn:
+                rows = conn.execute(
+                    "SELECT m.chat_id, m.user_id, m.sender_role, m.content, m.model_id, m.timestamp, "
+                    "       c.email AS user_email "
+                    "FROM message_records m LEFT JOIN chat_records c ON c.chat_id = m.chat_id AND c.user_id = m.user_id "
+                    "ORDER BY m.id DESC LIMIT ?", (int(limit),)
+                ).fetchall()
+                return [dict(r) for r in rows]
+        except Exception as e:
+            logger.warning(f"recent_activity failed: {e}")
+            return []

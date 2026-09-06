@@ -493,6 +493,10 @@ if FASTAPI_AVAILABLE and app is not None:
         results = db_mgr.search_all_messages(q, limit=min(max(limit, 1), 200))
         return {"query": q, "results": results}
 
+    @app.get("/api/admin/activity/recent", dependencies=[Depends(require_admin)])
+    async def admin_recent_activity(limit: int = 40):
+        return {"activity": db_mgr.recent_activity(limit=min(max(limit, 1), 200))}
+
     @app.get("/api/admin/quotas", dependencies=[Depends(require_admin)])
     async def admin_quotas():
         return {"default_limit": getattr(db_mgr, "DEFAULT_DAILY_QUOTA", 400), "quotas": db_mgr.list_quotas()}
