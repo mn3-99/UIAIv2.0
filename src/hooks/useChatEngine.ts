@@ -363,11 +363,13 @@ export function useChatEngine(deps: ChatEngineDeps) {
           };
         }));
 
-        // Smart non-intrusive auto-scroll: only stick when already near the bottom
+        // Smart non-intrusive auto-scroll: only stick when already near the bottom.
+        // Deferred one animation frame so the scrollHeight reflects the just-painted
+        // thinking indicator / panel expansion before we follow it.
         if (chatContainerRef.current) {
           const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
           if (scrollHeight - scrollTop - clientHeight < 150) {
-            scrollToBottom(false);
+            requestAnimationFrame(() => scrollToBottom(false));
           }
         }
       };

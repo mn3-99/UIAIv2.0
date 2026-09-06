@@ -8,7 +8,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
-export type ImageProvider = 'zen' | 'mistral' | 'manus';
+export type ImageProvider = 'zen' | 'mistral' | 'manus' | 'pollinations';
 
 export interface ImageModelDef {
   id: string;
@@ -91,6 +91,7 @@ let manusIdx = 0;
  * 3) Zen (Alibaba qwen-image — يحتاج مفتاح)
  */
 export const VERIFIED_IMAGE_MODELS: ImageModelDef[] = [
+  { id: 'pollinations-flux', label: 'Pollinations Flux', provider: 'pollinations', upstreamModel: 'flux', avgSeconds: 12, tier: 'standard', requiresKey: false },
   { id: 'mistral', label: 'Mistral Flux', provider: 'mistral', upstreamModel: 'mistral-medium-latest', avgSeconds: 15, tier: 'standard', requiresKey: true },
   { id: 'manus', label: 'Manus AI', provider: 'manus', upstreamModel: 'manus-1.6', avgSeconds: 30, tier: 'pro', requiresKey: true },
   { id: 'qi2', label: 'MijlAI صور (Zen)', provider: 'zen', upstreamModel: 'qwen-image-2.0', avgSeconds: 8.7, tier: 'fast', requiresKey: true },
@@ -99,6 +100,7 @@ export const VERIFIED_IMAGE_MODELS: ImageModelDef[] = [
 ];
 
 function hasKeyFor(p: ImageProvider): boolean {
+  if (p === 'pollinations') return true; // keyless — always available
   if (p === 'zen') return !!getZenKey();
   if (p === 'mistral') return !!getMistralKey();
   if (p === 'manus') return getManusKeys().length > 0;
@@ -114,6 +116,29 @@ export async function listVerifiedImageModels() {
 }
 
 interface RawImageResult { url: string; width?: number; height?: number; }
+
+async function generateViaPollinations(model: string, prompt: string, opts: ImageGenOptions): Promise<RawImageResult> {
+  const w = opts.width || 1024;
+  const h = opts.height || 1024;
+  // Random seed per call defeats any CDN dedup/caching → distinct image per prompt.
+  const seed = opts.seed ?? Math.floor(Math.random() * 2_147_483_647);
+  const text = opts.negativePrompt ? `${prompt}. Avoid: ${opts.negativePrompt}` : prompt;
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(text.slice(0, 900))}?width=${w}&height=${h}&seed=${seed}&nologo=true&enhance=true&model=${encodeURIComponent(model || 'flux')}`;
+  return { url, width: w, height: h };
+}
+
+/** A usable public image URL? Rejects sandbox/local/hallucinated links. */
+function isValidImageUrl(u: string): boolean {
+  try {
+    const parsed = new URL(u);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    if (!host || host === 'sandbox' || host.includes('sandbox') || host === 'localhost' || host === '127.0.0.1') return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function generateViaMistral(_model: string, prompt: string, opts: ImageGenOptions): Promise<RawImageResult> {
   const key = getMistralKey();
@@ -174,10 +199,14 @@ async function generateViaManusWithKey(key: string, prompt: string, opts: ImageG
     for (const m of msgData?.messages || []) {
       const assistant = m?.assistant_message;
       if (assistant?.content) {
-        const urlMatch = assistant.content.match(/https?:\/\/[^\s)"]+\.(png|jpg|jpeg|webp|gif)/i);
-        if (urlMatch) return { url: urlMatch[0], width: opts.width || 1024, height: opts.height || 1024 };
-        const anyUrl = assistant.content.match(/https?:\/\/[^\s)"]+/);
-        if (anyUrl && !anyUrl[0].includes('manus.im/app')) return { url: anyUrl[0], width: opts.width || 1024, height: opts.height || 1024 };
+        const urls = (assistant.content.match(/https?:\/\/[^\s)\]}"'>]+/g) || []);
+        for (const raw of urls) {
+          const u = raw.replace(/[.,;:!?]+$/, '');
+          // Skip agent sandbox/local/hallucinated paths — only return a real public image URL.
+          if (isValidImageUrl(u) && !u.includes('manus.im/app')) {
+            return { url: u, width: opts.width || 1024, height: opts.height || 1024 };
+          }
+        }
       }
     }
   }
@@ -232,6 +261,9 @@ async function generateViaZen(model: string, prompt: string, opts: ImageGenOptio
 
 function buildOrder(): ImageModelDef[] {
   const order: ImageModelDef[] = [];
+  // Keyless Pollinations always first — a guaranteed-working floor regardless
+  // of any paid-provider quota/key outage.
+  if (hasKeyFor('pollinations')) order.push(...VERIFIED_IMAGE_MODELS.filter(m => m.provider === 'pollinations'));
   if (hasKeyFor('mistral')) order.push(...VERIFIED_IMAGE_MODELS.filter(m => m.provider === 'mistral'));
   if (hasKeyFor('manus')) order.push(...VERIFIED_IMAGE_MODELS.filter(m => m.provider === 'manus'));
   if (hasKeyFor('zen')) order.push(...VERIFIED_IMAGE_MODELS.filter(m => m.provider === 'zen'));
@@ -249,13 +281,19 @@ export async function generateImageSmart(modelId: string, prompt: string, opts: 
   let lastErr: any = null;
   for (const m of tryOrder) {
     try {
-      const result = m.provider === 'mistral'
-        ? await generateViaMistral(m.upstreamModel, prompt, opts)
-        : m.provider === 'manus'
-          ? await generateViaManus(prompt, opts)
-          : await generateViaZen(m.upstreamModel, prompt, opts);
+      const raw: RawImageResult = m.provider === 'pollinations'
+        ? await generateViaPollinations(m.upstreamModel, prompt, opts)
+        : m.provider === 'mistral'
+          ? await generateViaMistral(m.upstreamModel, prompt, opts)
+          : m.provider === 'manus'
+            ? await generateViaManus(prompt, opts)
+            : await generateViaZen(m.upstreamModel, prompt, opts);
+      if (!isValidImageUrl(raw.url)) {
+        console.warn(`[imageEngine] ${m.id} produced an unusable URL — skipping`);
+        throw new Error(`unusable url from ${m.id}`);
+      }
       return {
-        ...result,
+        ...raw,
         model: m.id,
         label: m.label,
         provider: m.provider,

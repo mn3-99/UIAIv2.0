@@ -637,8 +637,9 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               <button
                 id="send_btn"
                 onClick={onSend}
-                className="w-10 h-10 min-h-[42px] sm:min-h-0 rounded-full bg-gradient-to-br from-[var(--accent-color)] to-[var(--accent-grad-b)] text-white flex items-center justify-center hover:from-[var(--accent-hover)] hover:to-[var(--accent-color)] transition-all shadow-sm press-effect scale-in-bounce glow-blue self-end mb-0.5 shrink-0"
+                className="send-btn w-10 h-10 min-h-[42px] sm:min-h-0 rounded-full text-white flex items-center justify-center transition-all press-effect scale-in-bounce self-end mb-0.5 shrink-0"
                 title="إرسال"
+                aria-label="إرسال الرسالة"
               >
                 <Send className="w-3.5 h-3.5" />
               </button>

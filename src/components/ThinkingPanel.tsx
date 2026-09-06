@@ -81,7 +81,7 @@ export const ThinkingPanel: React.FC<ThinkingPanelProps> = React.memo(({ thinkin
         type="button"
         onClick={() => setExpanded(e => !e)}
         dir="rtl"
-        className="relative w-full flex items-center gap-2.5 px-4 py-3 text-start select-none hover:bg-white/40 dark:hover:bg-white/5 transition-colors"
+        className="relative w-full flex items-center gap-2.5 px-4 py-3 text-start select-none hover:bg-card/70 transition-colors"
       >
         {/* Pulsing orb */}
         <span className={`relative flex items-center justify-center w-7 h-7 rounded-full shrink-0 ${isThinking ? 'animate-pulse' : ''}`}
@@ -96,19 +96,19 @@ export const ThinkingPanel: React.FC<ThinkingPanelProps> = React.memo(({ thinkin
             style={{ backgroundImage: isThinking ? 'linear-gradient(90deg,var(--accent-grad-a),var(--accent-grad-b))' : 'none', color: isThinking ? undefined : 'var(--text-muted)' }}>
             {isThinking ? STATUS_LABELS[statusIdx] : 'اكتمل التفكير'}
           </span>
-          <span className="block text-[10px] text-slate-400 mt-0.5">
+          <span className="block text-[10px] text-muted mt-0.5">
             سلسلة الاستدلال · {thinking.trim().split(/\s+/).length} كلمة
           </span>
         </span>
 
         {(isThinking ? elapsed > 0 : !!durationMs) && (
-          <span className="hidden sm:flex items-center gap-1 text-[10px] text-slate-400 shrink-0 px-2 py-0.5 rounded-full bg-slate-100/70">
+          <span className="hidden sm:flex items-center gap-1 text-[10px] text-muted shrink-0 px-2 py-0.5 rounded-full bg-card/70 border border-line/60">
             <Timer className="w-3 h-3" />
             {formatDuration(isThinking ? elapsed : (durationMs || 0))}
           </span>
         )}
 
-        <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-4 h-4 text-muted shrink-0 transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`} />
       </button>
 
       <div
@@ -118,7 +118,7 @@ export const ThinkingPanel: React.FC<ThinkingPanelProps> = React.memo(({ thinkin
         <div
           ref={bodyRef}
           dir="auto"
-          className="px-4 pb-3 pt-1 overflow-y-auto text-[12.5px] leading-relaxed text-slate-500 whitespace-pre-wrap font-[450]"
+          className="px-4 pb-3 pt-1 overflow-y-auto text-[12.5px] leading-relaxed text-muted whitespace-pre-wrap font-[450]"
           style={{ maxHeight: 260, maskImage: 'linear-gradient(to bottom, transparent, black 14px)' }}
         >
           {thinking}

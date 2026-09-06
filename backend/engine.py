@@ -269,6 +269,8 @@ class LLMEngine:
     def __init__(self, store: TaskStore):
         self.store = store
         self._running: Dict[str, asyncio.Task] = {}
+        self._summary_at: Dict[tuple, float] = {}
+        self._summary_lock: set = set()
 
     async def abort_task(self, task_id: str) -> bool:
         """Cancel a running generation task (true abort, frees provider resources).
@@ -290,7 +292,8 @@ class LLMEngine:
         model_id: Optional[str] = None,
         messages: Optional[list] = None,
         user_id: Optional[str] = None,
-        custom_system_prompt: Optional[str] = None
+        custom_system_prompt: Optional[str] = None,
+        chat_id: Optional[str] = None
     ) -> None:
         await self.store.create_task(task_id, prompt)
         self._running[task_id] = asyncio.current_task()
@@ -309,6 +312,20 @@ class LLMEngine:
                 )
         except Exception as mem_err:
             logger.debug(f"Memory injection skipped: {mem_err}")
+
+        # Rolling conversation summary (per user/chat) — near-infinite context:
+        # older turns are distilled here and re-injected on EVERY reply, so the
+        # model always knows what was discussed before, across any model and any
+        # session/device (it is stored in the database, not just the page).
+        conversation_summary = ""
+        if chat_id:
+            try:
+                from db_manager import ActiveModelManager as _AMM
+                conversation_summary = (
+                    (_AMM().get_chat_summary(user_id or "guest", chat_id) or "").strip()
+                )
+            except Exception as sum_err:
+                logger.debug(f"Conversation summary load skipped: {sum_err}")
 
         try:
             from g4f.client import AsyncClient
@@ -355,6 +372,21 @@ class LLMEngine:
             {"role": "assistant", "content": "محمود نمر العجلة (Mhmod Nemr Alijla) هو مالك ومطور ومدرب منصة MijlAi. لست من Google أو OpenAI أو أي شركة أخرى."},
         ]
 
+        # Inject the rolling conversation summary so earlier context is never lost.
+        if conversation_summary:
+            chat_messages.append({
+                "role": "user",
+                "content": (
+                    "[هذا ملخص المحادثة السابقة معك — استخدمه لفهم السياق الكامل ولا تكرره في ردك ولا تذكر أنه ملخص]:\n"
+                    + conversation_summary
+                    + "\n[نهاية الملخص — أكمل من أحدث رسالة فعلية أدناه]"
+                )
+            })
+            chat_messages.append({
+                "role": "assistant",
+                "content": "تمام، احتفظت بسياق المحادثة السابقة وأكمل من هنا."
+            })
+
         if messages and isinstance(messages, list):
             for msg in messages:
                 if isinstance(msg, dict) and "role" in msg and "content" in msg:
@@ -363,6 +395,16 @@ class LLMEngine:
                         chat_messages.append({"role": msg["role"], "content": msg["content"]})
         else:
             chat_messages.append({"role": "user", "content": prompt})
+
+        # Attach the user's durable long-term facts to the newest user turn so
+        # models with short system-windows still see them (was computed but never
+        # injected before — this is what actually makes the bot "remember" the user).
+        if memory_block and chat_messages:
+            for _i in range(len(chat_messages) - 1, -1, -1):
+                _m = chat_messages[_i]
+                if _m.get("role") == "user" and isinstance(_m.get("content"), str):
+                    chat_messages[_i] = {**_m, "content": _m["content"] + memory_block}
+                    break
 
         # Clean model ID
         raw_model = (model_id or "gpt-4o").replace("g4f:", "").replace("MijlAI ", "").strip()
@@ -543,5 +585,91 @@ class LLMEngine:
         await self.store.set_completed(task_id)
         # Normal completion: drop the task handle (aborted tasks are popped by abort_task).
         self._running.pop(task_id, None)
+
+        # Rolling conversation summary — update in the background (never blocks
+        # the reply). The summary is stored per (user, chat) so EVERY later turn
+        # (any model, any session/device) remembers the whole thread.
+        if chat_id and received_content:
+            try:
+                final_reply = ""
+                stored = self.store._memory_store.get(task_id) or {}
+                final_reply = stored.get("full_text") or ""
+                await self._update_chat_summary(
+                    user_id or "guest", chat_id, conversation_summary, messages, final_reply
+                )
+            except Exception as sum_err:
+                logger.debug(f"Conversation summary update failed: {sum_err}")
+
+    async def _summarize_text(self, old_summary: str, new_text: str) -> str:
+        """Ask the keyless summarizer (via the g4f service) to roll the summary
+        forward. Returns "" on any failure so the caller can fall back."""
+        try:
+            import aiohttp as _aio
+            prompt = (
+                "أنت ذاكرة محادثة ذكية. ادمج الملخص القديم مع ما يلي وأنتج ملخصاً "
+                "محدّثاً واحداً يركز على: طلبات المستخدم، قراراته، تفضيلاته، "
+                "المهام الجارية، والحقائق الثابتة. احذف ما لم يعد مهماً. "
+                "أخرج الملخص بالعربية فقط وبدون أي مقدمات أو عناوين.\n\n"
+                "[الملخص السابق]\n" + (old_summary or "لا يوجد") +
+                "\n\n[أحدث تبادلات المحادثة]\n" + (new_text or "")
+            )
+            timeout = _aio.ClientTimeout(total=30)
+            async with _aio.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    "http://127.0.0.1:5050/chat/completions",
+                    json={
+                        "model": "kilo-auto/free",
+                        "messages": [{"role": "user", "content": prompt}],
+                        "stream": False,
+                        "temperature": 0.2,
+                    },
+                ) as resp:
+                    if resp.status != 200:
+                        return ""
+                    data = await resp.json()
+                    content = (data.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+                    return str(content).strip()
+        except Exception as err:
+            logger.debug(f"Summarizer LLM failed: {err}")
+            return ""
+
+    async def _update_chat_summary(self, user_id: str, chat_id: str, old_summary: str,
+                                   messages: Optional[list], reply: str) -> None:
+        key = (user_id, chat_id)
+        now = time.time()
+        if now - self._summary_at.get(key, 0) < 45:
+            return  # don't hammer the summarizer on rapid multi-turn
+        if key in self._summary_lock:
+            return
+        self._summary_at[key] = now
+        self._summary_lock.add(key)
+        try:
+            recent: List[str] = []
+            for m in (messages or [])[-8:]:
+                if not isinstance(m, dict):
+                    continue
+                role = "مستخدم" if m.get("role") == "user" else "مساعد"
+                c = m.get("content") or ""
+                if isinstance(c, list):
+                    parts = [str(p.get("text", "")) for p in c if isinstance(p, dict)]
+                    c = " ".join(parts)
+                c = str(c).strip()
+                if c:
+                    recent.append(f"{role}: {c[:1200]}")
+            if reply:
+                recent.append(f"مساعد: {str(reply)[:3000]}")
+
+            new_txt = "\n".join(recent)
+            new_summary = await self._summarize_text(old_summary, new_txt)
+            if not new_summary and new_txt:
+                # Deterministic fallback: anchor the head, keep the recent tail.
+                combined = (old_summary or "") + "\n" + new_txt
+                new_summary = combined if len(combined) <= 4200 else (combined[:900] + "\n…\n" + combined[-3300:])
+
+            if new_summary:
+                from db_manager import ActiveModelManager as _AMM
+                _AMM().set_chat_summary(user_id, chat_id, new_summary[:8000])
+        finally:
+            self._summary_lock.discard(key)
 
 llm_engine = LLMEngine(task_store)

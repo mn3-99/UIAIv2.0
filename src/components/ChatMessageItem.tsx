@@ -350,8 +350,26 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                   <WaitingLines variant="pulse" />
                 </div>
               ) : (isStreaming || isThinking) && !message.content ? (
-                /* انتظار أول توكن: توقيع EKG MijlAI + خطوات التفكير المرئية (نمط Kimi) */
-                <div className="py-1 space-y-1">
+                /* انتظار أول توكن — Thinking State: مؤشر "جاري التفكير…" بنقاط نابضة
+                   (آخر عنصر في المحادثة أثناء التوليد، يختفي فور بدء طباعة الرد) */
+                <div className="py-1 space-y-2" aria-live="polite">
+                  <div className="flex items-center gap-2" dir="rtl">
+                    <span className="relative flex items-center justify-center w-6 h-6 shrink-0">
+                      <span className="absolute inset-0 rounded-full bg-accent/25 animate-ping" aria-hidden="true" />
+                      <span
+                        className="relative w-3 h-3 rounded-full"
+                        style={{ background: 'linear-gradient(135deg, var(--accent-grad-a), var(--accent-grad-b))' }}
+                      />
+                    </span>
+                    <span className="text-[13px] font-bold gradient-text">
+                      {isThinking ? 'جاري التفكير' : 'يجهّز الرد'}
+                    </span>
+                    <span className="think-dots" aria-hidden="true">
+                      <span className="think-dot" />
+                      <span className="think-dot" />
+                      <span className="think-dot" />
+                    </span>
+                  </div>
                   <WaitingIndicator />
                   <ThinkingSteps
                     status={message.status}

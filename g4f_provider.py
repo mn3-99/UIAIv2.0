@@ -291,6 +291,36 @@ def _mijlai_url(env_name: str) -> str:
     return os.getenv(env_name, _MIJLAI_PWR_URL)
 
 
+# Real NIM slugs (used only when NVIDIA_API_KEY is configured).
+_NV_ALIAS_TO_SLUG = {
+    "nv-kimi-k3": "moonshotai/kimi-k3",
+    "nv-gpt-oss-20b": "openai/gpt-oss-20b",
+    "nv-nemotron-lightning": "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "nv-muse-glimmer": "meta/muse-glimmer-30b",
+    "nv-nemotron-3-ultra": "nvidia/nemotron-3-ultra-550b-a55b",
+    "nv-nemotron-3-super": "nvidia/nemotron-3-super-120b-a12b",
+    "nv-laguna": "poolside/laguna-xs-2.1",
+    "nv-minimax-m3": "minimaxai/minimax-m3",
+    "nv-llama-3.2-vision": "meta/llama-3.2-11b-vision-instruct",
+    "nv-diffusiongemma": "google/diffusiongemma-26b-a4b-it",
+}
+
+# Keyless bridge model served through Kilo.ai when no NVIDIA_API_KEY exists.
+_KEYLESS_NV_MODEL = "kilo-auto/free"
+
+
+def _nv_model_map() -> Dict[str, str]:
+    """Alias → upstream model for the NVIDIA layer.
+
+    With a real NVIDIA_API_KEY the original NIM build slugs are used. Without a
+    key (keyless mode) every direct:nv-* alias is bridged to the free Kilo.ai
+    gateway so the tier answers instead of failing with HTTP 401 from NIM.
+    """
+    if _nvidia_key():
+        return dict(_NV_ALIAS_TO_SLUG)
+    return {alias: _KEYLESS_NV_MODEL for alias in _NV_ALIAS_TO_SLUG}
+
+
 DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
     {
         "name": "kilo",
@@ -376,11 +406,18 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
     },
     {
         # Meta AI (Muse Spark): Free Meta AI API with Llama models.
+        # json_only: Meta's SSE endpoint never emits content deltas (only a
+        # final "stop" frame) — the answer arrives only in the non-stream JSON
+        # body. So fetch JSON and forward it as a single SSE chunk.
         "name": "meta-ai",
         "url": "https://api.meta.ai/v1/chat/completions",
         "api_key": _meta_ai_key(),
         "models": ["muse-spark-1.2", "muse-spark-1.1", "muse-spark-1.2-contributor"],
         "default_model": "muse-spark-1.2",
+        "json_only": True,
+        # Meta budgets reasoning tokens first; keep a generous cap so content
+        # isn't truncated to null by long CoT.
+        "max_tokens": 4096,
     },
     {
         # MijlAI-Qwen-lalo: Meta AI Muse Spark endpoint (custom name).
@@ -389,6 +426,8 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         "api_key": _meta_ai_key(),
         "models": ["mijlai-qwen-lalo", "muse-spark-1.2"],
         "default_model": "muse-spark-1.2",
+        "json_only": True,
+        "max_tokens": 4096,
     },
     {
         # OpenRouter Free: 21+ free models including Gemma, Nemotron, MiniMax
@@ -412,15 +451,24 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
     {
         # NVIDIA NIM — the "Kimi/NVIDIA model layer" aggregated from the
         # nvidia-kimi-mcp / nvidia-kimi-bridge / kimi-super-agent-hybrid repos.
-        # OpenAI-compatible endpoint on build.nvidia.com (free API key). The
+        # PRIMARY: OpenAI-compatible NIM on build.nvidia.com (free API key). The
         # headline model is Moonshot Kimi K3 (moonshotai/kimi-k3); the rest are
         # the curated NVIDIA build slugs those repos proxy (Nemotron, MiniMax-M3,
         # Poolside Laguna, OpenAI gpt-oss, Muse Glimmer, Llama vision, etc.).
         # `models` holds unique short aliases (direct:nv-*); `model_map` maps them
-        # to the real NIM slug sent upstream — avoids substring collisions with
-        # the openrouter-free entries above.
+        # to the real slug sent upstream — avoids substring collisions with the
+        # openrouter-free entries above.
+        #
+        # KEYLESS MODE: build.nvidia.com returns HTTP 401 without NVIDIA_API_KEY,
+        # so with no key configured the whole NVIDIA tier used to answer "model
+        # did not respond". To keep the layer alive without a key we bridge to the
+        # free keyless Kilo.ai gateway (kilo-auto/free) — same mechanism that made
+        # these tiers respond on localhost via the keyless fallback stack. When a
+        # real NVIDIA_API_KEY is present the original NIM slugs are used instead.
         "name": "nvidia-nim",
-        "url": "https://integrate.api.nvidia.com/v1/chat/completions",
+        "url": "https://integrate.api.nvidia.com/v1/chat/completions"
+        if _nvidia_key()
+        else "https://api.kilo.ai/api/gateway/v1/chat/completions",
         "api_key": _nvidia_key(),
         "models": [
             "nv-kimi-k3",
@@ -435,18 +483,7 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
             "nv-diffusiongemma",
         ],
         "default_model": "nv-kimi-k3",
-        "model_map": {
-            "nv-kimi-k3": "moonshotai/kimi-k3",
-            "nv-gpt-oss-20b": "openai/gpt-oss-20b",
-            "nv-nemotron-lightning": "nvidia/nemotron-3.5-lightning-30b-a3b",
-            "nv-muse-glimmer": "meta/muse-glimmer-30b",
-            "nv-nemotron-3-ultra": "nvidia/nemotron-3-ultra-550b-a55b",
-            "nv-nemotron-3-super": "nvidia/nemotron-3-super-120b-a12b",
-            "nv-laguna": "poolside/laguna-xs-2.1",
-            "nv-minimax-m3": "minimaxai/minimax-m3",
-            "nv-llama-3.2-vision": "meta/llama-3.2-11b-vision-instruct",
-            "nv-diffusiongemma": "google/diffusiongemma-26b-a4b-it",
-        },
+        "model_map": _nv_model_map(),
     },
 ]
 
@@ -576,12 +613,19 @@ async def attempt_direct_chat(request, messages, temperature, stream,
         elif payload_model == ep["name"]:
             payload_model = ep["default_model"]
         ep_messages = fold_system_messages_for_agent(messages) if ep.get("no_system_role") else messages
+        # json_only endpoints (e.g. Meta AI) never stream content over SSE — the
+        # answer only exists in the non-stream JSON body. Fetch JSON, then wrap
+        # it into an SSE frame when the caller asked for streaming.
+        requested_stream = bool(stream)
+        upstream_stream = requested_stream and not ep.get("json_only")
         body = {
             "model": payload_model,
             "messages": ep_messages,
             "temperature": max(0.0, min(temperature, 1.5)),
-            "stream": bool(stream),
+            "stream": upstream_stream,
         }
+        if ep.get("max_tokens"):
+            body["max_tokens"] = int(ep["max_tokens"])
         headers = {"Content-Type": "application/json"}
         if ep["api_key"]:
             headers["Authorization"] = f"Bearer {ep['api_key']}"
@@ -596,7 +640,7 @@ async def attempt_direct_chat(request, messages, temperature, stream,
                         endpoint_breaker.record_failure(ep["name"])
                         continue
 
-                    if not stream:
+                    if not upstream_stream:
                         raw = await upstream.aread()
                         try:
                             data = json.loads(raw.decode("utf-8", errors="ignore"))
@@ -615,6 +659,31 @@ async def attempt_direct_chat(request, messages, temperature, stream,
                         if not content.strip():
                             continue
                         endpoint_breaker.record_success(ep["name"])
+                        if requested_stream:
+                            # json_only endpoint behind a streaming caller:
+                            # forward the single JSON answer as an SSE chunk.
+                            sse = web.StreamResponse(
+                                status=200, reason="OK",
+                                headers={
+                                    "Content-Type": "text/event-stream",
+                                    "Cache-Control": "no-cache",
+                                    "Connection": "keep-alive",
+                                    "X-Accel-Buffering": "no"
+                                }
+                            )
+                            await sse.prepare(request)
+                            chat_id = f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}"
+                            chunk_payload = {
+                                "id": chat_id,
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": f"direct:{ep['name']}:{payload_model}",
+                                "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}]
+                            }
+                            await sse.write(f"data: {json.dumps(chunk_payload, ensure_ascii=False)}\n\n".encode("utf-8"))
+                            await sse.write(b"data: [DONE]\n\n")
+                            await sse.write_eof()
+                            return sse
                         return web.json_response({
                             "id": f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}",
                             "object": "chat.completion",
@@ -701,7 +770,7 @@ async def attempt_direct_chat(request, messages, temperature, stream,
                             endpoint_breaker.record_failure(ep["name"])
                             continue
 
-                        if not stream:
+                        if not upstream_stream:
                             data = await upstream.json()
                             msg = {}
                             try:
@@ -716,6 +785,29 @@ async def attempt_direct_chat(request, messages, temperature, stream,
                             if not content.strip():
                                 continue
                             endpoint_breaker.record_success(ep["name"])
+                            if requested_stream:
+                                sse = web.StreamResponse(
+                                    status=200, reason="OK",
+                                    headers={
+                                        "Content-Type": "text/event-stream",
+                                        "Cache-Control": "no-cache",
+                                        "Connection": "keep-alive",
+                                        "X-Accel-Buffering": "no"
+                                    }
+                                )
+                                await sse.prepare(request)
+                                chat_id = f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}"
+                                chunk_payload = {
+                                    "id": chat_id,
+                                    "object": "chat.completion.chunk",
+                                    "created": int(time.time()),
+                                    "model": f"direct:{ep['name']}:{payload_model}",
+                                    "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}]
+                                }
+                                await sse.write(f"data: {json.dumps(chunk_payload, ensure_ascii=False)}\n\n".encode("utf-8"))
+                                await sse.write(b"data: [DONE]\n\n")
+                                await sse.write_eof()
+                                return sse
                             return web.json_response({
                                 "id": f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}",
                                 "object": "chat.completion",
@@ -913,7 +1005,9 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
         stream_started = False
         error_message = None
 
-        for current_model, current_provider in build_attempts():
+        # direct:* tiers: skip the slow g4f-mirror chain and go straight to the
+        # keyless direct sweep once their pinned endpoint fails.
+        for current_model, current_provider in (build_attempts() if not preferred_direct else []):
             try:
                 client = AsyncClient(provider=current_provider)
                 res_coro = client.chat.completions.create(
@@ -1012,7 +1106,7 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
     else:
         # Non-streaming routed request
         last_error = None
-        for current_model, current_provider in build_attempts():
+        for current_model, current_provider in (build_attempts() if not preferred_direct else []):
             try:
                 client = AsyncClient(provider=current_provider)
                 res_coro = client.chat.completions.create(

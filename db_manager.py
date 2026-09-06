@@ -77,6 +77,15 @@ class ActiveModelManager:
                 )
             """)
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_summaries (
+                    user_id TEXT NOT NULL,
+                    chat_id TEXT NOT NULL,
+                    summary TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (user_id, chat_id)
+                )
+            """)
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS rag_documents (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id TEXT NOT NULL,
@@ -96,6 +105,47 @@ class ActiveModelManager:
                     FOREIGN KEY (doc_id) REFERENCES rag_documents(id) ON DELETE CASCADE
                 )
             """)
+
+            # ── Per-user chat isolation migration ─────────────────────────────
+            # Old databases used a single chat_id PRIMARY KEY, so one chat id
+            # could never belong to two users and there was no user_id index.
+            # Rebuild chat_records with composite (user_id, chat_id) + indexes.
+            pk_cols = [
+                row[1] for row in cursor.execute("PRAGMA table_info(chat_records)").fetchall() if row[5]
+            ]
+            if pk_cols == ["chat_id"]:
+                cursor.execute("ALTER TABLE chat_records RENAME TO chat_records_old")
+                cursor.execute("""
+                    CREATE TABLE chat_records (
+                        chat_id TEXT NOT NULL,
+                        user_id TEXT NOT NULL,
+                        email TEXT,
+                        title TEXT,
+                        model_used TEXT,
+                        message_count INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        payload TEXT,
+                        deleted INTEGER DEFAULT 0,
+                        PRIMARY KEY (user_id, chat_id)
+                    )
+                """)
+                cursor.execute("""
+                    INSERT OR IGNORE INTO chat_records
+                        (chat_id, user_id, email, title, model_used, message_count,
+                         created_at, updated_at, payload, deleted)
+                    SELECT chat_id, COALESCE(user_id, 'guest'), email, title, model_used,
+                           message_count, created_at, updated_at, payload, COALESCE(deleted, 0)
+                    FROM chat_records_old
+                """)
+                cursor.execute("DROP TABLE chat_records_old")
+                logger.info("Migrated chat_records to per-user composite PK (user_id, chat_id)")
+
+            # Keep per-user lookups fast (get_user_chats / facts / logs / messages)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_records_user ON chat_records(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_message_records_user ON message_records(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_facts_user ON user_facts(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_logs_user ON user_logs(user_id)")
 
     def _create_tables(self):
         with self._get_conn() as conn:
@@ -147,16 +197,22 @@ class ActiveModelManager:
             """)
 
             # 4. Chat Records Table (for Admin audit & user persistent chats)
+            # Per-user isolation: composite PK (user_id, chat_id) — the same
+            # chat id can belong to different users without collisions, and
+            # lookups are indexed by user_id.
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS chat_records (
-                    chat_id TEXT PRIMARY KEY,
-                    user_id TEXT,
+                    chat_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
                     email TEXT,
                     title TEXT,
                     model_used TEXT,
                     message_count INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    payload TEXT,
+                    deleted INTEGER DEFAULT 0,
+                    PRIMARY KEY (user_id, chat_id)
                 )
             """)
 
@@ -714,4 +770,44 @@ class ActiveModelManager:
                 (fact_id, user_id)
             )
             return cur.rowcount > 0
+
+    # ==================================================================
+    # Rolling conversation summaries (per user per chat) — near-infinite
+    # context: old turns are distilled into a running summary that is
+    # re-injected at the top of every reply, so no model ever answers as
+    # if the message were the first one.
+    # ==================================================================
+
+    def set_chat_summary(self, user_id: str, chat_id: str, summary: str) -> None:
+        if not chat_id:
+            return
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT 1 FROM conversation_summaries WHERE user_id = ? AND chat_id = ?",
+                (user_id, chat_id)
+            )
+            if cursor.fetchone():
+                cursor.execute(
+                    "UPDATE conversation_summaries SET summary = ?, updated_at = ? WHERE user_id = ? AND chat_id = ?",
+                    (summary, datetime.now().isoformat(), user_id, chat_id)
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO conversation_summaries (user_id, chat_id, summary, updated_at) VALUES (?, ?, ?, ?)",
+                    (user_id, chat_id, summary, datetime.now().isoformat())
+                )
+
+    def get_chat_summary(self, user_id: str, chat_id: str) -> Optional[str]:
+        if not chat_id:
+            return None
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            row = cursor.execute(
+                "SELECT summary FROM conversation_summaries WHERE user_id = ? AND chat_id = ?",
+                (user_id, chat_id)
+            ).fetchone()
+            if row and row[0]:
+                return str(row[0])
+            return None
 

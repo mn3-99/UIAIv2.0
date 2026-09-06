@@ -105,7 +105,8 @@ async def run_send_message(prompt: str, messages: Optional[list], chat_id: Optio
             model,
             messages,
             user_id=user_id or "guest",
-            custom_system_prompt=system_prompt
+            custom_system_prompt=system_prompt,
+            chat_id=chat_id
         )
     )
 
