@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Copy, Check, RotateCcw, Edit3, User, AlertCircle, Sparkles, TerminalSquare, Globe, Loader2, RefreshCw, FileText, Volume2, Square, Lightbulb } from 'lucide-react';
+import { Copy, Check, RotateCcw, Edit3, User, AlertCircle, Sparkles, TerminalSquare, Globe, Loader2, RefreshCw, FileText, Volume2, Square, Lightbulb, BookOpenText } from 'lucide-react';
 import { ChatMessage } from '../types';
 import { RichMarkdown } from './RichMarkdown';
 import { ThinkingPanel } from './ThinkingPanel';
 import { ThinkingSteps } from './ThinkingSteps';
 import { DeepSearchPanel } from './DeepSearchPanel';
 import { WaitingIndicator, WaitingLines } from './WaitingAnimations';
+import { ReadingModePane } from './ReadingModePane';
 import { MessageReactions } from './MessageReactions';
 import { copyText } from '../utils/clipboard';
 import { speakText, stopSpeaking } from '../utils/tts';
@@ -28,6 +29,7 @@ interface ChatMessageItemProps {
   onEditPrompt?: (messageId: string, newText: string) => void;
   isLastAssistantMessage?: boolean;
   onOpenCanvas?: (code: string, language: string) => void;
+  caretMode?: 'block' | 'pulse' | 'none';
 }
 
 export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
@@ -35,7 +37,8 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
   onRegenerate,
   onEditPrompt,
   isLastAssistantMessage,
-  onOpenCanvas
+  onOpenCanvas,
+  caretMode = 'block'
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -44,6 +47,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
   const [reactions, setReactions] = useState<Record<string, boolean>>({});
   const [isSpeaking, setIsSpeaking] = useState(false);
   const speakingRef = useRef(false);
+  const [readingMode, setReadingMode] = useState(false);
 
   // Stop any audio this bubble started when it unmounts (chat switch/navigate)
   useEffect(() => {
@@ -80,6 +84,8 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
   const isThinking = message.status === 'thinking';
   const isQueued = message.status === 'queued';
   const isThinkingActive = (isStreaming || isThinking) && !!message.thinking && message.content.length === 0;
+  const isReadable = !isUser && !isError && message.status === 'complete'
+    && typeof message.content === 'string' && message.content.length > 1500;
 
   const handleRunPython = (code: string, blockIndex: number) => {
     setPyResults(prev => ({ ...prev, [blockIndex]: { ok: false, stdout: '', stderr: '', running: true } }));
@@ -377,6 +383,8 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                     hasContent={!!message.content}
                   />
                 </div>
+              ) : readingMode && isReadable ? (
+                <ReadingModePane content={message.content} onClose={() => setReadingMode(false)} />
               ) : (
                 <MarkdownBoundary content={message.content}>
                   <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} onRunPython={handleRunPython} onOpenCanvas={onOpenCanvas} />
@@ -412,9 +420,27 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                 );
               })}
 
-              {/* Smooth Pulse Streaming Indicator */}
-              {isStreaming && (
-                <span className="inline-block w-2.5 h-4 ms-1.5 bg-accent animate-pulse rounded-full align-middle" />
+              {/* Streaming caret + live char counter (tracking the reply end) */}
+              {isStreaming && !!message.content && caretMode !== 'none' && (
+                <span className="inline-flex items-center gap-1.5 ms-1 align-middle text-faint select-none" aria-hidden="true">
+                  {caretMode === 'block'
+                    ? <span className="stream-caret-block" />
+                    : <span className="stream-caret-pulse" />}
+                  <span className="text-[9.5px] font-semibold tabular-nums tracking-tight">
+                    {message.content.length.toLocaleString('en-US')}
+                  </span>
+                </span>
+              )}
+
+              {/* Reading mode toggle for long replies */}
+              {isReadable && (
+                <button
+                  onClick={() => setReadingMode((o) => !o)}
+                  className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-semibold border border-line text-muted hover:text-accent hover:border-accent/50 hover:bg-accent-soft/40 transition-colors"
+                >
+                  <BookOpenText className={`w-3.5 h-3.5 ${readingMode ? 'text-accent' : ''}`} />
+                  {readingMode ? 'إغلاق القراءة المريحة' : 'قراءة مريحة'}
+                </button>
               )}
             </div>
           )}

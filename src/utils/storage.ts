@@ -16,7 +16,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   apiKeys: {},
   passwordProtected: false,
   autoTitle: true,
-  soundEnabled: false
+  soundEnabled: false,
+  accent: null,
+  caret: 'block'
 };
 
 /**

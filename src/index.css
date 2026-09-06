@@ -1148,6 +1148,35 @@ body[data-theme="obsidian-amber"] .glow-blue {
   .send-btn::after { animation: none; }
 }
 
+/* ── Streaming caret (يتتبع نهاية آخر رمز) ─────────────────────────────── */
+.stream-caret-block {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  border-radius: 1px;
+  background: currentColor;
+  animation: caretBlink 1s steps(2, start) infinite;
+  vertical-align: text-bottom;
+}
+.stream-caret-pulse {
+  display: inline-block;
+  width: 2.5px;
+  height: 1.05em;
+  border-radius: 999px;
+  background: currentColor;
+  animation: caretBlink 0.9s ease-in-out infinite;
+  vertical-align: text-bottom;
+}
+@keyframes caretBlink {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0.15; }
+}
+
+/* Reading-mode inner scroll (thin, matches theme) */
+.reading-pane-scroll { scrollbar-width: thin; scrollbar-color: rgba(128, 128, 128, 0.35) transparent; }
+.reading-pane-scroll::-webkit-scrollbar { width: 6px; }
+.reading-pane-scroll::-webkit-scrollbar-thumb { background: rgba(128, 128, 128, 0.35); border-radius: 3px; }
+
 /* ── زر الإيقاف أثناء التوليد (stop_btn) ─────────────────────────────────
    Explicit red gradient (no white pulse-ring disc that used to render as a
    white "layer" over the button on mobile while waiting for the reply). */

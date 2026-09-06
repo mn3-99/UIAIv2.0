@@ -18,6 +18,8 @@ import { ComposerSlot, ComposerUi } from './components/ComposerSlot';
 import { ModalHost } from './components/ModalHost';
 
 import { applyTheme, isDarkTheme } from './utils/theme';
+import { applyAccent } from './utils/dynamicTheme';
+import { withViewTransition } from './utils/viewTransitions';
 import { GEMS } from './utils/gems';
 import { getFullRegistry, setSkillEnabled, getActivePromptPacks, SkillDefinition } from './utils/skillsRegistry';
 import { setupVisualViewportKeyboard } from './utils/nativeAdapter';
@@ -305,6 +307,11 @@ export default function App() {
     if (settings.theme) applyTheme(settings.theme);
   }, [settings.theme]);
 
+  // Apply custom accent (and re-derive when theme flips light/dark)
+  useEffect(() => {
+    applyAccent(settings.accent || null);
+  }, [settings.accent, settings.theme]);
+
   // Sync selectedTier with settings.activeModelId
   useEffect(() => {
     if (settings.activeModelId) {
@@ -492,6 +499,7 @@ export default function App() {
                     onRegenerate={engine.handleRegenerate}
                     onEditPrompt={engine.handleEditUserMessage}
                     onOpenCanvas={handleOpenCanvasArtifact}
+                    caretMode={settings.caret || 'block'}
                   />
                 );
               })}
@@ -598,7 +606,7 @@ export default function App() {
           { id: 'gems', title: 'شخصيات MijlAi (Gems)', icon: <LayoutGridIcon className="w-4 h-4" />, run: () => setIsGemsOpen(true) },
           { id: 'focus', title: focusMode ? 'إنهاء وضع التركيز' : 'وضع التركيز', hint: 'Ctrl+Shift+F', icon: <Maximize2 className="w-4 h-4" />, run: () => { if (!focusMode) setIsSidebarOpen(false); setFocusMode(f => !f); } },
           { id: 'export', title: 'تصدير المحادثة الحالية (Markdown)', icon: <Download className="w-4 h-4" />, run: handleExportChat },
-          { id: 'toggle-theme', title: 'تبديل المظهر (فاتح/داكن)', icon: <Moon className="w-4 h-4" />, run: () => { const next = isDarkTheme(settings.theme) ? 'light' : 'dark'; setSettings(prev => ({ ...prev, theme: next })); } },
+          { id: 'toggle-theme', title: 'تبديل المظهر (فاتح/داكن)', icon: <Moon className="w-4 h-4" />, run: () => { const next = isDarkTheme(settings.theme) ? 'light' : 'dark'; withViewTransition(() => setSettings(prev => ({ ...prev, theme: next }))); } },
         ]}
       />
 

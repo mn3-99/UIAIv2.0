@@ -99,6 +99,10 @@ export interface AppSettings {
   userAuthToken?: string;
   autoTitle: boolean;
   soundEnabled: boolean;
+  /** Custom accent color (hex) or null to use the theme default. */
+  accent?: string | null;
+  /** Streaming caret style shown at the end of a live reply. */
+  caret?: 'block' | 'pulse' | 'none';
 }
 
 export interface TestConnectionResult {

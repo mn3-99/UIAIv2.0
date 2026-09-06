@@ -7,6 +7,8 @@ import { AppSettings, ProviderConfig, TestConnectionResult, ThemeOption } from '
 import { APP_CONFIG } from '../config';
 import { hashPassword } from '../utils/storage';
 import { applyTheme } from '../utils/theme';
+import { withViewTransition } from '../utils/viewTransitions';
+import { ACCENT_PRESETS, normalizeHex } from '../utils/dynamicTheme';
 import { useModalA11y } from '../utils/useModalA11y';
 
 interface SettingsModalProps {
@@ -179,8 +181,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleThemeChange = (theme: ThemeOption) => {
-    applyTheme(theme);
-    onUpdateSettings({ ...settings, theme });
+    withViewTransition(() => {
+      applyTheme(theme);
+      onUpdateSettings({ ...settings, theme });
+    });
   };
 
   const handleSetPassword = async (e: React.FormEvent) => {
@@ -612,6 +616,74 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                   <p className="text-[11px] text-slate-400">ألوان دافئة مستوحاة من العقيق الفاخر والنحاس الدافئ.</p>
                 </button>
+              </div>
+
+              {/* Custom accent color (dynamic theme source) */}
+              <div className="pt-4 border-t border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block font-bold text-xs text-slate-200">لون التمييز (Accent)</label>
+                  {settings.accent && (
+                    <button
+                      onClick={() => onUpdateSettings({ ...settings, accent: null })}
+                      className="text-[10px] text-slate-400 hover:text-slate-200 transition-colors"
+                    >
+                      ✕ إعادة افتراضي الثيم
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {ACCENT_PRESETS.map((p) => {
+                    const active = settings.accent?.toLowerCase() === p.color;
+                    return (
+                      <button
+                        key={p.color}
+                        onClick={() => onUpdateSettings({ ...settings, accent: p.color })}
+                        title={p.name}
+                        aria-label={`لون ${p.name}`}
+                        className={`w-8 h-8 rounded-full transition-transform hover:scale-110 ${active ? 'ring-2 ring-offset-2 ring-offset-slate-950 scale-110' : ''}`}
+                        style={{ background: p.color, ['--tw-ring-color' as string]: p.color }}
+                      />
+                    );
+                  })}
+                  <label
+                    className="relative w-9 h-9 rounded-full overflow-hidden cursor-pointer border border-slate-700 flex items-center justify-center hover:scale-110 transition-transform"
+                    title="لون مخصص"
+                  >
+                    <input
+                      type="color"
+                      value={normalizeHex(settings.accent || '#2563eb') || '#2563eb'}
+                      onChange={(e) => onUpdateSettings({ ...settings, accent: e.target.value })}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      aria-label="اختر لون تمييز مخصص"
+                    />
+                    <Palette className="w-4 h-4 text-slate-300 pointer-events-none" />
+                  </label>
+                </div>
+                <p className="text-[10px] text-slate-500">يُعاد تلوين كل الواجهة فوراً (أزرار، شارات، مؤشرات، فقاعات المستخدم…) في الفاتح والداكن.</p>
+              </div>
+
+              {/* Streaming caret style */}
+              <div className="space-y-2">
+                <label className="block font-bold text-xs text-slate-200">مؤشر نهاية الرد أثناء الكتابة (Caret)</label>
+                <div className="flex items-center gap-2">
+                  {([
+                    { id: 'block', label: '▍مربع وامض' },
+                    { id: 'pulse', label: '● نبض' },
+                    { id: 'none', label: 'إيقاف' },
+                  ] as const).map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => onUpdateSettings({ ...settings, caret: c.id })}
+                      className={`h-8 px-3 rounded-lg text-[11px] font-semibold border transition-all ${
+                        (settings.caret || 'block') === c.id
+                          ? 'bg-blue-600 text-white border-blue-500'
+                          : 'bg-slate-950/60 text-slate-300 border-slate-800 hover:border-slate-600'
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* System System Prompt Config */}
