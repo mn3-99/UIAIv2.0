@@ -12,6 +12,7 @@ import { toast } from './Toast';
 import { AuditLog } from './admin/AuditLog';
 import { UserDossier } from './admin/UserDossier';
 import { LiveActivity } from './admin/LiveActivity';
+import { AdminAssistant } from './admin/AdminAssistant';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -80,6 +81,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const dialogRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [dossierUserId, setDossierUserId] = useState<string | null>(null);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -416,6 +418,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">تحديث</span>
+            </button>
+            <button
+              onClick={() => setAssistantOpen(true)}
+              className="p-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white flex items-center gap-1.5 text-xs font-semibold transition-all shadow-sm"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span className="hidden sm:inline">مساعد ذكي</span>
             </button>
             <button
               onClick={onClose}
@@ -1145,6 +1154,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             authFetch={authFetch}
             onClose={() => setDossierUserId(null)}
           />
+        )}
+
+        {/* AI admin assistant drawer */}
+        {assistantOpen && (
+          <AdminAssistant authFetch={authFetch} onClose={() => setAssistantOpen(false)} />
         )}
       </div>
     </div>
