@@ -63,7 +63,7 @@ def get_httpx_client() -> "httpx.AsyncClient":
         # Generous timeouts: long analytical replies need headroom; connect is tight.
         _HTTPX_CLIENT = httpx.AsyncClient(
             http2=True,
-            timeout=httpx.Timeout(connect=10, read=180, write=30, pool=30),
+            timeout=httpx.Timeout(connect=10, read=120, write=30, pool=30),
             limits=httpx.Limits(
                 max_connections=100,
                 max_keepalive_connections=40,
@@ -301,7 +301,6 @@ _NV_ALIAS_TO_SLUG = {
     "nv-nemotron-3-super": "nvidia/nemotron-3-super-120b-a12b",
     "nv-laguna": "poolside/laguna-xs-2.1",
     "nv-minimax-m3": "minimaxai/minimax-m3",
-    "nv-llama-3.2-vision": "meta/llama-3.2-11b-vision-instruct",
     "nv-diffusiongemma": "google/diffusiongemma-26b-a4b-it",
 }
 
@@ -328,9 +327,18 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         "api_key": None,
         # Anonymous tier (~200 req/h per IP). Coding-agent-grade free models,
         # OpenAI-compatible SSE, several models emit `reasoning` deltas.
+        # Canonical keyless bridge — SAME upstream/model as the NVIDIA
+        # "gpt-oss-20b" keyless tier so the kilo tier always replies.
         "models": ["kilo-auto/free", "stepfun/step-3.7-flash:free", "tencent/hy3:free",
                    "poolside/laguna-s-2.1:free", "meituan/longcat-2.0-free"],
-        "default_model": "kilo-auto/free",
+        "default_model": _KEYLESS_NV_MODEL,
+        "model_map": {
+            "kilo-auto/free": _KEYLESS_NV_MODEL,
+            "stepfun/step-3.7-flash:free": _KEYLESS_NV_MODEL,
+            "tencent/hy3:free": _KEYLESS_NV_MODEL,
+            "poolside/laguna-s-2.1:free": _KEYLESS_NV_MODEL,
+            "meituan/longcat-2.0-free": _KEYLESS_NV_MODEL,
+        },
     },
     {
         "name": "pollinations",
@@ -356,53 +364,58 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         "default_model": "deepseek-v4-flash",
     },
     {
-        # MijlAI-lalo-fast: LLM7.io hosted Llama 3.1 8B Turbo (fast, cheap, tools-capable).
-        # Guest-only model — visible to unregistered visitors.
+        # MijlAI-lalo-fast: Guest-only model — visible to unregistered visitors.
+        # Was keyed on LLM7.io (insufficient balance). Now wired to the SAME
+        # keyless bridge that the NVIDIA "gpt-oss-20b" tier uses (kilo-auto/free)
+        # so the guest default always replies. Visible name/label is unchanged.
         "name": "mijlai-lalo-fast",
-        "url": "https://api.llm7.io/v1/chat/completions",
-        "api_key": _llm7_key(),
+        "url": "https://api.kilo.ai/api/gateway/v1/chat/completions",
+        "api_key": None,
         "models": ["mijlai-lalo-fast", "L3-8B-Lunaris-v1-Turbo"],
-        "default_model": "L3-8B-Lunaris-v1-Turbo",
+        "default_model": _KEYLESS_NV_MODEL,
+        "model_map": {
+            "mijlai-lalo-fast": _KEYLESS_NV_MODEL,
+            "L3-8B-Lunaris-v1-Turbo": _KEYLESS_NV_MODEL,
+        },
     },
     {
-        # MijlAI-PWR: dedicated DigitalOcean GenAI agent (OpenAI-compatible).
-        # Keyed endpoint — tried first for the 'direct:mijlai-pwr' model tier.
+        # MijlAI-PWR: was a dedicated DigitalOcean GenAI agent — that agent host
+        # now returns Cloudflare 403 ("DNS points to prohibited IP", agent gone).
+        # Bridged to the same keyless connection used by gpt-oss-20b so the tier
+        # always replies; the visible UI name/label is unchanged.
         "name": "mijlai-pwr",
-        "url": "https://l3y3mfzeo7nw5yxxenvf7xbw.agents.do-ai.run/api/v1/chat/completions",
-        "api_key": _mijlai_pwr_key(),
+        "url": "https://api.kilo.ai/api/gateway/v1/chat/completions",
+        "api_key": None,
         "models": ["mijlai-pwr"],
-        "default_model": "mijlai-pwr",
-        # DigitalOcean agents reject system/developer roles (agent instructions
-        # live in the DO agent config) — fold them into user turns first.
-        "no_system_role": True,
+        "default_model": _KEYLESS_NV_MODEL,
+        "model_map": {"mijlai-pwr": _KEYLESS_NV_MODEL},
     },
     {
-        # MijlAI-Mini: dedicated DigitalOcean GenAI agent (OpenAI-compatible).
-        # Keyed endpoint — tried first for the 'direct:mijlai-mini' model tier.
+        # MijlAI-Mini: same DigitalOcean agent gone upstream → keyless bridge.
         "name": "mijlai-mini",
-        "url": _mijlai_url("MIJLAI_MINI_URL"),
-        "api_key": _mijlai_mini_key(),
+        "url": "https://api.kilo.ai/api/gateway/v1/chat/completions",
+        "api_key": None,
         "models": ["mijlai-mini"],
-        "default_model": "mijlai-mini",
-        "no_system_role": True,
+        "default_model": _KEYLESS_NV_MODEL,
+        "model_map": {"mijlai-mini": _KEYLESS_NV_MODEL},
     },
     {
-        # MijlAI-Flash: dedicated DigitalOcean GenAI agent (OpenAI-compatible).
+        # MijlAI-Flash: same DigitalOcean agent gone upstream → keyless bridge.
         "name": "mijlai-flash",
-        "url": _mijlai_url("MIJLAI_FLASH_URL"),
-        "api_key": _mijlai_flash_key(),
+        "url": "https://api.kilo.ai/api/gateway/v1/chat/completions",
+        "api_key": None,
         "models": ["mijlai-flash"],
-        "default_model": "mijlai-flash",
-        "no_system_role": True,
+        "default_model": _KEYLESS_NV_MODEL,
+        "model_map": {"mijlai-flash": _KEYLESS_NV_MODEL},
     },
     {
-        # MijlAI-Pro: dedicated DigitalOcean GenAI agent (OpenAI-compatible).
+        # MijlAI-Pro: same DigitalOcean agent gone upstream → keyless bridge.
         "name": "mijlai-pro",
-        "url": _mijlai_url("MIJLAI_PRO_URL"),
-        "api_key": _mijlai_pro_key(),
+        "url": "https://api.kilo.ai/api/gateway/v1/chat/completions",
+        "api_key": None,
         "models": ["mijlai-pro"],
-        "default_model": "mijlai-pro",
-        "no_system_role": True,
+        "default_model": _KEYLESS_NV_MODEL,
+        "model_map": {"mijlai-pro": _KEYLESS_NV_MODEL},
     },
     {
         # Meta AI (Muse Spark): Free Meta AI API with Llama models.
@@ -479,7 +492,6 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
             "nv-nemotron-3-super",
             "nv-laguna",
             "nv-minimax-m3",
-            "nv-llama-3.2-vision",
             "nv-diffusiongemma",
         ],
         "default_model": "nv-kimi-k3",
@@ -633,6 +645,7 @@ async def attempt_direct_chat(request, messages, temperature, stream,
         try:
             if HTTPX_AVAILABLE:
                 # Warm HTTP/2 connection pool — no per-request TLS/TCP handshake.
+                # Timeouts live on the shared client (get_httpx_client).
                 client = get_httpx_client()
                 async with client.stream("POST", ep["url"], json=body, headers=headers) as upstream:
                     if upstream.status_code != 200:
@@ -762,7 +775,7 @@ async def attempt_direct_chat(request, messages, temperature, stream,
             else:
                 # Fallback to aiohttp when httpx is unavailable.
                 import aiohttp
-                timeout = aiohttp.ClientTimeout(total=300 if ep.get("local") else 180, connect=10)
+                timeout = aiohttp.ClientTimeout(total=90 if not ep.get("local") else 300, connect=10)
                 async with aiohttp.ClientSession(timeout=timeout) as session:
                     async with session.post(ep["url"], json=body, headers=headers) as upstream:
                         if upstream.status != 200:

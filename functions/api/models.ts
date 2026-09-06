@@ -29,7 +29,6 @@ export const NVIDIA_MODELS: ModelEntry[] = [
   { id: 'direct:nv-gpt-oss-20b', name: 'GPT-OSS 20B (OpenAI · NVIDIA)', provider: 'nvidia', icon: 'cpu', is_free: true, description: 'openai/gpt-oss-20b' },
   { id: 'direct:nv-muse-glimmer', name: 'Muse Glimmer 30B (Meta · NVIDIA)', provider: 'nvidia', icon: 'sparkles', is_free: true, description: 'meta/muse-glimmer-30b' },
   { id: 'direct:nv-laguna', name: 'Laguna (Poolside · NVIDIA)', provider: 'nvidia', icon: 'cpu', is_free: true, description: 'poolside/laguna-xs-2.1 — code specialist' },
-  { id: 'direct:nv-llama-3.2-vision', name: 'Llama 3.2 Vision (Meta · NVIDIA)', provider: 'nvidia', icon: 'eye', is_free: true, description: 'meta/llama-3.2-11b-vision-instruct' },
   { id: 'direct:nv-diffusiongemma', name: 'DiffusionGemma 26B (Google · NVIDIA)', provider: 'nvidia', icon: 'image', is_free: true, description: 'google/diffusiongemma-26b-a4b-it' },
 ];
 

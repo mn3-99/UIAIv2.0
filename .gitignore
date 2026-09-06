@@ -18,7 +18,7 @@ __pycache__/
 *.pem
 **/.*_key
 ssl/
-models/
+/models/
 src-tauri/target/
 src-tauri/gen/
 workspaces/uploads/
