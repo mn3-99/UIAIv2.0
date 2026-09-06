@@ -1421,7 +1421,7 @@ ${h.text}`)
   };
 
   return (
-    <div className="w-full h-dvh flex bg-white overflow-hidden antialiased selection:bg-blue-100 font-sans">
+    <div className="w-full h-dvh flex bg-surface overflow-hidden antialiased selection:bg-accent-soft font-sans">
       <AndroidAppBanner />
       <NetworkStatusBanner isOnline={isOnline} />
 
@@ -1490,7 +1490,7 @@ ${h.text}`)
         {!focusMode && (
           <button
             onClick={() => { setFocusMode(true); setIsSidebarOpen(false); }}
-            className="absolute bottom-4 end-4 md:bottom-auto md:top-4 md:start-24 z-20 h-8 w-8 rounded-full bg-white/90 hover:bg-white text-slate-600 hover:text-blue-600 border border-slate-200/80 shadow-2xs hover:shadow-md flex items-center justify-center transition-all backdrop-blur-md"
+            className="absolute bottom-4 end-4 md:bottom-auto md:top-4 md:start-24 z-20 h-8 w-8 rounded-full bg-surface/90 hover:bg-surface text-muted hover:text-accent border border-line/80 shadow-2xs hover:shadow-md flex items-center justify-center transition-all backdrop-blur-md"
             title="وضع التركيز الخالي من المشتتات (Ctrl+Shift+F)"
           >
             <Maximize2 className="w-3.5 h-3.5" />
@@ -1501,7 +1501,7 @@ ${h.text}`)
         {focusMode && (
           <button
             onClick={() => setFocusMode(false)}
-            className="absolute top-4 end-4 z-30 h-9 px-3 rounded-full bg-white/90 border border-slate-200 shadow-md flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-blue-600 transition-all backdrop-blur-md"
+            className="absolute top-4 end-4 z-30 h-9 px-3 rounded-full bg-surface/90 border border-line shadow-md flex items-center gap-1.5 text-xs font-semibold text-main hover:text-accent transition-all backdrop-blur-md"
             title="الخروج من وضع التركيز (Esc أو Ctrl+Shift+F)"
           >
             <Minimize2 className="w-3.5 h-3.5" />
@@ -1553,7 +1553,7 @@ ${h.text}`)
                 if (chips.length === 0) return null;
                 return (
                   <div className="w-full flex flex-col items-center gap-1.5 pt-1">
-                    <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                    <span className="text-[10px] font-bold text-faint flex items-center gap-1">
                       <Sparkles className="w-3 h-3" /> تابع الحوار
                     </span>
                     <div className="flex flex-wrap items-center justify-center gap-2">
@@ -1561,7 +1561,7 @@ ${h.text}`)
                         <button
                           key={`${chip}-${i}`}
                           onClick={() => handleSendMessage(chip)}
-                          className="px-3.5 py-2 rounded-2xl text-[12px] font-medium bg-white/80 hover:bg-white border border-slate-200/80 hover:border-blue-300 text-slate-600 hover:text-blue-700 shadow-sm hover:shadow transition-all active:scale-[0.97]"
+                          className="px-3.5 py-2 rounded-2xl text-[12px] font-medium bg-surface/80 hover:bg-surface border border-line/80 hover:border-accent/35 text-muted hover:text-accent shadow-sm hover:shadow transition-all active:scale-[0.97]"
                         >
                           {chip}
                         </button>
@@ -1580,16 +1580,16 @@ ${h.text}`)
 
               {/* رسالة ترحيب للزوار غير المسجلين */}
               {currentUser === null && (
-                <div className="w-full max-w-[760px] md:w-[75%] mb-4 px-4 py-3 bg-gradient-to-r from-blue-50/80 to-emerald-50/80 border border-blue-200/50 rounded-2xl text-center animate-in fade-in duration-500">
-                  <p className="text-[13px] text-slate-700 leading-relaxed font-medium">
-                    <span className="text-blue-700 font-bold">مرحبًا بك في MijlAI.</span>{' '}
+                <div className="w-full max-w-[760px] md:w-[75%] mb-4 px-4 py-3 bg-gradient-to-r from-accent-soft/80 to-accent-soft/80 border border-accent/35 rounded-2xl text-center animate-in fade-in duration-500">
+                  <p className="text-[13px] text-main leading-relaxed font-medium">
+                    <span className="text-accent font-bold">مرحبًا بك في MijlAI.</span>{' '}
                     يمكنك الآن تجربة نموذج{' '}
-                    <span className="text-emerald-700 font-bold">MijlAI-lalo-fast</span>{' '}
+                    <span className="text-accent font-bold">MijlAI-lalo-fast</span>{' '}
                     السريع. بعد التسجيل، ستحصل على وصول كامل إلى مجموعة متنوعة من النماذج المتقدمة التي تتميز بدقة أعلى، وقدرات تخصيص أوسع، ودعم للغات متعددة، وتحليل سياقي محسن.
                   </p>
                   <button
                     onClick={() => setIsAuthModalOpen(true)}
-                    className="mt-2.5 inline-flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold rounded-xl shadow-sm transition-colors"
+                    className="mt-2.5 inline-flex items-center gap-1.5 px-4 py-1.5 bg-accent hover:bg-accent-hover text-white text-[12px] font-bold rounded-xl shadow-sm transition-colors"
                   >
                     تسجيل الدخول
                   </button>
@@ -1612,9 +1612,9 @@ ${h.text}`)
                           if (el) el.setSelectionRange(el.value.length, el.value.length);
                         });
                       }}
-                      className="group flex items-start gap-2.5 text-start p-3 bg-white/70 hover:bg-white border border-slate-200/80 hover:border-blue-300 rounded-2xl transition-all duration-200 active:scale-[0.98] shadow-sm hover:shadow-md text-xs text-slate-600 hover:text-slate-900"
+                      className="group flex items-start gap-2.5 text-start p-3 bg-surface/70 hover:bg-surface border border-line/80 hover:border-accent/35 rounded-2xl transition-all duration-200 active:scale-[0.98] shadow-sm hover:shadow-md text-xs text-muted hover:text-main"
                     >
-                      <span className="shrink-0 w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                      <span className="shrink-0 w-7 h-7 rounded-xl bg-accent-soft text-accent flex items-center justify-center group-hover:bg-accent group-hover:text-white transition-colors">
                         <Icon className="w-3.5 h-3.5" />
                       </span>
                       <span className="leading-relaxed line-clamp-2">{p.text}</span>
@@ -1705,7 +1705,7 @@ ${h.text}`)
         {showScrollToBottom && (
           <button
             onClick={() => scrollToBottom(true)}
-            className="absolute bottom-20 end-6 p-2.5 bg-blue-600 text-white rounded-full shadow-lg transition-all z-20 hover:bg-blue-700"
+            className="absolute bottom-20 end-6 p-2.5 bg-accent text-white rounded-full shadow-lg transition-all z-20 hover:bg-accent-hover"
           >
             <ArrowDown className="w-4 h-4" />
           </button>

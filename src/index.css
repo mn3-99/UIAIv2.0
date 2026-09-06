@@ -3,6 +3,25 @@
 @import "highlight.js/styles/github-dark.css";
 @import "katex/dist/katex.min.css";
 
+/* ── Semantic color bridge (source of truth for components) ──────────────
+   Tailwind 4 generates utilities from @theme tokens. `inline` keeps the
+   var(--*) references at runtime so every utility (bg-surface, text-main,
+   border-line, bg-accent…) follows the active [data-theme] automatically —
+   no dark-theme "repaint" overrides needed for components that use these.
+   Opacity modifiers (bg-surface/80) work via color-mix. */
+@theme inline {
+  --color-surface: var(--bg-surface);
+  --color-card: var(--bg-card);
+  --color-elevated: var(--bg-elevated);
+  --color-main: var(--text-main);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-line: var(--border-color);
+  --color-accent: var(--accent-color);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+}
+
 /* ── شريط الأدوات للجوال (Area 1) ──
    تمرير أفقي سلس، إخفاء شريط التمرير، ماسك تدرّج على الأطراف،
    وتفعيل gesture التمرير الأفقي على اللمس. */
@@ -87,6 +106,9 @@
     --accent-color: #2563eb;
     --accent-hover: #1d4ed8;
     --accent-soft: #eff6ff;
+    --accent-grad-a: #2563eb;
+    --accent-grad-b: #3b82f6;
+    --accent-glow: rgba(37, 99, 235, 0.22);
     --text-main: #0f172a;
     --text-muted: #64748b;
     /* رُفع التباين من 2.9:1 إلى ~4:1 — النصوص الخافتة تبقى خافتة لكن مقروءة */
@@ -139,6 +161,9 @@ body[data-theme="dark"] {
   --accent-color: #3b82f6;
   --accent-hover: #60a5fa;
   --accent-soft: rgba(59, 130, 246, 0.14);
+  --accent-grad-a: #3b82f6;
+  --accent-grad-b: #60a5fa;
+  --accent-glow: rgba(59, 130, 246, 0.28);
   --text-main: #f1f5f9;
   --text-muted: #94a3b8;
   --text-faint: #64748b;
@@ -155,6 +180,9 @@ body[data-theme="emerald-slate"] {
   --accent-color: #10b981;
   --accent-hover: #34d399;
   --accent-soft: rgba(16, 185, 129, 0.13);
+  --accent-grad-a: #10b981;
+  --accent-grad-b: #34d399;
+  --accent-glow: rgba(16, 185, 129, 0.26);
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
   --text-faint: #64748b;
@@ -171,6 +199,9 @@ body[data-theme="obsidian-amber"] {
   --accent-color: #f59e0b;
   --accent-hover: #fbbf24;
   --accent-soft: rgba(245, 158, 11, 0.13);
+  --accent-grad-a: #f59e0b;
+  --accent-grad-b: #fbbf24;
+  --accent-glow: rgba(245, 158, 11, 0.26);
   --text-main: #fafaf9;
   --text-muted: #a8a29e;
   --text-faint: #78716c;
@@ -213,7 +244,6 @@ body[data-theme="dark"], body[data-theme="emerald-slate"], body[data-theme="obsi
   .hover\:bg-slate-100:hover { background-color: var(--bg-card); }
   .hover\:bg-slate-200:hover, .hover\:bg-slate-200\/80:hover { background-color: var(--bg-elevated); }
   .hover\:bg-blue-50:hover { background-color: var(--accent-soft); }
-  .hover\:bg-blue-600:hover { background-color: var(--accent-color); }
   .hover\:bg-blue-700:hover { background-color: var(--accent-hover); }
   .hover\:bg-white\/5:hover { background-color: color-mix(in srgb, var(--text-main) 6%, transparent); }
   .hover\:bg-white\/20:hover { background-color: color-mix(in srgb, var(--text-main) 14%, transparent); }
@@ -225,17 +255,16 @@ body[data-theme="dark"], body[data-theme="emerald-slate"], body[data-theme="obsi
   .text-slate-600, .text-slate-500 { color: var(--text-muted); }
   .text-slate-400 { color: var(--text-faint); }
   .text-blue-500, .text-blue-600, .text-blue-700 { color: var(--accent-color); }
-  .hover\:text-slate-900:hover, .hover\:text-slate-800:hover, .hover\:text-slate-700:hover { color: var(--text-main); }
+  .hover\:text-slate-900:hover, .hover\:text-slate-800:hover { color: var(--text-main); }
   .hover\:text-slate-600:hover { color: var(--text-muted); }
-  .hover\:text-blue-600:hover, .hover\:text-blue-700:hover { color: var(--accent-color); }
-  .placeholder-slate-400::placeholder, .placeholder-slate-500::placeholder { color: var(--text-faint); }
+  .hover\:text-blue-700:hover { color: var(--accent-color); }
 
   /* ---- borders ---- */
   .border-slate-100, .border-slate-200, .border-slate-200\/80, .border-slate-200\/60, .border-slate-300 { border-color: var(--border-color); }
   .border-blue-100, .border-blue-200, .border-blue-300 { border-color: color-mix(in srgb, var(--accent-color) 35%, transparent); }
   .border-emerald-100, .border-emerald-200 { border-color: color-mix(in srgb, #10b981 30%, transparent); }
   .hover\:border-blue-300:hover, .hover\:border-blue-500:hover, .hover\:border-blue-600:hover { border-color: var(--accent-color); }
-  .divide-slate-100 > * + *, .divide-slate-200 > * + * { border-color: var(--border-color); }
+  .divide-slate-100 > * + * { border-color: var(--border-color); }
 
   /* ---- inputs inside cards read as surfaces ---- */
   input.bg-white, textarea.bg-white, select.bg-white { background-color: var(--bg-card); }
@@ -477,15 +506,21 @@ body[data-theme="light"] .modal-themed {
   font-size: 0.845rem;
 }
 
-/* Mermaid diagram container */
+/* Mermaid diagram container.
+   DECISION: keeps a white canvas in every theme because mermaid is initialized
+   with theme 'neutral' (dark text/lines) — a dark wrap would murder diagram
+   contrast. Instead it gets theme-border + soft shadow so it reads as an
+   intentional "paper card" in dark themes. (If mermaid's theme is ever bound
+   to the app theme, switch background to var(--bg-surface).) */
 .mermaid-wrap {
   direction: ltr;
   text-align: center;
   margin: 1em 0;
   padding: 1rem;
   background: #ffffff;
-  border: 1px solid rgba(51, 65, 85, 0.35);
+  border: 1px solid var(--border-color);
   border-radius: 0.9rem;
+  box-shadow: var(--shadow-md);
   overflow-x: auto;
 }
 .mermaid-pre {
@@ -690,9 +725,9 @@ body[data-theme="obsidian-amber"] .shimmer {
   animation: float 3s ease-in-out infinite;
 }
 
-/* Gradient text */
+/* Gradient text — follows the active theme's accent */
 .gradient-text {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
