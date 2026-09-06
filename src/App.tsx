@@ -3,93 +3,53 @@ import { ArrowDown, Maximize2, Minimize2, SquarePen, Settings as SettingsIcon, F
 
 import { MijlaiSidebar } from './components/MijlaiSidebar';
 import { MijlaiHeader } from './components/MijlaiHeader';
-import { MijlaiComposer } from './components/MijlaiComposer';
-import { MijlaiLogo } from './components/MijlaiLogo';
 import { ChatMessageItem } from './components/ChatMessageItem';
 import { CanvasPanel, CanvasKind } from './components/CanvasPanel';
-import { SettingsModal } from './components/SettingsModal';
 import { PasswordGateModal } from './components/PasswordGateModal';
 import { NetworkStatusBanner } from './components/NetworkStatusBanner';
-import {
-  FilesModal, GemsModal, UpgradeModal, PromptEditModal, ProfileModal
-} from './components/MijlaiModals';
-import { AuthModal } from './components/AuthModal';
-import { AdminDashboard } from './components/AdminDashboard';
 import { ToastHost, toast } from './components/Toast';
 import { CommandPalette } from './components/CommandPalette';
 import { ArenaPairView } from './components/ArenaPairView';
 import { SkillsBar } from './components/SkillsBar';
-import { SkillsManagerModal } from './components/SkillsManagerModal';
-import { OnboardingModal, isOnboardingDone } from './components/OnboardingModal';
 import { AndroidAppBanner } from './components/AndroidAppBanner';
-import { ImageStudio } from './components/ImageStudio';
-import { applyTheme, isDarkTheme } from './utils/theme';
-import { GEMS, getGemPrompt } from './utils/gems';
-import { generateFollowUps } from './utils/followUps';
-import { createStreamBatcher } from './utils/streamSmoothing';
-import { stopSpeaking } from './utils/tts';
-import { getFullRegistry, setSkillEnabled, getActivePromptPacks, SkillDefinition } from './utils/skillsRegistry';
-import { Code, BookOpen, PenLine, Languages, Sparkles } from 'lucide-react';
+import { StarterScreen } from './components/StarterScreen';
+import { FollowUpChips } from './components/FollowUpChips';
+import { ComposerSlot, ComposerUi } from './components/ComposerSlot';
+import { ModalHost } from './components/ModalHost';
 
-import { ChatSession, ChatMessage, AppSettings, UserAccount } from './types';
-import { APP_CONFIG } from './config';
-import {
-  loadSettings, saveSettings, loadChats, saveChats,
-  exportBackup, importBackup, generateTitleFromMessage, hashPassword, safeEqual
-} from './utils/storage';
+import { applyTheme, isDarkTheme } from './utils/theme';
+import { GEMS } from './utils/gems';
+import { getFullRegistry, setSkillEnabled, getActivePromptPacks, SkillDefinition } from './utils/skillsRegistry';
+import { setupVisualViewportKeyboard } from './utils/nativeAdapter';
+import { isOnboardingDone } from './components/OnboardingModal';
 import { connectionManager, ConnectionStatus } from './utils/connectionManager';
 import { registerServiceWorker } from './swRegister';
-import { triggerHaptic, setupVisualViewportKeyboard, saveMessageLocally } from './utils/nativeAdapter';
-import type { FileAttachment } from './types';
+import { loadSettings, loadChats, exportBackup, importBackup, hashPassword, safeEqual } from './utils/storage';
+import { tierToModelId, modelIdToTier } from './models/tiers';
+import { useChatEngine } from './hooks/useChatEngine';
+import { useChatPersistence } from './hooks/useChatPersistence';
 
-// Quick-start suggestions shown on the empty chat screen — one tap to a great prompt
-const STARTER_PROMPTS = [
-  { icon: Code, text: 'اكتب لي دالة TypeScript لإنشاء SSE stream في Express مع شرح مبسط' },
-  { icon: BookOpen, text: 'اشرح لي الفرق بين REST و GraphQL بجدول مقارنة وأمثلة عملية' },
-  { icon: PenLine, text: 'صغ لي رسالة بريد إلكتروني مهنية بالعربية لتقديم مشروع تقني' },
-  { icon: Languages, text: 'ترجم هذه الجملة إلى الإنجليزية مع تحسين الصياغة: ...' },
-];
+import { ChatSession, AppSettings, UserAccount } from './types';
+import { APP_CONFIG } from './config';
 
 export default function App() {
-  // Application State
+  // ── Core state (owned by App, shared with hooks) ──
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
   const [chats, setChats] = useState<ChatSession[]>(loadChats);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>('Mhmod');
-
-  // Model Tier state: pwr, mini, flash, pro, lalo-fast
   const [selectedTier, setSelectedTier] = useState<string>('pwr');
-
-  // Focus Mode (distraction-free): hides sidebar & header
   const [focusMode, setFocusMode] = useState(false);
-
-  // Input & Streaming State
   const [input, setInput] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  // Smart Message Queue — رسائل تنتظر دورها أثناء التوليد (pending → queued → thinking → responding → complete)
-  const [messageQueue, setMessageQueue] = useState<Array<{
-    id: string; text: string; chatId: string; userMsgId: string; assistantMsgId: string;
-  }>>([]);
-  // Skills & Plugins registry state (واجهة الشريط السفلي وصفحة الإدارة)
+
+  // ── UI flags ──
   const [skillsRegistry, setSkillsRegistry] = useState<SkillDefinition[]>(() => getFullRegistry());
   const [isSkillsManagerOpen, setIsSkillsManagerOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  // Sidebar overlay state — hidden by default; the chat area fills the whole screen.
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCanvasOpen, setIsCanvasOpen] = useState(false);
   const [canvasContent, setCanvasContent] = useState('');
   const [canvasKind, setCanvasKind] = useState<CanvasKind | undefined>(undefined);
-
-  // Open an artifact (html/svg/mermaid code block) in the live Canvas panel.
-  const handleOpenCanvasArtifact = (code: string, language: string) => {
-    const lang = (language || '').toLowerCase();
-    const kind: CanvasKind = lang === 'svg' || lang === 'xml' ? 'svg' : lang === 'mermaid' ? 'mermaid' : 'html';
-    setCanvasContent(code);
-    setCanvasKind(kind);
-    setIsCanvasOpen(true);
-  };
-
-  // Modals visibility
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFilesOpen, setIsFilesOpen] = useState(false);
   const [isGemsOpen, setIsGemsOpen] = useState(false);
@@ -100,312 +60,30 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
-  // Active persona (Gem) applied to the current chat's system instructions
+
+  // ── Persona / arena ──
   const [activeGemId, setActiveGemId] = useState<string | null>(null);
-  // Arena mode: send the same prompt to two models and compare side-by-side
   const [arenaMode, setArenaMode] = useState(false);
   const [arenaModelA, setArenaModelA] = useState<string>('flash');
   const [arenaModelB, setArenaModelB] = useState<string>('pro');
-  // Live arena stream handles (so Stop severs both)
-  const arenaStreamsRef = useRef<EventSource[]>([]);
 
-  // User Auth & Web Search Grounding state
-  // (restored from a valid stored JWT on boot — no fake default session)
+  // ── Auth / features ──
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
 
-  // Models state
-  const [availableModels, setAvailableModels] = useState<Array<{id: string; name: string; provider: string; icon?: string; is_free?: boolean}>>([]);
+  // ── Models / boot ──
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string; provider: string; icon?: string; is_free?: boolean }>>([]);
   const [loadingModels, setLoadingModels] = useState(true);
-
   const [isUnlocked, setIsUnlocked] = useState(!settings.passwordProtected);
-  // ترحيب أول مرة — يظهر بعد تجاوز بوابة القفل فقط
   const [showOnboarding, setShowOnboarding] = useState(() => !isOnboardingDone());
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(connectionManager.getStatus());
   const [isOnline, setIsOnline] = useState(connectionManager.isOnline());
-
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  // Tracks the currently active background job so Stop can abort it server-side
-  const activeJobRef = useRef<string | null>(null);
-  // Holds the live SSE connection + its finalizer so Stop can sever the stream
-  // immediately (without waiting for the server-side done event).
-  const activeStreamRef = useRef<{ eventSource: EventSource; finalize: (status: 'complete' | 'error', errorDetails?: string) => void } | null>(null);
 
-  // Load models from API on app init
-  useEffect(() => {
-    const fetchModels = async () => {
-      try {
-        const res = await fetch('/api/models');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.models && Array.isArray(data.models)) {
-            setAvailableModels(data.models);
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to load models:', err);
-      } finally {
-        setLoadingModels(false);
-      }
-    };
-    fetchModels();
-  }, []);
-
-  // Sync selectedTier with settings.activeModelId
-  const modelIdToTier: Record<string, string> = {
-    'direct:mijlai-mini': 'mini',
-    'direct:mijlai-flash': 'flash',
-    'direct:mijlai-pro': 'pro',
-    'direct:mijlai-pwr': 'pwr',
-    'direct:mijlai-lalo-fast': 'lalo-fast'
-  };
-
-  // Apply the saved theme (body[data-theme] drives the CSS variables; 'system'
-  // follows the OS appearance live via the media-query listener in applyTheme).
-  useEffect(() => {
-    if (settings.theme) {
-      applyTheme(settings.theme);
-    }
-  }, [settings.theme]);
-
-  useEffect(() => {
-    if (settings.activeModelId) {
-      if (settings.activeModelId.startsWith('local:')) {
-        setSelectedTier(settings.activeModelId);
-      } else if (modelIdToTier[settings.activeModelId]) {
-        setSelectedTier(modelIdToTier[settings.activeModelId]);
-      }
-    }
-  }, [settings.activeModelId]);
-
-  // Register PWA Service Worker & Native Keyboard Listener on app init
-  useEffect(() => {
-    registerServiceWorker();
-    const cleanupKeyboard = setupVisualViewportKeyboard();
-    return () => {
-      cleanupKeyboard();
-    };
-  }, []);
-
-  // Focus Mode keyboard shortcut (Ctrl/Cmd+Shift+F) — Escape also exits
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        // Cmd/Ctrl+K — open the command palette (power-user navigation)
-        e.preventDefault();
-        setIsPaletteOpen((o) => !o);
-        return;
-      }
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        // Entering focus mode also collapses the sidebar overlay
-        if (!focusMode) setIsSidebarOpen(false);
-        setFocusMode(f => !f);
-      } else if (e.key === 'Escape' && focusMode) {
-        setFocusMode(false);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [focusMode]);
-
-  // Pressing Escape closes the sidebar overlay whenever it is open
-  useEffect(() => {
-    if (!isSidebarOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsSidebarOpen(false);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isSidebarOpen]);
-
-  // Accessibility: move focus into the drawer on open; return it to the menu
-  // toggle on close when focus was still inside the drawer.
-  useEffect(() => {
-    if (focusMode) return;
-    const panel = document.getElementById('mijlai_sidebar');
-    if (isSidebarOpen) {
-      panel?.focus();
-    } else if (panel?.contains(document.activeElement)) {
-      document.getElementById('sidebar_toggle_btn')?.focus();
-    }
-  }, [isSidebarOpen, focusMode]);
-
-  // Connection Manager Subscription
-  useEffect(() => {
-    const unsubscribe = connectionManager.subscribe((status) => {
-      setConnectionStatus(status);
-      setIsOnline(status !== 'offline');
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // ── Per-chat draft persistence ────────────────────────────────────────────
-  // Keeps a half-written message attached to its chat so switching conversations
-  // (or reloading) never loses what the user was typing.
-  const inputRef = useRef(input);
-  inputRef.current = input;
-  const prevChatIdRef = useRef<string | null>(null);
-  const skipDraftSaveRef = useRef(false);
-
-  // On chat switch: save the outgoing chat's draft, then restore the new one
-  useEffect(() => {
-    const prevId = prevChatIdRef.current;
-    if (prevId && prevId !== activeChatId) {
-      const draft = inputRef.current;
-      setChats(prev => prev.map(c => (c.id === prevId ? { ...c, draftMessage: draft } : c)));
-    }
-    prevChatIdRef.current = activeChatId;
-    skipDraftSaveRef.current = true;
-    const nextChat = chats.find(c => c.id === activeChatId);
-    setInput(nextChat?.draftMessage || '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChatId]);
-
-  // Debounced draft save for the current chat
-  useEffect(() => {
-    if (!activeChatId) return;
-    if (skipDraftSaveRef.current) {
-      skipDraftSaveRef.current = false;
-      return;
-    }
-    const t = setTimeout(() => {
-      setChats(prev => prev.map(c => (c.id === activeChatId ? { ...c, draftMessage: input } : c)));
-    }, 500);
-    return () => clearTimeout(t);
-  }, [input, activeChatId]);
-
-  // ── Cloud Chat Sync (SQLite backend, JWT-scoped) ──────────────────────────
-  // Restore session from a saved token, then last-write-wins merge with the server.
-  const authedFetch = (inputUrl: string, init: RequestInit = {}) => {
-    const token = localStorage.getItem('mijlai_auth_token');
-    if (!token) return null;
-    const headers = new Headers(init.headers || {});
-    headers.set('Authorization', `Bearer ${token}`);
-    if (init.body) headers.set('Content-Type', 'application/json');
-    return fetch(inputUrl, { ...init, headers });
-  };
-
-  // Restore logged-in user from stored token on boot
-  useEffect(() => {
-    (async () => {
-      const res = authedFetch('/api/auth/me');
-      if (!res) return;
-      try {
-        const r = await res;
-        if (!r.ok) {
-          localStorage.removeItem('mijlai_auth_token');
-          return;
-        }
-        const me = await r.json();
-        setCurrentUser({
-          id: me.user_id, username: me.email?.split('@')[0] || me.user_id,
-          email: me.email || '', role: me.role === 'admin' ? 'admin' : 'user', status: 'active'
-        });
-      } catch { /* offline — keep guest */ }
-    })();
-  }, []);
-
-  // للزوار غير المسجلين: تعيين النموذج الافتراضي إلى lalo-fast
-  useEffect(() => {
-    if (currentUser === null && selectedTier !== 'lalo-fast') {
-      setSelectedTier('lalo-fast');
-    }
-  }, [currentUser]);
-
-  // Pull server chats on boot (merge: newer updatedAt wins, server copy included)
-  useEffect(() => {
-    (async () => {
-      const res = authedFetch('/api/sync/chats');
-      if (!res) return;
-      try {
-        const r = await res;
-        if (!r.ok) return;
-        const data = await r.json();
-        const serverChats = (Array.isArray(data.chats) ? data.chats : []) as ChatSession[];
-        if (serverChats.length === 0) return;
-        setChats(prev => {
-          const byId = new Map<string, ChatSession>(prev.map(c => [c.id, c] as [string, ChatSession]));
-          for (const sc of serverChats) {
-            const local = byId.get(sc.id);
-            if (!local || (sc.updatedAt || 0) > (local.updatedAt || 0)) {
-              byId.set(sc.id, { ...sc, messages: Array.isArray(sc.messages) ? sc.messages : [] });
-            }
-          }
-          return Array.from(byId.values()).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.updatedAt || 0) - (a.updatedAt || 0));
-        });
-        toast.info(`تمت مزامنة ${serverChats.length} محادثة من حسابك السحابي`);
-      } catch { /* offline */ }
-    })();
-  }, []);
-
-  // Push chats (debounced) whenever they change and a token exists
-  useEffect(() => {
-    const token = localStorage.getItem('mijlai_auth_token');
-    if (!token || chats.length === 0) return;
-    const t = setTimeout(() => {
-      authedFetch('/api/sync/chats', {
-        method: 'POST',
-        body: JSON.stringify({ chats: chats.slice(0, 200) })
-      })?.catch(() => {});
-    }, 3000);
-    return () => clearTimeout(t);
-  }, [chats]);
-
-  // Save chats & settings to localStorage.
-  // Chats are debounced: during streaming a token arrives every few ms and
-  // serializing the WHOLE history on every token froze low-end phones.
-  // Settings stay immediate (tiny payload).
-  useEffect(() => {
-    const t = setTimeout(() => saveChats(chats), 600);
-    return () => clearTimeout(t);
-  }, [chats]);
-
-  useEffect(() => {
-    saveSettings(settings);
-  }, [settings]);
-
-  // Flush pending chat persistence immediately when the page is hidden/closed
-  const chatsRef = useRef(chats);
-  chatsRef.current = chats;
-  useEffect(() => {
-    const flush = () => saveChats(chatsRef.current);
-    window.addEventListener('pagehide', flush);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') flush();
-    });
-    return () => window.removeEventListener('pagehide', flush);
-  }, []);
-
-  // Map model tier to specific backend model ID.
-  // Tiers are pinned to benchmark-verified endpoints (stress-tested):
-  //   mini  -> GPT-Mini via Yqcloud (fastest stream, 198 tok/s)
-  //   flash -> Sonar via Perplexity (1.9s TTFT, 100% reliable)
-  //   pro   -> Gemini via Google (strongest quality, 158 tok/s)
-  //   coder -> Qwen3-Coder-30B direct via OVHcloud (0.4s TTFT, coding specialist)
-  const getModelIdForTier = (tier: string) => {
-    switch (tier) {
-      case 'mini':
-        return 'direct:mijlai-mini';
-      case 'flash':
-        return 'direct:mijlai-flash';
-      case 'pro':
-        return 'direct:mijlai-pro';
-      case 'pwr':
-        return 'direct:mijlai-pwr';
-      case 'lalo-fast':
-        return 'direct:mijlai-lalo-fast';
-      default:
-        return tier.startsWith('local:') ? tier : 'direct:mijlai-pwr';
-    }
-  };
-
-  // Active chat session reference
   const activeChat = chats.find(c => c.id === activeChatId) || null;
 
-  // Local llama.cpp models discovered by the backend (/api/models provider === 'llama')
   const localModels = useMemo(
     () => (availableModels || [])
       .filter((m) => m.provider === 'llama')
@@ -413,36 +91,16 @@ export default function App() {
     [availableModels]
   );
 
-  // Closes the sidebar overlay (and its history drawer) — used by overlay click,
-  // Escape, chat selection and new-chat actions.
-  const closeSidebar = () => {
-    setIsSidebarOpen(false);
-    setIsHistoryOpen(false);
-  };
+  // ── Persistence: drafts, localStorage, cloud sync, session restore ──
+  useChatPersistence({
+    chats, setChats, settings, activeChatId, input, setInput, setCurrentUser, setUserName,
+  });
 
-  // Create New Chat Session
-  const handleNewChat = () => {
-    const newSession: ChatSession = {
-      id: `chat-${Date.now()}`,
-      title: 'محادثة جديدة',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      messages: [],
-      modelId: getModelIdForTier(selectedTier),
-      providerId: 'g4f'
-    };
-    setChats(prev => [newSession, ...prev]);
-    setActiveChatId(newSession.id);
-    setInput('');
-    closeSidebar();
-  };
-
-  // Scroll Container Control
+  // ── Scroll helpers (used by the engine + view) ──
   const handleScroll = () => {
     if (!chatContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
-    setShowScrollToBottom(!isAtBottom);
+    setShowScrollToBottom(scrollHeight - scrollTop - clientHeight >= 100);
   };
 
   const scrollToBottom = (smooth = true) => {
@@ -454,650 +112,58 @@ export default function App() {
     }
   };
 
-  // Build conversation history for multi-turn context. Only meaningful,
-  // completed turns are included (empty/error/image placeholders excluded).
-  const buildHistory = (messages: ChatMessage[]) =>
-    messages
-      .filter(m => m.content.trim() !== '' && m.status !== 'error' && !m.isImage)
-      .slice(-24)
-      .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
+  // Open an artifact (html/svg/mermaid code block) in the live Canvas panel.
+  const handleOpenCanvasArtifact = (code: string, language: string) => {
+    const lang = (language || '').toLowerCase();
+    const kind: CanvasKind = lang === 'svg' || lang === 'xml' ? 'svg' : lang === 'mermaid' ? 'mermaid' : 'html';
+    setCanvasContent(code);
+    setCanvasKind(kind);
+    setIsCanvasOpen(true);
+  };
 
-  // Send Prompt with Decoupled Zero-Latency Engine
-  const handleSendMessage = async (customPrompt?: string, opts?: { history?: Array<{ role: string; content: string }>; reuseIds?: { chatId: string; userMsgId: string; assistantMsgId: string } }) => {
-    // Arena mode intercepts fresh composer sends (edit/regenerate bypass it).
-    if (arenaMode && !customPrompt && !opts?.history) {
-      return handleArenaSend();
-    }
-    const textToSend = customPrompt || input;
-    if (!textToSend.trim()) return;
+  // ── Chat engine: send/stop/regenerate/edit/arena/queue/attachments ──
+  const engine = useChatEngine({
+    chats, setChats, activeChatId, setActiveChatId, input, setInput,
+    settings, selectedTier, webSearchEnabled, knowledgeEnabled, currentUser,
+    activeGemId, localModels, arenaMode, arenaModelA, arenaModelB,
+    onArtifact: handleOpenCanvasArtifact,
+    onImageGenerated: (markdown) => { setCanvasContent(markdown); setIsCanvasOpen(true); },
+    scrollToBottom,
+    chatContainerRef,
+  });
 
-    // ── نظام الطابور الذكي: أثناء التوليد تُحفظ الرسالة في طابور بدل رفضها ──
-    if (isGenerating && !opts?.reuseIds) {
-      const queueChatId = activeChatId;
-      if (!queueChatId) return; // لا محادثة نشطة لاستقبال الطابور
-      const qUserMsgId = `msg-${Date.now()}`;
-      const qAssistantMsgId = `msg-${Date.now() + 1}`;
-      const queuedUserMsg: ChatMessage = {
-        id: qUserMsgId,
-        role: 'user',
-        content: textToSend.trim(),
-        timestamp: Date.now(),
-        attachments: attachments.length ? attachments : undefined
-      };
-      const queuedAssistantMsg: ChatMessage = {
-        id: qAssistantMsgId,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now() + 1,
-        modelId: getModelIdForTier(selectedTier),
-        providerId: 'g4f',
-        status: 'queued'
-      };
-      setChats(prev => prev.map(c => c.id === queueChatId
-        ? { ...c, messages: [...c.messages, queuedUserMsg, queuedAssistantMsg], updatedAt: Date.now() }
-        : c));
-      setMessageQueue(prev => [...prev, {
-        id: `q-${Date.now()}`,
-        text: textToSend.trim(),
-        chatId: queueChatId,
-        userMsgId: qUserMsgId,
-        assistantMsgId: qAssistantMsgId
-      }]);
-      setInput('');
-      setAttachments([]);
-      triggerHaptic('light');
-      toast.info('أُضيفت رسالتك للطابور — ستُرسل تلقائياً فور اكتمال الرد الحالي');
-      return;
-    }
-    stopSpeaking();
+  // ── Sidebar / chat CRUD ──
+  const closeSidebar = () => {
+    setIsSidebarOpen(false);
+    setIsHistoryOpen(false);
+  };
 
-    let targetChatId = opts?.reuseIds ? opts.reuseIds.chatId : activeChatId;
-
-    if (!targetChatId) {
-      const newSession: ChatSession = {
-        id: `chat-${Date.now()}`,
-        title: generateTitleFromMessage(textToSend),
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        messages: [],
-        modelId: getModelIdForTier(selectedTier),
-        providerId: 'g4f'
-      };
-      setChats(prev => [newSession, ...prev]);
-      targetChatId = newSession.id;
-      setActiveChatId(newSession.id);
-    }
-
-    // Multi-turn context: prior messages + the new prompt as the final user turn.
-    // Without this every question was answered in isolation (no conversation memory).
-    const history = opts?.history ?? buildHistory(activeChat?.messages || []);
-
-    const userMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      role: 'user',
-      content: textToSend.trim(),
-      timestamp: Date.now(),
-      attachments: attachments.length ? attachments : undefined
+  const handleNewChat = () => {
+    const newSession: ChatSession = {
+      id: `chat-${Date.now()}`,
+      title: 'محادثة جديدة',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: [],
+      modelId: tierToModelId(selectedTier),
+      providerId: 'g4f'
     };
-
-    const assistantMsgId = opts?.reuseIds?.assistantMsgId ?? `msg-${Date.now() + 1}`;
-
-    if (opts?.reuseIds) {
-      // عنصر مسترد من الطابور: الفقاعات موجودة مسبقاً — نفعّل حالة التفكير فقط
-      setChats(prev => prev.map(c => {
-        if (c.id === targetChatId) {
-          return {
-            ...c,
-            updatedAt: Date.now(),
-            messages: c.messages.map(m =>
-              m.id === assistantMsgId ? { ...m, status: 'thinking' as const } : m)
-          };
-        }
-        return c;
-      }));
-    } else {
-      const assistantMsg: ChatMessage = {
-        id: assistantMsgId,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now() + 1,
-        modelId: getModelIdForTier(selectedTier),
-        providerId: 'g4f',
-        status: 'thinking'
-      };
-
-      setChats(prev => prev.map(c => {
-        if (c.id === targetChatId) {
-          const updatedMsgs = [...c.messages, userMsg, assistantMsg];
-          const newTitle = c.messages.length === 0 ? generateTitleFromMessage(textToSend) : c.title;
-          return {
-            ...c,
-            title: newTitle,
-            messages: updatedMsgs,
-            updatedAt: Date.now()
-          };
-        }
-        return c;
-      }));
-    }
-
-    triggerHaptic('light');
+    setChats(prev => [newSession, ...prev]);
+    setActiveChatId(newSession.id);
     setInput('');
-    setAttachments([]);
-    setIsGenerating(true);
-    setTimeout(() => scrollToBottom(true), 50);
-
-    try {
-      // Agentic Deep Search (Area 2): enrich the prompt with live results before sending
-      let finalPrompt = textToSend.trim();
-      let searchSources: { title: string; url: string; snippet?: string }[] | undefined;
-      let deepSearchMeta: any = undefined;
-
-      if (webSearchEnabled) {
-        try {
-          const chatMsgs = chats.find((c) => c.id === targetChatId)?.messages || [];
-          const history = chatMsgs.slice(-10).map((m) => ({
-            role: m.role,
-            content: typeof m.content === 'string' ? m.content : '',
-          }));
-          const searchRes = await fetch('/api/search/deep', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: textToSend.trim(), max_results: 8, history }),
-          });
-          if (searchRes.ok) {
-            const sd: any = await searchRes.json();
-            if (sd?.needs_search && sd?.references?.length) {
-              const refs: { num: number; title: string; url: string }[] = sd.references;
-              searchSources = refs.map((r) => ({ title: r.title || '', url: r.url || '', snippet: '' }));
-              const refBlock = refs.map((r) => `[${r.num}] ${r.title}\n${r.url}`).join('\n');
-              finalPrompt = `استعن بمصادر الويب التالية عند الإجابة، واستشهد بأرقامها [1] [2] عند الحاجة:\n\n${refBlock}\n\n---\n\nسؤال المستخدم: ${textToSend.trim()}`;
-              deepSearchMeta = { needs_search: true, reasoning_steps: sd.reasoning_steps || [], references: refs };
-            } else if (sd?.results?.length) {
-              searchSources = sd.results.map((r: any) => ({ title: r.title || '', url: r.url || '', snippet: r.snippet || '' }));
-              if (sd?.reasoning_steps) deepSearchMeta = { needs_search: !!sd.results.length, reasoning_steps: sd.reasoning_steps, references: sd.references || [] };
-            }
-          }
-        } catch (searchErr) {
-          console.warn('Deep search failed, continuing without context:', searchErr);
-        }
-      }
-
-      // Attach search sources + deep-search metadata to the assistant bubble when they exist
-      if (searchSources?.length || deepSearchMeta) {
-        setChats(prev => prev.map(c => {
-          if (c.id !== targetChatId) return c;
-          return {
-            ...c,
-            messages: c.messages.map(m => m.id === assistantMsgId
-              ? { ...m, searchSources: searchSources || m.searchSources, deepSearch: deepSearchMeta || m.deepSearch }
-              : m)
-          };
-        }));
-      }
-
-      // Personal Knowledge (local RAG): retrieve top chunks from the user's docs
-      if (knowledgeEnabled && localStorage.getItem('mijlai_auth_token')) {
-        try {
-          const ragRes = await fetch('/api/rag/query', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${localStorage.getItem('mijlai_auth_token')}`
-            },
-            body: JSON.stringify({ query: textToSend.trim(), top_k: 5 })
-          });
-          if (ragRes.ok) {
-            const ragData = await ragRes.json();
-            const hits: Array<{ text: string; doc: string }> = ragData?.results || [];
-            if (hits.length > 0) {
-              const kbBlock = hits
-                .map((h, i) => `[مستند ${i + 1} — ${h.doc}]
-${h.text}`)
-                .join('\n---\n');
-              finalPrompt = `استعن بمقتطفات مستنداتي التالية عند الإجابة وعند الاقتباس أشر إليها [م1] [م2]:\n\n${kbBlock}\n\n---\n\nسؤالي: ${finalPrompt}`;
-            }
-          }
-        } catch (ragErr) {
-          console.warn('RAG retrieval failed, continuing without:', ragErr);
-        }
-      }
-
-      // Decoupled Send request to FastAPI / Proxy (<10ms TTFB)
-      // `messages` carries the full conversation so the model keeps context.
-      // Image attachments become OpenAI vision content-parts for multimodal models.
-      const imageAttachments = attachments.filter(a => a.mime.startsWith('image/'));
-
-      // Document attachments (PDF/TXT/MD/code): inject extracted text as a
-      // readable context block so the model answers FROM the actual content.
-      const docAttachments = attachments.filter(a => !a.mime.startsWith('image/') && a.textContent);
-      if (docAttachments.length > 0) {
-        const docsBlock = docAttachments
-          .map(a => `### محتوى الملف المرفق: ${a.name}\n\`\`\`\n${a.textContent}\n\`\`\``)
-          .join('\n\n');
-        finalPrompt = `الملفات التالية مرفقة من المستخدم — اقرأها وأجب بناءً عليها:\n\n${docsBlock}\n\n---\n\n${finalPrompt}`;
-      }
-
-      const finalUserContent = imageAttachments.length
-        ? [
-            { type: 'text', text: finalPrompt },
-            ...imageAttachments.map(a => ({ type: 'image_url', image_url: { url: a.url } }))
-          ]
-        : finalPrompt;
-      // Compose the customization layer: global user system prompt (Settings)
-      // + active Gem persona + ACTIVE SKILL PROMPT PACKS (الشريط السفلي).
-      // Applied server-side after the identity core.
-      const styleInstructions = [settings.systemPrompt?.trim(), getGemPrompt(activeGemId), ...getActivePromptPacks()]
-        .filter(Boolean)
-        .join('\n\n');
-
-      const sendRes = await fetch('/api/chat/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: finalPrompt,
-          messages: [...history, { role: 'user', content: finalUserContent }],
-          chat_id: targetChatId,
-          model: getModelIdForTier(selectedTier),
-          user_id: currentUser?.id || 'guest',
-          email: currentUser?.email || 'guest@mijlai.com',
-          ...(styleInstructions ? { system_prompt: styleInstructions } : {})
-        })
-      });
-
-      if (!sendRes.ok) {
-        throw new Error(`فشل الاتصال بالخادم (${sendRes.status})`);
-      }
-
-      const sendText = await sendRes.text();
-      let sendData: any = {};
-      try {
-        sendData = JSON.parse(sendText);
-      } catch (e) {
-        throw new Error('استجابة غير صالحة من الخادم');
-      }
-      const taskId = sendData.task_id;
-      if (!taskId) {
-        throw new Error('لم يحصل الخادم على مهمة توليد (task_id). تأكد من توفر النموذج المحدد.');
-      }
-      activeJobRef.current = taskId;
-
-      // Open SSE stream with offset resumption
-      const eventSource = new EventSource(`/api/chat/stream/${encodeURIComponent(taskId)}?offset=0`);
-
-      let fullText = '';
-      let streamDone = false;
-      const thinkStartRef = { current: 0 };
-      let thinkText = '';
-
-      // Frame-locked stream commit: tokens accumulate in plain strings and paint
-      // at most once per animation frame instead of once per token (30–120/sec),
-      // which keeps markdown rendering at display refresh rate. Zero token loss:
-      // finalizeStream flushes synchronously before settling the message.
-      const commitStream = () => {
-        setChats(prev => prev.map(c => {
-          if (c.id !== targetChatId) return c;
-          return {
-            ...c,
-              messages: c.messages.map(m => {
-              if (m.id !== assistantMsgId) return m;
-              const patch: Partial<ChatMessage> = { content: fullText };
-              // انتقال الحالة: thinking → streaming عند وصول أول توكن مرئي
-              if (fullText && m.status === 'thinking') patch.status = 'streaming';
-              if (thinkText && thinkText !== m.thinking) patch.thinking = thinkText;
-              // Freeze thinking duration on the first answer token
-              if (thinkText && fullText && !m.thinkingDurationMs) {
-                patch.thinkingDurationMs = Date.now() - (thinkStartRef.current || Date.now());
-              }
-              return { ...m, ...patch } as ChatMessage;
-            })
-          };
-        }));
-
-        // Smart non-intrusive auto-scroll: only stick when already near the bottom
-        if (chatContainerRef.current) {
-          const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
-          if (scrollHeight - scrollTop - clientHeight < 150) {
-            scrollToBottom(false);
-          }
-        }
-      };
-      const streamBatcher = createStreamBatcher(commitStream);
-
-      // Shared finalizer: marks the assistant message complete or failed exactly once,
-      // closes the stream and clears the generating state (prevents reconnect/rate-limit loops).
-      const finalizeStream = (status: 'complete' | 'error', errorDetails?: string) => {
-        if (streamDone) return;
-        streamDone = true;
-        streamBatcher.flushNow(); // paint any buffered tokens before settling
-        eventSource.close();
-        if (activeStreamRef.current?.eventSource === eventSource) activeStreamRef.current = null;
-        activeJobRef.current = null;
-        setIsGenerating(false);
-        if (status === 'complete') {
-          triggerHaptic('medium');
-          // Auto-open the live Canvas when the model produced a renderable
-          // artifact (html/svg/mermaid) — the whole point of the feature.
-          const artifactMatch = fullText.match(/```(html|svg|mermaid)\s*\n([\s\S]*?)```/i);
-          if (artifactMatch) {
-            const lang = artifactMatch[1].toLowerCase();
-            setCanvasContent(artifactMatch[2].trim());
-            setCanvasKind(lang === 'svg' ? 'svg' : lang === 'mermaid' ? 'mermaid' : 'html');
-            setIsCanvasOpen(true);
-          }
-        }
-        setChats(prev => prev.map(c => {
-          if (c.id === targetChatId) {
-            return {
-              ...c,
-              messages: c.messages.map(m =>
-                m.id === assistantMsgId
-                  ? {
-                      ...m,
-                      status: status === 'error' ? 'error' : 'complete',
-                      errorDetails,
-                      // Smart follow-up chips keep the conversation flowing
-                      ...(status === 'complete' && fullText.trim()
-                        ? { followUps: generateFollowUps(textToSend.trim(), fullText) }
-                        : {})
-                    }
-                  : m
-              )
-            };
-          }
-          return c;
-        }));
-      };
-
-      // Handles a single SSE payload (token or done). Used by BOTH the default
-      // "message" event and the named "done" event (the server emits `event: done`).
-      const handleStreamPayload = (data: any) => {
-        if (data?.t === 'think') {
-          const incoming = typeof data.d === 'string' ? data.d : '';
-          if (!thinkStartRef.current) thinkStartRef.current = Date.now();
-          thinkText = data.full ? incoming : thinkText + incoming;
-          streamBatcher.schedule();
-        } else if (data?.t === 'token' && data.d) {
-          fullText += data.d;
-          streamBatcher.schedule();
-        } else if (data?.t === 'done') {
-          if (data.status === 'failed' || data.status === 'aborted') {
-            finalizeStream('error', data.error || 'تم إيقاف التوليد أو فشل الاتصال بالنموذج');
-          } else {
-            finalizeStream('complete');
-          }
-        }
-      };
-
-      eventSource.onmessage = (e) => {
-        try {
-          handleStreamPayload(JSON.parse(e.data));
-        } catch (err) {
-          console.warn('SSE parse error:', err);
-        }
-      };
-
-      // Critical: the server terminates generation with `event: done` (a named SSE
-      // event). Without this listener the stream never completes, the UI stays stuck
-      // in "generating" and EventSource enters an infinite reconnect loop that
-      // exhausts the rate limiter — which is why local model replies appeared stuck.
-      eventSource.addEventListener('done', (e: any) => {
-        try {
-          handleStreamPayload(JSON.parse(e.data));
-        } catch (err) {
-          console.warn('SSE done event parse error:', err);
-          finalizeStream('error', 'استجابة تدفق غير صالحة من الخادم');
-        }
-      });
-
-      eventSource.onerror = () => {
-        // If the server already sent "done", this is just the connection closing.
-        if (streamDone) return;
-        // Otherwise the stream dropped mid-generation (network/proxy/rate-limit).
-        // Keep whatever text arrived, mark complete and stop the reconnect loop.
-        console.warn('SSE connection error for task:', taskId);
-        finalizeStream('complete');
-      };
-
-      // Expose the live stream so handleStopGeneration can sever it instantly.
-      activeStreamRef.current = { eventSource, finalize: finalizeStream };
-
-    } catch (err: any) {
-      console.error('Send error:', err);
-      activeJobRef.current = null;
-      setIsGenerating(false);
-      setChats(prev => prev.map(c => {
-        if (c.id === targetChatId) {
-          return {
-            ...c,
-            messages: c.messages.map(m =>
-              m.id === assistantMsgId
-                ? { ...m, status: 'error', errorDetails: err.message || 'حدث خطأ أثناء الاتصال' }
-                : m
-            )
-          };
-        }
-        return c;
-      }));
-    }
+    closeSidebar();
   };
 
-  // ==========================================
-  // Arena Mode: same prompt → two models → side-by-side with TTFT/speed stats
-  // ==========================================
-  const arenaTierLabel = (tier: string) => {
-    const map: Record<string, string> = { mini: 'MijlAi Mini', flash: 'MijlAi Flash', pro: 'MijlAi Pro', coder: 'MijlAi Coder' };
-    if (map[tier]) return map[tier];
-    if (tier.startsWith('local:')) return localModels.find(m => m.id === tier)?.name || 'نموذج محلي';
-    return tier;
+  const handleDeleteChat = (id: string) => {
+    setChats(prev => prev.filter(c => c.id !== id));
+    if (activeChatId === id) setActiveChatId(null);
   };
 
-  const handleArenaSend = async () => {
-    const textToSend = input.trim();
-    if (!textToSend || isGenerating) return;
-    if (arenaModelA === arenaModelB) {
-      toast.info('اختر نموذجين مختلفين للمقارنة العادلة');
-      return;
-    }
-
-    let targetChatId = activeChatId;
-    if (!targetChatId) {
-      const newSession: ChatSession = {
-        id: `chat-${Date.now()}`,
-        title: generateTitleFromMessage(textToSend),
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        messages: [],
-        modelId: 'arena',
-        providerId: 'arena'
-      };
-      setChats(prev => [newSession, ...prev]);
-      targetChatId = newSession.id;
-      setActiveChatId(newSession.id);
-    }
-
-    const history = buildHistory(activeChat?.messages || []);
-    const groupId = `arena-${Date.now()}`;
-    const userMsg: ChatMessage = { id: `msg-${Date.now()}`, role: 'user', content: textToSend, timestamp: Date.now() };
-    const leftId = `msg-${Date.now() + 1}`;
-    const rightId = `msg-${Date.now() + 2}`;
-    const leftMsg: ChatMessage = {
-      id: leftId, role: 'assistant', content: '', timestamp: Date.now() + 1,
-      modelId: getModelIdForTier(arenaModelA), providerId: 'arena', status: 'streaming',
-      arenaGroup: groupId, arenaLabel: arenaTierLabel(arenaModelA), arenaStats: {}, arenaVote: null
-    };
-    const rightMsg: ChatMessage = {
-      id: rightId, role: 'assistant', content: '', timestamp: Date.now() + 2,
-      modelId: getModelIdForTier(arenaModelB), providerId: 'arena', status: 'streaming',
-      arenaGroup: groupId, arenaLabel: arenaTierLabel(arenaModelB), arenaStats: {}, arenaVote: null
-    };
-
-    setChats(prev => prev.map(c => c.id === targetChatId ? {
-      ...c,
-      title: c.messages.length === 0 ? generateTitleFromMessage(textToSend) : c.title,
-      messages: [...c.messages, userMsg, leftMsg, rightMsg],
-      updatedAt: Date.now()
-    } : c));
-
-    triggerHaptic('light');
-    setInput('');
-    setAttachments([]);
-    setIsGenerating(true);
-    setTimeout(() => scrollToBottom(true), 50);
-
-    const styleInstructions = [settings.systemPrompt?.trim(), getGemPrompt(activeGemId)].filter(Boolean).join('\n\n');
-
-    // Stream one arena side: POST /send → EventSource → patch its own message.
-    const streamSide = async (tier: string, msgId: string) => {
-      const startedAt = performance.now();
-      let firstTokenAt = 0;
-      let fullText = '';
-      let done = false;
-
-      const patchMsg = (patch: Partial<ChatMessage>) => {
-        setChats(prev => prev.map(c => c.id !== targetChatId ? c : {
-          ...c,
-          messages: c.messages.map(m => m.id === msgId ? { ...m, ...patch } : m)
-        }));
-      };
-
-      // Frame-locked commits per arena side — two parallel streams would
-      // otherwise double the React update rate during generation.
-      const sideBatcher = createStreamBatcher(() => patchMsg({ content: fullText }));
-
-      const finalize = (status: 'complete' | 'error', errorDetails?: string) => {
-        if (done) return;
-        done = true;
-        sideBatcher.flushNow(); // paint buffered tokens before stats/status settle
-        const totalMs = performance.now() - startedAt;
-        patchMsg({
-          status: status === 'error' ? 'error' : 'complete',
-          errorDetails,
-          arenaStats: {
-            ttftMs: firstTokenAt ? Math.round(firstTokenAt - startedAt) : undefined,
-            totalMs: Math.round(totalMs),
-            charsPerSec: totalMs > 0 && fullText.length > 0 ? Math.round((fullText.length / totalMs) * 1000) : 0
-          }
-        });
-      };
-
-      try {
-        const sendRes = await fetch('/api/chat/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: textToSend,
-            messages: [...history, { role: 'user', content: textToSend }],
-            chat_id: targetChatId,
-            model: getModelIdForTier(tier),
-            user_id: currentUser?.id || 'guest',
-            email: currentUser?.email || 'guest@mijlai.com',
-            ...(styleInstructions ? { system_prompt: styleInstructions } : {})
-          })
-        });
-        if (!sendRes.ok) throw new Error(`HTTP ${sendRes.status}`);
-        const sendData = JSON.parse(await sendRes.text());
-        const taskId = sendData.task_id;
-        if (!taskId) throw new Error('no task_id');
-
-        const es = new EventSource(`/api/chat/stream/${encodeURIComponent(taskId)}?offset=0`);
-        arenaStreamsRef.current.push(es);
-
-        const onPayload = (data: any) => {
-          if (data?.t === 'token' && data.d) {
-            if (!firstTokenAt) firstTokenAt = performance.now();
-            fullText += data.d;
-            sideBatcher.schedule();
-          } else if (data?.t === 'done') {
-            es.close();
-            finalize(data.status === 'failed' ? 'error' : 'complete', data.error || undefined);
-          }
-        };
-        es.onmessage = (e) => { try { onPayload(JSON.parse(e.data)); } catch { /* ignore */ } };
-        es.addEventListener('done', (e: any) => {
-          try { onPayload(JSON.parse(e.data)); } catch { es.close(); finalize('complete'); }
-        });
-        es.onerror = () => { es.close(); finalize(fullText ? 'complete' : 'error', fullText ? undefined : 'انقطع الاتصال بالنموذج'); };
-      } catch (err: any) {
-        finalize('error', err?.message || 'فشل الاتصال');
-      }
-    };
-
-    await Promise.allSettled([streamSide(arenaModelA, leftId), streamSide(arenaModelB, rightId)]);
-    arenaStreamsRef.current = [];
-    setIsGenerating(false);
-    triggerHaptic('medium');
+  const handleTogglePin = (id: string) => {
+    setChats(prev => prev.map(c => c.id === id ? { ...c, pinned: !c.pinned } : c));
   };
 
-  const handleArenaVote = (groupId: string, vote: 'left' | 'right' | 'tie') => {
-    setChats(prev => prev.map(c => ({
-      ...c,
-      messages: c.messages.map(m => m.arenaGroup === groupId ? { ...m, arenaVote: vote } : m)
-    })));
-    toast.success('تم تسجيل تقييمك للجولة ⚖️');
-  };
-
-  const handleStopGeneration = () => {
-    const jobId = activeJobRef.current;
-    const chatId = activeChatId;
-    // 1) Sever the SSE stream immediately and keep the partial answer.
-    activeStreamRef.current?.finalize('complete');
-    activeStreamRef.current = null;
-    // Arena mode: sever every live side-stream (each side finalizes itself via onerror).
-    arenaStreamsRef.current.forEach((es) => { try { es.close(); } catch { /* noop */ } });
-    arenaStreamsRef.current = [];
-    // Any message still marked streaming (arena sides without a finalize callback
-    // reaching them) is settled with whatever partial text it has.
-    setChats(prev => prev.map(c => ({
-      ...c,
-      messages: c.messages.map(m =>
-        m.status === 'streaming' || m.status === 'thinking'
-          ? { ...m, status: 'complete' }
-          : m)
-    })));
-    setIsGenerating(false);
-    if (jobId) {
-      // 2) True server-side abort: cancels the upstream generation task so
-      // provider quota and server resources stop being consumed right away.
-      fetch('/api/chat/abort', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId, chatId })
-      }).catch(() => {});
-    }
-    activeJobRef.current = null;
-    // الإيقاف اليدوي يلغي الطابور أيضاً: العناصر المنتظرة تُعلَّم كملغاة وتُزال من الطابور
-    setMessageQueue(prev => {
-      if (prev.length > 0) {
-        const queuedAssistantIds = new Set(prev.map(q => q.assistantMsgId));
-        setChats(prevChats => prevChats.map(c => ({
-          ...c,
-          messages: c.messages.map(m =>
-            queuedAssistantIds.has(m.id) && m.status === 'queued'
-              ? { ...m, status: 'error' as const, errorDetails: 'أُلغيت من الطابور' }
-              : m)
-        })));
-        toast.info('تم مسح طابور الرسائل المنتظرة');
-      }
-      return [];
-    });
-  };
-
-  // ── معالج الطابور: عند انتهاء التوليد ووجود رسائل منتظرة، أرسل التالية تلقائياً ──
-  useEffect(() => {
-    if (isGenerating || messageQueue.length === 0) return;
-    const [next, ...rest] = messageQueue;
-    setMessageQueue(rest);
-    const timer = setTimeout(() => {
-      void handleSendMessage(next.text, {
-        reuseIds: { chatId: next.chatId, userMsgId: next.userMsgId, assistantMsgId: next.assistantMsgId }
-      });
-    }, 80);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isGenerating, messageQueue]);
-
-  // ── المهارات والإضافات: تفعيل/إجراء ──
+  // ── Skills & plugins ──
   const refreshSkillsRegistry = () => setSkillsRegistry(getFullRegistry());
 
   const handleToggleSkill = (id: string) => {
@@ -1115,7 +181,7 @@ ${h.text}`)
         break;
       case 'image_gen':
         if (input.trim()) {
-          handleGenerateImage(input.trim());
+          engine.handleGenerateImage(input.trim());
         } else {
           setInput('توليد صورة: ');
           toast.info('اكتب وصف الصورة التي تريدها ثم أرسلها');
@@ -1126,7 +192,6 @@ ${h.text}`)
         toast.info('القراءة الصوتية متاحة عبر زر التشغيل على أي رد مكتمل');
         break;
       default:
-        // أدوات MCP (fetch/filesystem/memory): تتطلب حساباً وتُستدعى تلقائياً من النموذج
         toast.info('أداة MCP جاهزة — تُستدعى تلقائياً عند الحاجة (تتطلب تسجيل الدخول)');
     }
   };
@@ -1140,36 +205,21 @@ ${h.text}`)
     />
   );
 
-  // Regenerate: remove the previous answer (and anything after it) and re-ask
-  // the same question with the conversation context that preceded it.
-  const handleRegenerate = () => {
-    if (!activeChat || isGenerating) return;
-    const msgs = activeChat.messages;
-    let lastUserIdx = -1;
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].role === 'user') { lastUserIdx = i; break; }
-    }
-    if (lastUserIdx === -1) return;
-    const lastUserMsg = msgs[lastUserIdx];
-    const history = buildHistory(msgs.slice(0, lastUserIdx));
-
-    setChats(prev => prev.map(c => (c.id === activeChat.id ? { ...c, messages: msgs.slice(0, lastUserIdx) } : c)));
-    handleSendMessage(lastUserMsg.content, { history });
+  // ── Composer wiring (single bundle → one MijlaiComposer call site) ──
+  const composerUi: ComposerUi = {
+    input, setInput,
+    selectedTier, onSelectTier: setSelectedTier,
+    webSearchEnabled, setWebSearchEnabled,
+    knowledgeEnabled, setKnowledgeEnabled,
+    localModels,
+    arenaMode, onToggleArena: () => setArenaMode(v => !v),
+    arenaModelA, arenaModelB,
+    onSelectArenaModel: (side, tier) => side === 'a' ? setArenaModelA(tier) : setArenaModelB(tier),
+    skillsBar: skillsBarElement,
+    isGuest: currentUser === null,
   };
 
-  // Edit a previous user message: truncate the conversation at that message and
-  // resend the edited text (regenerates the answer from that point).
-  const handleEditUserMessage = (messageId: string, newText: string) => {
-    if (!activeChat || isGenerating || !newText.trim()) return;
-    const idx = activeChat.messages.findIndex(m => m.id === messageId);
-    if (idx === -1) return;
-    const history = buildHistory(activeChat.messages.slice(0, idx));
-
-    setChats(prev => prev.map(c => (c.id === activeChat.id ? { ...c, messages: activeChat.messages.slice(0, idx) } : c)));
-    handleSendMessage(newText, { history });
-  };
-
-  // Export the active chat as a Markdown file
+  // ── Export chat as Markdown ──
   const handleExportChat = () => {
     if (!activeChat || activeChat.messages.length === 0) {
       toast.info('لا توجد رسائل لتصديرها بعد');
@@ -1207,201 +257,9 @@ ${h.text}`)
     toast.success('تم تصدير المحادثة بصيغة Markdown');
   };
 
-  // Attachment handler — real upload to /api/files/upload, chip shown in composer
-  const [attachments, setAttachments] = useState<FileAttachment[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
-
-  const TEXTLIKE_RE = /\.(txt|md|json|csv|py|js|ts|html?|css|xml|ya?ml|log)$/i;
-
-  const handleAttachFile = async (file: File) => {
-    if (file.size > 8 * 1024 * 1024) {
-      toast.error('حجم الملف يتجاوز 8MB');
-      return;
-    }
-    setIsUploading(true);
-    try {
-      const b64 = await new Promise<string>((resolve, reject) => {
-        const fr = new FileReader();
-        fr.onload = () => {
-          const result = String(fr.result || '');
-          resolve(result.slice(result.indexOf(',') + 1));
-        };
-        fr.onerror = () => reject(new Error('فشل قراءة الملف'));
-        fr.readAsDataURL(file);
-      });
-      const res = await fetch('/api/files/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: file.name, mime: file.type || 'application/octet-stream', data: b64 })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل الرفع');
-
-      // For documents (non-images): extract the text so the model can actually
-      // READ the attachment. Texty files are read locally; PDFs go through the
-      // server-side extractor (pypdf).
-      let textContent: string | undefined;
-      if (!data.mime.startsWith('image/')) {
-        try {
-          if (TEXTLIKE_RE.test(data.name) || data.mime.startsWith('text/')) {
-            textContent = (await file.text()).slice(0, 120000);
-          } else if (data.name.toLowerCase().endsWith('.pdf') || data.mime === 'application/pdf') {
-            // The stored filename (id + sanitized ext) is the last URL segment.
-            const storedName = String(data.url || '').split('/').pop() || '';
-            const extRes = await fetch('/api/files/extract-text', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ fileId: storedName })
-            });
-            if (extRes.ok) {
-              const extData = await extRes.json();
-              textContent = String(extData.text || '').slice(0, 120000);
-            }
-          }
-        } catch (extractErr) {
-          console.warn('Text extraction failed (file attached without content):', extractErr);
-        }
-      }
-
-      setAttachments(prev => [...prev, { id: data.id, name: data.name, url: data.url, mime: data.mime, size: data.size, textContent }]);
-      toast.success(
-        textContent
-          ? `تم رفع «${data.name}» وقراءة محتواه (${Math.round(textContent.length / 1000)} ألف حرف)`
-          : `تم رفع «${data.name}»`
-      );
-    } catch (err: any) {
-      toast.error(err.message || 'فشل رفع الملف');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  // Image Generation with Pollinations.ai
-  const handleGenerateImage = async (prompt: string) => {
-    if (!prompt.trim()) return;
-    
-    let targetChatId = activeChatId;
-
-    if (!targetChatId) {
-      const newSession: ChatSession = {
-        id: `chat-${Date.now()}`,
-        title: `توليد صورة: ${prompt.slice(0, 30)}...`,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        messages: [],
-        modelId: 'pollinations-flux',
-        providerId: 'pollinations'
-      };
-      setChats(prev => [newSession, ...prev]);
-      targetChatId = newSession.id;
-      setActiveChatId(newSession.id);
-    }
-
-    const userMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      role: 'user',
-      content: `🎨 توليد صورة: ${prompt.trim()}`,
-      timestamp: Date.now()
-    };
-
-    const assistantMsgId = `msg-${Date.now() + 1}`;
-    const assistantMsg: ChatMessage = {
-      id: assistantMsgId,
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now() + 1,
-      modelId: 'pollinations-flux',
-      providerId: 'pollinations',
-      status: 'streaming',
-      isImage: true
-    };
-
-    setChats(prev => prev.map(c => {
-      if (c.id === targetChatId) {
-        const updatedMsgs = [...c.messages, userMsg, assistantMsg];
-        return { ...c, messages: updatedMsgs, updatedAt: Date.now() };
-      }
-      return c;
-    }));
-
-    triggerHaptic('light');
-    setIsGenerating(true);
-    setTimeout(() => scrollToBottom(true), 50);
-
-    try {
-      const res = await fetch('/api/image/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt.trim() })
-      });
-
-      if (!res.ok) {
-        throw new Error(`فشل توليد الصورة (${res.status})`);
-      }
-
-      const data = await res.json();
-      
-      if (data.success && data.url) {
-        // Show the generated image
-        const imageMarkdown = `![Generated Image](${data.url})\n\n**المُحفِّز:** ${data.prompt}\n**النموذج:** ${data.model} • **الأبعاد:** ${data.width}x${data.height}\n**البذرة:** ${data.seed}`;
-
-        setChats(prev => prev.map(c => {
-          if (c.id === targetChatId) {
-            return {
-              ...c,
-              messages: c.messages.map(m =>
-                m.id === assistantMsgId ? { ...m, content: imageMarkdown, status: 'complete', isImage: true } : m
-              )
-            };
-          }
-          return c;
-        }));
-
-        // Also open canvas with the image
-        setCanvasContent(imageMarkdown);
-        setIsCanvasOpen(true);
-
-        triggerHaptic('medium');
-        toast.success('تم توليد الصورة بنجاح');
-      } else {
-        throw new Error('استجابة غير صالحة من خدمة توليد الصور');
-      }
-      setIsGenerating(false);
-    } catch (err: any) {
-      console.error('Image generation error:', err);
-      setIsGenerating(false);
-      setChats(prev => prev.map(c => {
-        if (c.id === targetChatId) {
-          return {
-            ...c,
-            messages: c.messages.map(m =>
-              m.id === assistantMsgId
-                ? { ...m, status: 'error', errorDetails: err.message || 'حدث خطأ أثناء توليد الصورة' }
-                : m
-            )
-          };
-        }
-        return c;
-      }));
-    }
-  };
-
-  const handleDeleteChat = (id: string) => {
-    setChats(prev => prev.filter(c => c.id !== id));
-    if (activeChatId === id) {
-      setActiveChatId(null);
-    }
-  };
-
-  const handleTogglePin = (id: string) => {
-    setChats(prev => prev.map(c => c.id === id ? { ...c, pinned: !c.pinned } : c));
-  };
-
+  // ── Backup import ──
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleImportBackup = () => {
-    fileInputRef.current?.click();
-  };
+  const handleImportBackup = () => fileInputRef.current?.click();
 
   const handleImportBackupFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1420,6 +278,113 @@ ${h.text}`)
     }
   };
 
+  // ── Effects ──
+  // Load models from API on app init
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const res = await fetch('/api/models');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.models && Array.isArray(data.models)) setAvailableModels(data.models);
+        }
+      } catch (err) {
+        console.warn('Failed to load models:', err);
+      } finally {
+        setLoadingModels(false);
+      }
+    };
+    fetchModels();
+  }, []);
+
+  // Apply the saved theme
+  useEffect(() => {
+    if (settings.theme) applyTheme(settings.theme);
+  }, [settings.theme]);
+
+  // Sync selectedTier with settings.activeModelId
+  useEffect(() => {
+    if (settings.activeModelId) {
+      if (settings.activeModelId.startsWith('local:')) {
+        setSelectedTier(settings.activeModelId);
+      } else if (modelIdToTier(settings.activeModelId)) {
+        setSelectedTier(modelIdToTier(settings.activeModelId)!);
+      }
+    }
+  }, [settings.activeModelId]);
+
+  // Guests default to lalo-fast
+  useEffect(() => {
+    if (currentUser === null && selectedTier !== 'lalo-fast') {
+      setSelectedTier('lalo-fast');
+    }
+  }, [currentUser]);
+
+  // Register PWA Service Worker & Native Keyboard Listener
+  useEffect(() => {
+    registerServiceWorker();
+    const cleanupKeyboard = setupVisualViewportKeyboard();
+    return () => { cleanupKeyboard(); };
+  }, []);
+
+  // Focus Mode keyboard shortcut + palette (Cmd/Ctrl+K)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsPaletteOpen((o) => !o);
+        return;
+      }
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        if (!focusMode) setIsSidebarOpen(false);
+        setFocusMode(f => !f);
+      } else if (e.key === 'Escape' && focusMode) {
+        setFocusMode(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [focusMode]);
+
+  // Escape closes the sidebar overlay
+  useEffect(() => {
+    if (!isSidebarOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsSidebarOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isSidebarOpen]);
+
+  // Accessibility: move focus into/out of the drawer
+  useEffect(() => {
+    if (focusMode) return;
+    const panel = document.getElementById('mijlai_sidebar');
+    if (isSidebarOpen) {
+      panel?.focus();
+    } else if (panel?.contains(document.activeElement)) {
+      document.getElementById('sidebar_toggle_btn')?.focus();
+    }
+  }, [isSidebarOpen, focusMode]);
+
+  // Connection Manager Subscription
+  useEffect(() => {
+    const unsubscribe = connectionManager.subscribe((status) => {
+      setConnectionStatus(status);
+      setIsOnline(status !== 'offline');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // ── Follow-up chips (computed once, not per render via IIFE) ──
+  const followUpChips = useMemo(() => {
+    if (engine.isGenerating || !activeChat) return [];
+    const lastMsg = activeChat.messages[activeChat.messages.length - 1];
+    if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.status !== 'complete') return [];
+    return lastMsg.followUps || [];
+  }, [activeChat?.messages, engine.isGenerating]);
+
   return (
     <div className="w-full h-dvh flex bg-surface overflow-hidden antialiased selection:bg-accent-soft font-sans">
       <AndroidAppBanner />
@@ -1437,7 +402,6 @@ ${h.text}`)
         />
       )}
 
-      {/* 1. Primary Left Sidebar & Navigation Strip (hidden in Focus Mode) */}
       {!focusMode && (
         <MijlaiSidebar
           isOpen={isSidebarOpen}
@@ -1457,23 +421,14 @@ ${h.text}`)
           currentUser={currentUser}
           chats={chats}
           activeChatId={activeChatId}
-          onSelectChat={(id) => {
-            setActiveChatId(id);
-            closeSidebar();
-          }}
+          onSelectChat={(id) => { setActiveChatId(id); closeSidebar(); }}
           onDeleteChat={handleDeleteChat}
           onTogglePin={handleTogglePin}
           userName={userName}
         />
       )}
 
-{/* 2. Main Content Canvas */}
-      <main
-        className="w-full h-full relative flex flex-col min-w-0"
-        style={{
-          background: 'var(--app-bg)'
-        }}
-      >
+      <main className="w-full h-full relative flex flex-col min-w-0" style={{ background: 'var(--app-bg)' }}>
         {!focusMode && (
           <MijlaiHeader
             isSidebarOpen={isSidebarOpen}
@@ -1486,7 +441,6 @@ ${h.text}`)
           />
         )}
 
-        {/* Focus Mode toggle button (visible when header is shown) */}
         {!focusMode && (
           <button
             onClick={() => { setFocusMode(true); setIsSidebarOpen(false); }}
@@ -1497,7 +451,6 @@ ${h.text}`)
           </button>
         )}
 
-        {/* Focus Mode floating toolbar (exit + toggle) */}
         {focusMode && (
           <button
             onClick={() => setFocusMode(false)}
@@ -1517,17 +470,14 @@ ${h.text}`)
               className="w-full max-w-[850px] h-full overflow-y-auto py-16 px-3 sm:px-5 space-y-5 scroll-smooth"
             >
               {activeChat.messages.map((msg, index) => {
-                // Arena pairs render side-by-side (the second member is folded in)
-                if (msg.arenaGroup && activeChat.messages[index - 1]?.arenaGroup === msg.arenaGroup) {
-                  return null;
-                }
+                if (msg.arenaGroup && activeChat.messages[index - 1]?.arenaGroup === msg.arenaGroup) return null;
                 if (msg.arenaGroup && activeChat.messages[index + 1]?.arenaGroup === msg.arenaGroup) {
                   return (
                     <ArenaPairView
                       key={msg.arenaGroup}
                       left={msg}
                       right={activeChat.messages[index + 1]}
-                      onVote={handleArenaVote}
+                      onVote={engine.handleArenaVote}
                     />
                   );
                 }
@@ -1535,122 +485,31 @@ ${h.text}`)
                   <ChatMessageItem
                     key={msg.id}
                     message={msg}
-                    isLastAssistantMessage={
-                      msg.role === 'assistant' && index === activeChat.messages.length - 1
-                    }
-                    onRegenerate={handleRegenerate}
-                    onEditPrompt={handleEditUserMessage}
+                    isLastAssistantMessage={msg.role === 'assistant' && index === activeChat.messages.length - 1}
+                    onRegenerate={engine.handleRegenerate}
+                    onEditPrompt={engine.handleEditUserMessage}
                     onOpenCanvas={handleOpenCanvasArtifact}
                   />
                 );
               })}
 
-              {/* Follow-up suggestion chips — keep the conversation flowing */}
-              {(() => {
-                const lastMsg = activeChat.messages[activeChat.messages.length - 1];
-                if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.status !== 'complete' || isGenerating) return null;
-                const chips = lastMsg.followUps || [];
-                if (chips.length === 0) return null;
-                return (
-                  <div className="w-full flex flex-col items-center gap-1.5 pt-1">
-                    <span className="text-[10px] font-bold text-faint flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" /> تابع الحوار
-                    </span>
-                    <div className="flex flex-wrap items-center justify-center gap-2">
-                      {chips.map((chip, i) => (
-                        <button
-                          key={`${chip}-${i}`}
-                          onClick={() => handleSendMessage(chip)}
-                          className="px-3.5 py-2 rounded-2xl text-[12px] font-medium bg-surface/80 hover:bg-surface border border-line/80 hover:border-accent/35 text-muted hover:text-accent shadow-sm hover:shadow transition-all active:scale-[0.97]"
-                        >
-                          {chip}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
+              <FollowUpChips chips={followUpChips} onPick={(chip) => engine.handleSendMessage(chip)} />
             </div>
           ) : (
-            /* Empty State Greeting */
-            <div className="flex-1 flex flex-col items-center justify-center w-full px-4">
-              <div className="mb-[20px] md:mb-[28px] flex flex-col items-center cursor-pointer transition-transform hover:scale-[1.01]" onClick={() => setSelectedTier('flash')}>
-                <MijlaiLogo size="hero" />
-              </div>
-
-              {/* رسالة ترحيب للزوار غير المسجلين */}
-              {currentUser === null && (
-                <div className="w-full max-w-[760px] md:w-[75%] mb-4 px-4 py-3 bg-gradient-to-r from-accent-soft/80 to-accent-soft/80 border border-accent/35 rounded-2xl text-center animate-in fade-in duration-500">
-                  <p className="text-[13px] text-main leading-relaxed font-medium">
-                    <span className="text-accent font-bold">مرحبًا بك في MijlAI.</span>{' '}
-                    يمكنك الآن تجربة نموذج{' '}
-                    <span className="text-accent font-bold">MijlAI-lalo-fast</span>{' '}
-                    السريع. بعد التسجيل، ستحصل على وصول كامل إلى مجموعة متنوعة من النماذج المتقدمة التي تتميز بدقة أعلى، وقدرات تخصيص أوسع، ودعم للغات متعددة، وتحليل سياقي محسن.
-                  </p>
-                  <button
-                    onClick={() => setIsAuthModalOpen(true)}
-                    className="mt-2.5 inline-flex items-center gap-1.5 px-4 py-1.5 bg-accent hover:bg-accent-hover text-white text-[12px] font-bold rounded-xl shadow-sm transition-colors"
-                  >
-                    تسجيل الدخول
-                  </button>
-                </div>
-              )}
-
-              {/* Quick-start prompt chips — lower the "blank page" barrier */}
-              <div className="w-full max-w-[760px] md:w-[75%] mb-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {STARTER_PROMPTS.map((p, i) => {
-                  const Icon = p.icon;
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        setInput(p.text);
-                        // Focus the composer so the user can tweak the prompt immediately
-                        requestAnimationFrame(() => {
-                          const el = document.getElementById('main_input') as HTMLTextAreaElement | null;
-                          el?.focus();
-                          if (el) el.setSelectionRange(el.value.length, el.value.length);
-                        });
-                      }}
-                      className="group flex items-start gap-2.5 text-start p-3 bg-surface/70 hover:bg-surface border border-line/80 hover:border-accent/35 rounded-2xl transition-all duration-200 active:scale-[0.98] shadow-sm hover:shadow-md text-xs text-muted hover:text-main"
-                    >
-                      <span className="shrink-0 w-7 h-7 rounded-xl bg-accent-soft text-accent flex items-center justify-center group-hover:bg-accent group-hover:text-white transition-colors">
-                        <Icon className="w-3.5 h-3.5" />
-                      </span>
-                      <span className="leading-relaxed line-clamp-2">{p.text}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <MijlaiComposer
-                input={input}
-                setInput={setInput}
-                onSend={() => handleSendMessage()}
-                onStop={handleStopGeneration}
-                isGenerating={isGenerating}
-                selectedTier={selectedTier}
-                onSelectTier={setSelectedTier}
-                webSearchEnabled={webSearchEnabled}
-                setWebSearchEnabled={setWebSearchEnabled}
-                knowledgeEnabled={knowledgeEnabled}
-                setKnowledgeEnabled={setKnowledgeEnabled}
-                localModels={localModels}
-                onGenerateImage={handleGenerateImage}
-                onAttachFile={handleAttachFile}
-                attachments={attachments}
-                onRemoveAttachment={(id) => setAttachments(prev => prev.filter(a => a.id !== id))}
-                isUploading={isUploading}
-                arenaMode={arenaMode}
-                onToggleArena={() => setArenaMode(v => !v)}
-                arenaModelA={arenaModelA}
-                arenaModelB={arenaModelB}
-                onSelectArenaModel={(side, tier) => side === 'a' ? setArenaModelA(tier) : setArenaModelB(tier)}
-                skillsBar={skillsBarElement}
-                queueCount={messageQueue.length}
-                isGuest={currentUser === null}
-              />
-            </div>
+            <StarterScreen
+              isGuest={currentUser === null}
+              onOpenAuth={() => setIsAuthModalOpen(true)}
+              onLogoClick={() => setSelectedTier('flash')}
+              onPickPrompt={(text) => {
+                setInput(text);
+                requestAnimationFrame(() => {
+                  const el = document.getElementById('main_input') as HTMLTextAreaElement | null;
+                  el?.focus();
+                  if (el) el.setSelectionRange(el.value.length, el.value.length);
+                });
+              }}
+              composer={<ComposerSlot variant="hero" engine={engine} ui={composerUi} />}
+            />
           )}
 
           {/* Active Gem persona indicator — one click to clear */}
@@ -1658,11 +517,7 @@ ${h.text}`)
             <div className="w-full flex justify-center px-4 pt-2">
               <span className="inline-flex items-center gap-2 text-[11px] font-bold px-3 py-1.5 rounded-full bg-purple-600/10 text-purple-700 border border-purple-500/30">
                 <span>✦ شخصية نشطة: {GEMS.find(g => g.id === activeGemId)?.title}</span>
-                <button
-                  onClick={() => setActiveGemId(null)}
-                  aria-label="إلغاء الشخصية"
-                  className="hover:text-purple-900 transition-colors"
-                >
+                <button onClick={() => setActiveGemId(null)} aria-label="إلغاء الشخصية" className="hover:text-purple-900 transition-colors">
                   ✕
                 </button>
               </span>
@@ -1670,35 +525,7 @@ ${h.text}`)
           )}
 
           {activeChat && activeChat.messages.length > 0 && (
-            <div className="w-full pb-safe pt-2">
-              <MijlaiComposer
-                input={input}
-                setInput={setInput}
-                onSend={() => handleSendMessage()}
-                onStop={handleStopGeneration}
-                isGenerating={isGenerating}
-                selectedTier={selectedTier}
-                onSelectTier={setSelectedTier}
-                webSearchEnabled={webSearchEnabled}
-                setWebSearchEnabled={setWebSearchEnabled}
-                knowledgeEnabled={knowledgeEnabled}
-                setKnowledgeEnabled={setKnowledgeEnabled}
-                localModels={localModels}
-                onGenerateImage={handleGenerateImage}
-                onAttachFile={handleAttachFile}
-                attachments={attachments}
-                onRemoveAttachment={(id) => setAttachments(prev => prev.filter(a => a.id !== id))}
-                isUploading={isUploading}
-                arenaMode={arenaMode}
-                onToggleArena={() => setArenaMode(v => !v)}
-                arenaModelA={arenaModelA}
-                arenaModelB={arenaModelB}
-                onSelectArenaModel={(side, tier) => side === 'a' ? setArenaModelA(tier) : setArenaModelB(tier)}
-                skillsBar={skillsBarElement}
-                queueCount={messageQueue.length}
-                isGuest={currentUser === null}
-              />
-            </div>
+            <ComposerSlot variant="docked" engine={engine} ui={composerUi} />
           )}
         </div>
 
@@ -1720,49 +547,35 @@ ${h.text}`)
         onChangeContent={(v) => { setCanvasContent(v); setCanvasKind(undefined); }}
       />
 
-      <SkillsManagerModal
-        isOpen={isSkillsManagerOpen}
-        onClose={() => setIsSkillsManagerOpen(false)}
-        registry={skillsRegistry}
-        onToggleSkill={handleToggleSkill}
-        onRegistryChanged={refreshSkillsRegistry}
-      />
-      {/* ترحيب أول مرة — بعد تجاوز بوابة القفل */}
-      <OnboardingModal
-        isOpen={isUnlocked && showOnboarding}
-        onClose={() => setShowOnboarding(false)}
-      />
-      <FilesModal isOpen={isFilesOpen} onClose={() => setIsFilesOpen(false)} />
-      <GemsModal isOpen={isGemsOpen} onClose={() => setIsGemsOpen(false)} onSelectGem={setActiveGemId} activeGemId={activeGemId} />
-      <ImageStudio isOpen={isImageStudioOpen} onClose={() => setIsImageStudioOpen(false)} chatId={activeChatId || undefined} />
-      <UpgradeModal isOpen={isUpgradeOpen} onClose={() => setIsUpgradeOpen(false)} />
-      <PromptEditModal
-        isOpen={isPromptEditOpen}
-        onClose={() => setIsPromptEditOpen(false)}
-        customPrompt={settings.systemPrompt}
-        onSavePrompt={(p) => setSettings(prev => ({ ...prev, systemPrompt: p }))}
-      />
-      <ProfileModal
-        isOpen={isProfileOpen}
-        onClose={() => setIsProfileOpen(false)}
-        userName={userName}
-        onChangeName={setUserName}
-      />
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        settings={settings}
-        onUpdateSettings={setSettings}
-        providers={APP_CONFIG.defaultProviders}
-        onAddCustomProvider={(prov) => {
-          setSettings(prev => ({ ...prev, customProviders: [...prev.customProviders, prov] }));
-        }}
-        onDeleteCustomProvider={(id) => {
-          setSettings(prev => ({ ...prev, customProviders: prev.customProviders.filter(p => p.id !== id) }));
-        }}
+      <ModalHost
+        isSkillsManagerOpen={isSkillsManagerOpen} onCloseSkillsManager={() => setIsSkillsManagerOpen(false)}
+        skillsRegistry={skillsRegistry} onToggleSkill={handleToggleSkill} onRegistryChanged={refreshSkillsRegistry}
+        showOnboarding={isUnlocked && showOnboarding} onCloseOnboarding={() => setShowOnboarding(false)}
+        isFilesOpen={isFilesOpen} onCloseFiles={() => setIsFilesOpen(false)}
+        isGemsOpen={isGemsOpen} onCloseGems={() => setIsGemsOpen(false)} activeGemId={activeGemId} onSelectGem={setActiveGemId}
+        isImageStudioOpen={isImageStudioOpen} onCloseImageStudio={() => setIsImageStudioOpen(false)} imageStudioChatId={activeChatId || undefined}
+        isUpgradeOpen={isUpgradeOpen} onCloseUpgrade={() => setIsUpgradeOpen(false)}
+        isPromptEditOpen={isPromptEditOpen} onClosePromptEdit={() => setIsPromptEditOpen(false)}
+        customPrompt={settings.systemPrompt} onSavePrompt={(p) => setSettings(prev => ({ ...prev, systemPrompt: p }))}
+        isProfileOpen={isProfileOpen} onCloseProfile={() => setIsProfileOpen(false)} userName={userName} onChangeName={setUserName}
+        isSettingsOpen={isSettingsOpen} onCloseSettings={() => setIsSettingsOpen(false)}
+        settings={settings} onUpdateSettings={setSettings} providers={APP_CONFIG.defaultProviders}
+        onAddCustomProvider={(prov) => setSettings(prev => ({ ...prev, customProviders: [...prev.customProviders, prov] }))}
+        onDeleteCustomProvider={(id) => setSettings(prev => ({ ...prev, customProviders: prev.customProviders.filter(p => p.id !== id) }))}
         onExportBackup={() => exportBackup(chats, settings)}
         onImportBackup={handleImportBackup}
         onClearData={() => setChats([])}
+        isAuthModalOpen={isAuthModalOpen} onCloseAuth={() => setIsAuthModalOpen(false)}
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          setUserName(user.username);
+          const token = (user as any).token;
+          if (token) {
+            setSettings(prev => ({ ...prev, userAuthToken: token }));
+            localStorage.setItem('mijlai_auth_token', token);
+          }
+        }}
+        isAdminModalOpen={isAdminModalOpen} onCloseAdmin={() => setIsAdminModalOpen(false)} currentUser={currentUser}
       />
 
       <input
@@ -1773,30 +586,6 @@ ${h.text}`)
         onChange={handleImportBackupFile}
       />
 
-      {/* Auth Modal (Open WebUI Login / Register) */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onLoginSuccess={(user) => {
-          setCurrentUser(user);
-          setUserName(user.username);
-          // Persist the JWT so authenticated calls (admin panel) survive reloads
-          const token = (user as any).token;
-          if (token) {
-            setSettings(prev => ({ ...prev, userAuthToken: token }));
-            localStorage.setItem('mijlai_auth_token', token);
-          }
-        }}
-      />
-
-      {/* Admin Control Panel & Monitoring Dashboard */}
-      <AdminDashboard
-        isOpen={isAdminModalOpen}
-        onClose={() => setIsAdminModalOpen(false)}
-        currentUser={currentUser}
-      />
-
-      {/* Cmd/Ctrl+K command palette */}
       <CommandPalette
         isOpen={isPaletteOpen}
         onClose={() => setIsPaletteOpen(false)}
@@ -1813,7 +602,6 @@ ${h.text}`)
         ]}
       />
 
-      {/* Global non-blocking notifications (replaces alert/confirm/prompt) */}
       <ToastHost />
     </div>
   );
