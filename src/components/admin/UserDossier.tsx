@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { X, RefreshCw, MessageSquare, Trash2, Database, Brain, Trash } from 'lucide-react';
+import { X, RefreshCw, MessageSquare, Trash2, Database, Brain, Trash, Share2 } from 'lucide-react';
 import { toast } from '../Toast';
 
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -78,6 +78,23 @@ export const UserDossier: React.FC<{ userId: string; authFetch: AuthFetch; onClo
       }
     };
 
+    const shareChat = async (chatId: string) => {
+      try {
+        const res = await authFetch('/api/share', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId }),
+        });
+        if (!res.ok) throw new Error();
+        const j = await res.json();
+        const url = `${window.location.origin}${j.url || ''}`;
+        await navigator.clipboard.writeText(url).catch(() => {});
+        toast.success('تم إنشاء رابط المشاركة ونسخه');
+      } catch {
+        toast.error('فشل إنشاء المشاركة');
+      }
+    };
+
     const u = data?.user;
 
     return (
@@ -135,6 +152,13 @@ export const UserDossier: React.FC<{ userId: string; authFetch: AuthFetch; onClo
                           <button onClick={() => void toggleChatMsgs(c.chat_id)} className="min-w-0 text-start flex-1">
                             <div className="text-xs font-bold text-slate-700 truncate">{c.title || c.chat_id}</div>
                             <div className="text-[10px] text-slate-400">{c.message_count} رسالة · {c.updated_at || ''} {c.deleted ? '· (محذوف)' : ''}</div>
+                          </button>
+                          <button
+                            onClick={() => void shareChat(c.chat_id)}
+                            className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors"
+                            title="إنشاء رابط مشاركة عام"
+                          >
+                            <Share2 className="w-3 h-3" />
                           </button>
                           <button
                             onClick={() => confirmId === c.chat_id ? del(`/api/admin/user/${userId}/chat/${encodeURIComponent(c.chat_id)}`) : setConfirmId(c.chat_id)}

@@ -112,6 +112,14 @@ class ActiveModelManager:
                 )
             """)
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS shares (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    payload TEXT,
+                    created_at TEXT
+                )
+            """)
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS rag_documents (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id TEXT NOT NULL,
@@ -1100,3 +1108,28 @@ class ActiveModelManager:
         except Exception as e:
             logger.warning(f"recent_activity failed: {e}")
             return []
+
+    def create_share(self, title: str, payload: str) -> Optional[str]:
+        """Persist a shareable snapshot; returns short public id."""
+        import uuid as _uuid
+        share_id = _uuid.uuid4().hex[:12]
+        try:
+            with self._get_conn() as conn:
+                conn.execute(
+                    "INSERT INTO shares (id, title, payload, created_at) VALUES (?, ?, ?, ?)",
+                    (share_id, (title or "محادثة")[:200], payload, datetime.now().isoformat())
+                )
+            return share_id
+        except Exception as e:
+            logger.warning(f"share create failed: {e}")
+            return None
+
+    def get_share(self, share_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            with self._get_conn() as conn:
+                row = conn.execute(
+                    "SELECT id, title, payload, created_at FROM shares WHERE id = ?", (share_id,)
+                ).fetchone()
+                return {k: row[k] for k in row.keys()} if row else None
+        except Exception:
+            return None

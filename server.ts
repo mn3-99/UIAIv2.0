@@ -1763,7 +1763,7 @@ async function verifyAuthToken(authHeader: string | undefined): Promise<{ user_i
 // ==========================================
 // Auth & Admin Panel Proxies (FastAPI Port 8088)
 // ==========================================
-app.use(['/api/auth', '/api/admin', '/api/sync', '/api/memory', '/api/rag', '/api/mcp'], async (req, res) => {
+app.use(['/api/auth', '/api/admin', '/api/sync', '/api/memory', '/api/rag', '/api/mcp', '/api/share'], async (req, res) => {
   ensureFastApiService();
   try {
     const targetUrl = `http://127.0.0.1:8088${req.originalUrl}`;
@@ -2312,6 +2312,29 @@ async function startServer() {
     });
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
+      if (req.path.startsWith('/s/')) {
+        const shareId = req.path.slice(3).split('/')[0] || '';
+        const esc = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        fetch(`http://127.0.0.1:8088/api/share/${encodeURIComponent(shareId)}`)
+          .then(async (r) => {
+            if (!r.ok) throw new Error('nf');
+            const j: any = await r.json();
+            const body = esc(j.payload || '').replace(/\n/g, '<br/>');
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            return res.send(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${esc(j.title || 'محادثة مشتركة')} — MijlAi</title>
+<style>body{font-family:Cairo,system-ui,sans-serif;background:#f1f5f9;margin:0;padding:24px;color:#0f172a}
+.card{max-width:760px;margin:0 auto;background:#fff;border-radius:18px;padding:24px;box-shadow:0 6px 24px rgba(0,0,0,.06)}
+h1{font-size:18px;margin:0 0 4px} .meta{color:#64748b;font-size:12px;margin-bottom:16px}
+p{line-height:2;font-size:14px;margin:10px 0;white-space:pre-wrap}</style></head>
+<body><div class="card"><h1>${esc(j.title || 'محادثة مشتركة')}</h1>
+<div class="meta">مشاركة عبر MijlAi · ${esc(j.created_at || '')}</div>
+<div>${body}</div></div></body></html>`);
+          })
+          .catch(() => res.status(404).send('الرابط غير موجود'));
+        return;
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

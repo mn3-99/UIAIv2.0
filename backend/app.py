@@ -556,6 +556,44 @@ if FASTAPI_AVAILABLE and app is not None:
         return {"success": ok}
 
     # ==========================================
+    # ==========================================
+    # Conversation sharing (public read link)
+    # ==========================================
+    class ShareRequest(BaseModel):
+        chat_id: str
+        title: Optional[str] = None
+
+    @app.post("/api/share")
+    async def create_share(req: ShareRequest, payload: dict = Depends(require_user)):
+        if not req.chat_id:
+            raise HTTPException(status_code=400, detail="chat_id مطلوب")
+        msgs = db_mgr.get_chat_messages(req.chat_id)
+        if not msgs:
+            raise HTTPException(status_code=404, detail="المحادثة غير موجودة")
+        lines = []
+        for m in msgs:
+            role = "مستخدم" if m.get("sender_role") == "user" else "MijlAi"
+            content = str(m.get("content") or "").strip()
+            if content:
+                lines.append(f"{role}: {content}")
+        payload_text = "\n\n".join(lines) or "(محادثة فارغة)"
+        title = (req.title or msgs[0].get("chat_title") or req.chat_id or "محادثة")[:200]
+        share_id = db_mgr.create_share(title, payload_text)
+        if not share_id:
+            raise HTTPException(status_code=500, detail="فشل إنشاء المشاركة")
+        if payload.get("role") == "admin":
+            db_mgr.add_admin_audit(payload.get("user_id"), payload.get("email"),
+                                   "chat.share", "chat", req.chat_id, f"share={share_id}")
+        return {"id": share_id, "url": f"/s/{share_id}", "title": title}
+
+    @app.get("/api/share/{share_id}")
+    async def get_share(share_id: str):
+        row = db_mgr.get_share(share_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="الرابط غير موجود")
+        return {"id": row["id"], "title": row["title"], "payload": row["payload"],
+                "created_at": row["created_at"]}
+
     # Long-term Memory Routes ("ماذا تعرف عني؟")
     # ==========================================
     @app.get("/api/memory/facts")
