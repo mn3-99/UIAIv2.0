@@ -227,13 +227,30 @@ export function useChatEngine(deps: ChatEngineDeps) {
           if (searchRes.ok) {
             const sd: any = await searchRes.json();
             if (sd?.needs_search && sd?.references?.length) {
-              const refs: { num: number; title: string; url: string }[] = sd.references;
-              searchSources = refs.map((r) => ({ title: r.title || '', url: r.url || '', snippet: '' }));
-              const refBlock = refs.map((r) => `[${r.num}] ${r.title}\n${r.url}`).join('\n');
-              finalPrompt = `استعن بمصادر الويب التالية عند الإجابة، واستشهد بأرقامها [1] [2] عند الحاجة:\n\n${refBlock}\n\n---\n\nسؤال المستخدم: ${textToSend.trim()}`;
+              const refs: { num: number; title: string; url: string; snippet?: string; content?: string }[] =
+                (sd.references || []).slice(0, 8);
+              searchSources = refs.map((r) => ({
+                title: r.title || '', url: r.url || '', snippet: r.snippet || ''
+              }));
+              // Feed the model the search CONTENT (not just site names) so it can
+              // actually answer, with numbered citations, instead of echoing links.
+              const refBlock = refs
+                .map((r) => `[${r.num}] ${r.title}\n${r.url}\n${(r.snippet || '')}\n${(r.content || '').slice(0, 1000)}`.replace(/\n{3,}/g, '\n').trim())
+                .join('\n\n');
+              finalPrompt =
+                'أجب عن سؤال المستخدم اعتماداً على مصادر الويب أدناه بإجابة كاملة ومفصلة بلغة السؤال. ' +
+                'استشهد بالمصادر بين قوسين مربعين مثل [1] [2] عند نقل معلومة. إن لم تجد الإجابة في المصادر فقل ذلك بوضوح ولا تختلق.\n\n' +
+                '## مصادر الويب\n\n' + refBlock + '\n\n---\n\nسؤال المستخدم: ' + textToSend.trim();
               deepSearchMeta = { needs_search: true, reasoning_steps: sd.reasoning_steps || [], references: refs };
             } else if (sd?.results?.length) {
               searchSources = sd.results.map((r: any) => ({ title: r.title || '', url: r.url || '', snippet: r.snippet || '' }));
+              const refBlock = (sd.results as any[])
+                .slice(0, 8)
+                .map((r: any, i: number) => `[${i + 1}] ${r.title}\n${r.url}\n${(r.snippet || '')}`)
+                .join('\n\n');
+              finalPrompt =
+                'أجب عن سؤال المستخدم اعتماداً على مصادر الويب أدناه بإجابة كاملة، واستشهد [1] [2] عند الحاجة. إن لم تجد إجابة فقل ذلك.\n\n' +
+                '## مصادر الويب\n\n' + refBlock + '\n\n---\n\nسؤال المستخدم: ' + textToSend.trim();
               if (sd?.reasoning_steps) deepSearchMeta = { needs_search: !!sd.results.length, reasoning_steps: sd.reasoning_steps, references: sd.references || [] };
             }
           }

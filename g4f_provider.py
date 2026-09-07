@@ -1261,6 +1261,48 @@ async def handle_search(request: web.Request) -> web.Response:
         except Exception as e:
             logger.debug(f"html fallback search failed: {e}")
 
+    # Strategy 3: Bing scrape (DuckDuckGo often blocks datacenter IPs)
+    if not results:
+        try:
+            import aiohttp as _aio
+            import re as _re2
+            import base64 as _b64
+            from urllib.parse import quote as _quote
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                                     "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                       "Accept-Language": "ar,en;q=0.8"}
+            timeout = _aio.ClientTimeout(total=18)
+            async with _aio.ClientSession(timeout=timeout, headers=headers) as session:
+                async with session.get("https://www.bing.com/search",
+                                       params={"q": query, "setlang": "ar", "count": str(max_results)}) as resp:
+                    html = await resp.text()
+            items = _re2.findall(
+                r'<li class="b_algo".*?<h2[^>]*><a[^>]+href="([^"]+)"[^>]*>(.*?)</a></h2>(.*?)</li>',
+                html, _re2.S)
+            tag_clean = _re2.compile(r"<[^>]+>")
+            for href, title, tail in items[:max_results]:
+                real = href
+                if "bing.com/ck/a" in href:
+                    m = _re2.search(r"[?&]u=a1([A-Za-z0-9_-]+)", href)
+                    if m:
+                        b = m.group(1)
+                        try:
+                            padded = b + "=" * ((4 - len(b) % 4) % 4)
+                            real = _b64.urlsafe_b64decode(padded).decode("utf-8", "ignore")
+                        except Exception:
+                            pass
+                snippet = ""
+                pm = _re2.search(r"<p[^>]*>(.*?)</p>", tail, _re2.S)
+                if pm:
+                    snippet = tag_clean.sub(" ", pm.group(1))
+                results.append({
+                    "title": _re2.sub(r"\s+", " ", tag_clean.sub(" ", title)).strip(),
+                    "url": real,
+                    "snippet": _re2.sub(r"\s+", " ", snippet).strip()[:300],
+                })
+        except Exception as e:
+            logger.debug(f"bing fallback search failed: {e}")
+
     return web.json_response({
         "query": query,
         "results": results,

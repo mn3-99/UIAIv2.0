@@ -109,7 +109,58 @@ class DeepSearchEngine:
                 results.append({"title": tag_clean.sub("", title), "url": href, "snippet": tag_clean.sub("", snippet)[:400]})
         except Exception as e:
             logger.debug(f"html fallback failed: {e}")
+        # Bing fallback (DuckDuckGo often blocks datacenter IPs)
+        if not results:
+            try:
+                results = await self._bing(query, max_results)
+            except Exception as e:
+                logger.debug(f"bing fallback failed: {e}")
         return results
+
+    @staticmethod
+    def _bing_decode(href: str) -> str:
+        if "bing.com/ck/a" not in href:
+            return href
+        m = re.search(r"[?&]u=a1([A-Za-z0-9_-]+)", href)
+        if m:
+            import base64
+            b = m.group(1)
+            try:
+                b64 = b + "=" * ((4 - len(b) % 4) % 4)
+                return base64.urlsafe_b64decode(b64).decode("utf-8", "ignore")
+            except Exception:
+                pass
+        return href
+
+    async def _bing(self, query: str, max_results: int = 10) -> list:
+        try:
+            import aiohttp
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                       "Accept-Language": "ar,en;q=0.8"}
+            timeout = aiohttp.ClientTimeout(total=18)
+            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+                async with session.get("https://www.bing.com/search",
+                                       params={"q": query, "setlang": "ar", "count": str(max_results)}) as resp:
+                    html = await resp.text()
+            out = []
+            items = re.findall(
+                r'<li class="b_algo".*?<h2[^>]*><a[^>]+href="([^"]+)"[^>]*>(.*?)</a></h2>(.*?)</li>',
+                html, re.S)
+            tag_clean = re.compile(r"<[^>]+>")
+            for href, title, tail in items[:max_results]:
+                t = tag_clean.sub(" ", title)
+                snippet = ""
+                pm = re.search(r"<p[^>]*>(.*?)</p>", tail, re.S)
+                if pm:
+                    snippet = tag_clean.sub(" ", pm.group(1))
+                out.append({"title": re.sub(r"\s+", " ", t).strip(),
+                            "url": self._bing_decode(href.strip()),
+                            "snippet": re.sub(r"\s+", " ", snippet).strip()[:400]})
+            return out
+        except Exception as e:
+            logger.debug(f"bing failed: {e}")
+            return []
 
     async def _scrape(self, url: str) -> str:
         try:
@@ -152,6 +203,49 @@ class DeepSearchEngine:
         ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
         return [meta[u] for u, _ in ranked]
 
+    async def _wikipedia(self, query: str, max_results: int = 5) -> list:
+        """Reliable Arabic-friendly fallback via Wikipedia API (keyless)."""
+        try:
+            import aiohttp
+            lang = "ar" if re.search(r"[\u0600-\u06FF]", query) else "en"
+            base = f"https://{lang}.wikipedia.org/w/api.php"
+            headers = {"User-Agent": "MijlAI-Search/1.0 (research; contact: admin)"}
+            timeout = aiohttp.ClientTimeout(total=14)
+            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+                async with session.get(base, params={
+                    "action": "query", "list": "search", "srsearch": query,
+                    "format": "json", "utf8": "1", "srlimit": str(max_results),
+                }) as resp:
+                    data = await resp.json()
+                pages = [(s.get("title", ""), s.get("snippet", "")) for s in data.get("query", {}).get("search", [])]
+                if not pages:
+                    return []
+                titles = [t for t, _ in pages[:3]]
+                extracts = {}
+                if titles:
+                    async with session.get(base, params={
+                        "action": "query", "prop": "extracts", "explaintext": "1", "exintro": "1",
+                        "titles": "|".join(titles), "format": "json", "utf8": "1", "exlimit": "max",
+                    }) as resp2:
+                        d2 = await resp2.json()
+                    for pg in (d2.get("query", {}).get("pages", {}) or {}).values():
+                        extracts[pg.get("title", "")] = (pg.get("extract") or "")
+            out = []
+            for title, snippet in pages:
+                intro = extracts.get(title, "")
+                text = re.sub(r"<[^>]+>", " ", (intro or snippet)).strip()
+                text = re.sub(r"\s+", " ", text)
+                out.append({
+                    "title": title,
+                    "url": f"https://{lang}.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}",
+                    "snippet": text[:500],
+                    "content": text[:1400],
+                })
+            return out
+        except Exception as e:
+            logger.debug(f"wikipedia failed: {e}")
+            return []
+
     async def run(self, query: str, history=None, top_n: int = 8) -> dict:
         steps = []
         router = self.adaptive_router(query, history)
@@ -173,12 +267,37 @@ class DeepSearchEngine:
         steps.append({"step": 2, "title": "تفكيك القصد وإعادة الصياغة (Query Rewriting)",
                       "detail": "صيغ البحث: " + " | ".join(rw["variants"]) + ((" — " + " ".join(rw["notes"])) if rw["notes"] else "")})
 
-        # جمع النتائج من كل صيغة بحث على حدة
+        is_arabic = bool(re.search(r"[\u0600-\u06FF]", query))
+
+        # جمع النتائج: المحركات العامة فقط للاستعلامات غير العربية (Bing يعمل لها)،
+        # لأنها تعيد نتائج مزيفة للعربية من هذا الخادم.
         raw_lists = []
-        for v in rw["variants"]:
-            res = await self._ddg(v, max_results=10)
-            if res:
-                raw_lists.append(res)
+        if not is_arabic:
+            for v in rw["variants"]:
+                res = await self._ddg(v, max_results=10)
+                if res:
+                    raw_lists.append(res)
+
+        # ويكيبيديا مصدر موثوق (عربية أو إنكليزية) — إن كانت متاحة.
+        wiki = await self._wikipedia(query, max_results=6)
+        if wiki:
+            raw_lists.insert(0, wiki)
+
+        if is_arabic and not wiki:
+            steps.append({"step": 3, "title": "جمع المصادر",
+                          "detail": "محركات الويب تعيد نتائج غير موثوقة لهذه الصياغة من هذا الخادم، "
+                                    "ولا تتوفر مصادر موثوقة — سأجيب مباشرةً من معرفتي."})
+            return {
+                "query": query,
+                "needs_search": False,
+                "reasoning_steps": steps,
+                "rewritten_queries": rw["variants"],
+                "results": [],
+                "references": [],
+                "count": 0,
+                "searched_at": int(time.time()),
+            }
+
         fused = self._rrf(raw_lists)[:20]
         steps.append({"step": 3, "title": "جمع ودمج النتائج (RRF)",
                       "detail": f"جُمعت {sum(len(l) for l in raw_lists)} نتيجة عبر {len(raw_lists)} صيغة بحث، ودُمجت بـ Reciprocal Rank Fusion إلى أفضل {len(fused)} نتيجة."})
@@ -187,13 +306,14 @@ class DeepSearchEngine:
         top = fused[:5]
         scrape_tasks = [self._scrape(t["url"]) for t in top if t.get("url")]
         contents = await asyncio.gather(*scrape_tasks)
-        deep = []
+        read_count = 0
         for t, c in zip(top, contents):
             if c:
-                deep.append({**t, "content": c[:600]})
-        if deep:
+                t["content"] = c[:1400]
+                read_count += 1
+        if read_count:
             steps.append({"step": 4, "title": "قراءة عميقة (Deep Scraping)",
-                          "detail": f"قُرئ محتوى {len(deep)} مصدر بالعمق وأُعيد ترتيبها حسب الصلة بالاستعلام."})
+                          "detail": f"قُرئ محتوى {read_count} مصدر بالعمق وأُعيد ترتيبها حسب الصلة بالاستعلام."})
             # إعادة ترتيب بسيطة حسب تطابق الكلمات المفتاحية من الاستعلام
             qwords = set(re.findall(r"[\u0600-\u06FFA-Za-z]{3,}", query.lower()))
             def relevance(it):
@@ -201,7 +321,15 @@ class DeepSearchEngine:
                 return sum(1 for w in qwords if w in blob)
             fused.sort(key=relevance, reverse=True)
 
-        references = [{"num": i + 1, "title": r.get("title", ""), "url": r.get("url", "")} for i, r in enumerate(fused[:top_n])]
+        references = []
+        for i, r in enumerate(fused[:top_n]):
+            references.append({
+                "num": i + 1,
+                "title": r.get("title", ""),
+                "url": r.get("url", ""),
+                "snippet": (r.get("snippet") or "")[:350],
+                "content": (r.get("content") or r.get("snippet") or "")[:1400],
+            })
         return {
             "query": query,
             "needs_search": True,
