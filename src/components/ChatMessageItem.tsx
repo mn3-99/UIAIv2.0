@@ -12,6 +12,7 @@ import { copyText } from '../utils/clipboard';
 import { speakText, stopSpeaking } from '../utils/tts';
 import { safeHostname } from '../utils/url';
 import { MarkdownBoundary } from './MarkdownBoundary';
+import { RenderErrorBoundary } from '../utils/RenderErrorBoundary';
 import { toast } from './Toast';
 
 interface PythonRunResult {
@@ -86,6 +87,10 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
   const isThinkingActive = (isStreaming || isThinking) && !!message.thinking && message.content.length === 0;
   const isReadable = !isUser && !isError && message.status === 'complete'
     && typeof message.content === 'string' && message.content.length > 1500;
+  const contentStr = typeof message.content === 'string' ? message.content : '';
+  // أثناء البث الطويل جداً نتجنّب إعادة تحليل ماركداون ثقيل إطاراً بإطار
+  // (سبب رئيسي للتجميد/الخطأ #310) — نعرض نصاً خاماً سريعاً حتى يكتمل الرد.
+  const heavyStreaming = isStreaming && contentStr.length > 20000;
 
   const handleRunPython = (code: string, blockIndex: number) => {
     setPyResults(prev => ({ ...prev, [blockIndex]: { ok: false, stdout: '', stderr: '', running: true } }));
@@ -384,11 +389,17 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                   />
                 </div>
               ) : readingMode && isReadable ? (
-                <ReadingModePane content={message.content} onClose={() => setReadingMode(false)} />
+                <RenderErrorBoundary fallback={<div className="whitespace-pre-wrap text-main text-sm">{contentStr}</div>}>
+                  <ReadingModePane content={contentStr} onClose={() => setReadingMode(false)} />
+                </RenderErrorBoundary>
+              ) : heavyStreaming ? (
+                <pre className="whitespace-pre-wrap break-words text-sm text-main font-sans leading-relaxed" dir="auto">{contentStr}</pre>
               ) : (
-                <MarkdownBoundary content={message.content}>
-                  <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} onRunPython={handleRunPython} onOpenCanvas={onOpenCanvas} />
-                </MarkdownBoundary>
+                <RenderErrorBoundary fallback={<div className="whitespace-pre-wrap text-main text-sm">{contentStr}</div>}>
+                  <MarkdownBoundary content={contentStr}>
+                    <RichMarkdown content={contentStr} isStreaming={isStreaming} isUser={isUser} onRunPython={handleRunPython} onOpenCanvas={onOpenCanvas} />
+                  </MarkdownBoundary>
+                </RenderErrorBoundary>
               )}
 
               {/* Python execution outputs (agentic terminal) */}
