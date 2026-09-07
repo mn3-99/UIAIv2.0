@@ -1191,3 +1191,16 @@ body[data-theme="obsidian-amber"] .glow-blue {
 .stop-btn:hover { filter: brightness(1.06); transform: translateY(-1px); }
 .stop-btn:active { transform: scale(0.9); }
 .stop-btn svg { color: #fff; }
+
+/* ── Accessibility: 44px touch targets for icon action buttons ── */
+.tap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+@media (min-width: 768px) {
+  /* On roomy desktop screens inside bubbles/sidebars 44px still meets WCAG 2.5.8 */
+  .tap-lg-only { }
+}

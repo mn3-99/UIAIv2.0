@@ -19,7 +19,7 @@ export const FollowUpChips: React.FC<FollowUpChipsProps> = React.memo(({ chips, 
           <button
             key={`${chip}-${i}`}
             onClick={() => onPick(chip)}
-            className="px-3.5 py-2 rounded-2xl text-[12px] font-medium bg-surface/80 hover:bg-surface border border-line/80 hover:border-accent/35 text-muted hover:text-accent shadow-sm hover:shadow transition-all active:scale-[0.97]"
+            className="flex items-center min-h-[44px] px-3.5 py-2 rounded-2xl text-[12px] font-medium bg-surface/80 hover:bg-surface border border-line/80 hover:border-accent/35 text-muted hover:text-accent shadow-sm hover:shadow transition-all active:scale-[0.97]"
           >
             {chip}
           </button>

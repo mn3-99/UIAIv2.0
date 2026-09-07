@@ -190,10 +190,10 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
             </div>
 
             {/* Quick Action Tools (always visible on touch devices, hover on desktop) */}
-            <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-within:opacity-100 transition-opacity">
+            <div className="flex items-center gap-1 flex-wrap justify-end max-md:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-within:opacity-100 transition-opacity">
               <button
                 onClick={handleCopy}
-                className={`p-1.5 rounded-xl transition-colors ${
+                className={`tap p-1.5 rounded-xl transition-colors ${
                   isUser ? 'hover:bg-white/20 text-white' : 'hover:bg-card text-muted hover:text-main'
                 }`}
                 title="نسخ الرسالة"
@@ -204,7 +204,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
               {!isUser && (
                 <button
                   onClick={handleToggleReadAloud}
-                  className={`p-1.5 rounded-xl transition-colors ${
+                  className={`tap p-1.5 rounded-xl transition-colors ${
                     isUser
                       ? 'hover:bg-white/20 text-white'
                       : isSpeaking
@@ -221,7 +221,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
               {isUser && onEditPrompt && (
                 <button
                   onClick={() => setIsEditing(!isEditing)}
-                  className="p-1.5 rounded-xl hover:bg-white/20 text-white transition-colors"
+                  className="tap p-1.5 rounded-xl hover:bg-white/20 text-white transition-colors"
                   title="تعديل الرسالة"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
@@ -231,7 +231,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
               {!isUser && onRegenerate && isLastAssistantMessage && (
                 <button
                   onClick={onRegenerate}
-                  className="p-1.5 rounded-xl hover:bg-card text-muted hover:text-accent transition-colors"
+                  className="tap p-1.5 rounded-xl hover:bg-card text-muted hover:text-accent transition-colors"
                   title="إعادة التوليد"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />

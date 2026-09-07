@@ -54,7 +54,7 @@ export const MessageReactions: React.FC<MessageReactionsProps> = ({
         <button
           key={emoji}
           onClick={() => handleReact(emoji)}
-          className="flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 border border-blue-200/70 text-sm hover:bg-blue-100 transition-all press-effect scale-in-bounce"
+          className="flex items-center justify-center min-h-[44px] px-3 rounded-full bg-blue-50 border border-blue-200/70 text-sm hover:bg-blue-100 transition-all press-effect scale-in-bounce"
         >
           <span>{emoji}</span>
         </button>
@@ -64,7 +64,7 @@ export const MessageReactions: React.FC<MessageReactionsProps> = ({
         <div className="relative">
           <button
             onClick={() => setShowPicker(!showPicker)}
-            className="flex items-center justify-center w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 transition-all press-effect text-slate-500"
+            className="flex items-center justify-center w-11 h-11 rounded-full bg-slate-100 hover:bg-slate-200 transition-all press-effect text-slate-500"
             title="إضافة رد فعل"
           >
             <span className="text-sm">+</span>
@@ -76,7 +76,7 @@ export const MessageReactions: React.FC<MessageReactionsProps> = ({
                 <button
                   key={reaction.emoji}
                   onClick={() => handleReact(reaction.emoji)}
-                  className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 transition-all press-effect hover:scale-125"
+                  className="flex items-center justify-center w-11 h-11 rounded-full hover:bg-slate-100 transition-all press-effect hover:scale-125"
                   title={reaction.label}
                 >
                   <span className="text-lg">{reaction.emoji}</span>

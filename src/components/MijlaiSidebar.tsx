@@ -89,6 +89,7 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
   onTogglePin
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const filteredChats = chats.filter(c =>
     c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -194,26 +195,38 @@ export const MijlaiSidebar: React.FC<MijlaiSidebarProps> = ({
                         <span className="truncate">{chat.title || 'محادثة جديدة'}</span>
                       </div>
 
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity max-sm:opacity-100">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             onTogglePin(chat.id);
                           }}
-                          className="p-1 hover:text-accent"
+                          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-card hover:text-accent"
                           title="تثبيت"
+                          aria-label="تثبيت المحادثة"
                         >
-                          <Pin className={`w-3.5 h-3.5 ${chat.pinned ? 'text-accent fill-current' : ''}`} />
+                          <Pin className={`w-4 h-4 ${chat.pinned ? 'text-accent fill-current' : ''}`} />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            onDeleteChat(chat.id);
+                            if (confirmDeleteId === chat.id) {
+                              setConfirmDeleteId(null);
+                              onDeleteChat(chat.id);
+                            } else {
+                              setConfirmDeleteId(chat.id);
+                              setTimeout(() => setConfirmDeleteId((c) => (c === chat.id ? null : c)), 3500);
+                            }
                           }}
-                          className="p-1 hover:text-red-600"
-                          title="حذف"
+                          className={`min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors ${
+                            confirmDeleteId === chat.id
+                              ? 'bg-red-600 text-white font-bold text-[10px] px-2'
+                              : 'hover:bg-red-50 hover:text-red-600'
+                          }`}
+                          title={confirmDeleteId === chat.id ? 'اضغط للتأكيد' : 'حذف'}
+                          aria-label={confirmDeleteId === chat.id ? 'تأكيد حذف المحادثة' : 'حذف المحادثة'}
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          {confirmDeleteId === chat.id ? 'تأكيد؟' : <Trash2 className="w-4 h-4" />}
                         </button>
                       </div>
                     </div>
