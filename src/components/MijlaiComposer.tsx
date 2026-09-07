@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { generateCompletions } from '../utils/completions';
 import { BookOpen } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 import { TIERS, isGuestTier } from '../models/tiers';
 import { useComposerFocus } from './ComposerFocusContext';
 import { toast } from './Toast';
@@ -42,6 +43,26 @@ interface MijlaiComposerProps {
   /** هل المستخدم زائر (غير مسجل) — يُقيّد النماذج المتاحة */
   isGuest?: boolean;
 }
+
+const MobileActionBtn: React.FC<{
+  icon: React.ComponentType<{ className?: string }>;
+  active?: boolean;
+  disabled?: boolean;
+  label: string;
+  onToggle: () => void;
+}> = ({ icon: Icon, active, disabled, label, onToggle }) => (
+  <button
+    onClick={onToggle}
+    disabled={disabled}
+    className={`w-full min-h-[44px] px-3 rounded-xl flex items-center gap-2.5 text-xs font-semibold transition-colors disabled:opacity-40 ${
+      active ? 'bg-accent-soft text-accent' : 'hover:bg-card text-main'
+    }`}
+  >
+    <Icon className="w-4 h-4 shrink-0" />
+    <span className="flex-1 text-start">{label}</span>
+    {active && <span className="w-2 h-2 rounded-full bg-accent" />}
+  </button>
+);
 
 export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
   input,
@@ -89,6 +110,7 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
   // True while a file is being dragged over the composer (drop-to-attach)
   const [isDropTarget, setIsDropTarget] = useState(false);
   const dragDepthRef = useRef(0);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // Streaming prediction suggestions (shown while typing, accept with Tab or click)
   const suggestions = useMemo(() => {
@@ -645,6 +667,34 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
               </button>
             )
           )}
+
+          {/* Mobile: secondary utilities live in a "more" popover (row 2 hidden <640px) */}
+          <div className="relative self-end mb-0.5 shrink-0 sm:hidden">
+            <button
+              onClick={() => setMoreOpen((o) => !o)}
+              className="w-11 h-11 rounded-full bg-card/80 border border-line/70 text-muted hover:text-accent flex items-center justify-center transition-colors"
+              aria-label="خيارات إضافية"
+              title="المزيد"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+            {moreOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setMoreOpen(false)} />
+                <div className="absolute bottom-14 end-0 z-40 w-56 bg-surface rounded-2xl shadow-2xl border border-line p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                  <MobileActionBtn icon={BookOpen} active={knowledgeEnabled} label="مستنداتي (RAG)" onToggle={() => { setKnowledgeEnabled?.(!knowledgeEnabled); setMoreOpen(false); }} />
+                  <MobileActionBtn icon={Globe} active={webSearchEnabled} label="البحث بالويب" onToggle={() => { setWebSearchEnabled?.(!webSearchEnabled); setMoreOpen(false); }} />
+                  {input.trim() && (
+                    <MobileActionBtn icon={Sparkles} disabled={isOptimizing} label={isOptimizing ? 'جاري التحسين…' : 'تحسين الأمر'} onToggle={() => { setMoreOpen(false); handleOptimizePrompt(); }} />
+                  )}
+                  {onToggleArena && (
+                    <MobileActionBtn icon={Swords} active={arenaMode} label="ساحة المقارنة" onToggle={() => { setMoreOpen(false); onToggleArena(); }} />
+                  )}
+                  <MobileActionBtn icon={isRecording ? MicOff : Mic} active={isRecording} label={isRecording ? 'إيقاف الإملاء الصوتي' : 'الإملاء الصوتي'} onToggle={() => { setMoreOpen(false); toggleVoiceInput(); }} />
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Streaming Prediction Suggestions Bar */}
@@ -684,8 +734,8 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
           </div>
         )}
 
-        {/* Row 2: Utility bar — mode toggles · voice input · status pills */}
-        <div className="px-3 pb-2 pt-2 border-t border-line/80 flex items-center justify-between gap-2 flex-wrap max-sm:gap-1.5">
+        {/* Row 2: Utility bar (desktop ≥640px) — mobile uses the "more" popover */}
+        <div className="hidden sm:flex px-3 pb-2 pt-2 border-t border-line/80 items-center justify-between gap-2 flex-wrap">
           
           {/* Left Controls: Web Search Grounding & Prompt Optimizer */}
           <div className="flex items-center gap-1.5 shrink-0 max-sm:flex-nowrap">
