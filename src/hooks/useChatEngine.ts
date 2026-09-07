@@ -421,7 +421,7 @@ export function useChatEngine(deps: ChatEngineDeps) {
                       status: status === 'error' ? 'error' : 'complete',
                       errorDetails,
                       ...(status === 'complete' && fullText.trim()
-                        ? { followUps: generateFollowUps(textToSend.trim(), fullText) }
+                        ? { followUps: generateFollowUps(textToSend.trim(), fullText, history) }
                         : {})
                     }
                   : m
