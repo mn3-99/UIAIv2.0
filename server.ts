@@ -372,9 +372,17 @@ function getGeminiClient(customApiKey?: string) {
 // ==========================================
 // Background Generation Job Queue & Memory Store
 // ==========================================
+interface StepEvent {
+  id: string;
+  label: string;
+  phase: 'pending' | 'active' | 'done';
+  details?: string;
+}
+
 interface BackgroundJobListenerPayload {
-  type: 'chunk' | 'think' | 'done' | 'error';
+  type: 'chunk' | 'think' | 'step' | 'done' | 'error';
   text?: string;
+  step?: StepEvent;
   error?: string;
   fullText?: string;
   thinkText?: string;
@@ -587,16 +595,28 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
   const { modelId, providerId, temperature = 0.7, apiKey, baseURL } = payload;
   const messages = injectMijlAiSystem(payload.messages);
 
-  const notifyListeners = (type: 'chunk' | 'think' | 'done' | 'error', text?: string, errMessage?: string) => {
+  interface StepEvent {
+    id: string;
+    label: string;
+    phase: 'pending' | 'active' | 'done';
+    details?: string;
+  }
+
+  const notifyListeners = (type: 'chunk' | 'think' | 'step' | 'done' | 'error', text?: string, errMessage?: string, stepEvent?: StepEvent) => {
     job.updatedAt = Date.now();
     for (const listener of job.listeners) {
       try {
-        listener({ type, text, error: errMessage, fullText: job.fullText, thinkText: type === 'think' ? job.thinkText : undefined });
+        listener({ type, text, error: errMessage, fullText: job.fullText, thinkText: type === 'think' ? job.thinkText : undefined, step: stepEvent });
       } catch (e) {
         console.error('Error notifying job listener:', e);
       }
     }
   };
+
+  const emitStep = (stepId: string, phase: 'active' | 'done', details?: string) => {
+    notifyListeners('step', undefined, undefined, { id: stepId, label: stepId, phase, details });
+  };
+  const emitStepDone = (stepId: string) => emitStep(stepId, 'done');
 
   try {
     // ------------------------------------------
@@ -611,6 +631,13 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
         role: m.role,
         content: m.content
       }));
+
+      // Emit initial analysis step
+      emitStep('analyze', 'active', 'analyzing');
+      await new Promise(r => setTimeout(r, 100));
+      emitStepDone('analyze');
+      emitStepDone('search');
+      emitStep('reason', 'active', 'reasoning');
 
       const g4fResponse = await fetch(`${G4F_SERVICE_URL}/chat/completions`, {
         method: 'POST',
@@ -665,6 +692,13 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
               const deltaObj = json.choices?.[0]?.delta;
               const rawDelta = deltaObj?.content ?? null;
               const { visibleDelta } = processAssistantDelta(job, json, rawDelta);
+              
+              // Emit reasoning step when thinking starts
+              if (job.thinkChunks.length === 1 && job._notifiedThinkCount === 0) {
+                emitStepDone('reason');
+                emitStep('write', 'active', 'writing');
+              }
+              
               if (visibleDelta) {
                 job.fullText += visibleDelta;
                 job.chunks.push(visibleDelta);
@@ -681,21 +715,127 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
         }
       }
 
-      // Flush any residual carried text (partial <think> tag tails) once stream ends
       flushThinkingCarry(job);
-
-      // Post-process sanitization for identity enforcement (code-safe)
-      if (job.fullText && (job.fullText.includes('Copilot') || job.fullText.includes('Microsoft') || job.fullText.includes('مايكروسوفت'))) {
-        job.fullText = sanitizeIdentityOutsideCode(job.fullText);
-        // Regenerate the chunk list so reconnecting clients get the cleaned text
-        job.chunks = [job.fullText];
-      }
+      emitStepDone('write');
 
       if (job.status === 'generating') {
         job.status = 'completed';
         notifyListeners('done');
       }
       return;
+    }
+
+    // ------------------------------------------
+    // B) Handling NVIDIA Bridge Models (direct:nv-*)
+    // ------------------------------------------
+    if (modelId.startsWith('direct:nv-')) {
+      // Route NVIDIA models to the captcha bridge (port 8000)
+      emitStep('analyze', 'active', 'analyzing');
+      await new Promise(r => setTimeout(r, 100));
+      emitStepDone('analyze');
+      emitStepDone('search');
+      emitStep('reason', 'active', 'reasoning');
+
+      // Map model ID to the actual model slug for the bridge
+      const nvidiaModelMap: Record<string, string> = {
+        'direct:nv-nemotron-3-ultra': 'nvidia/nemotron-3-ultra-550b-a55b',
+        'direct:nv-nemotron-3-super': 'nvidia/nemotron-3-super-120b-a12b',
+        'direct:nv-nemotron-lightning': 'nvidia/nemotron-3.5-lightning-30b-a3b',
+        'direct:nv-muse-glimmer': 'meta/muse-glimmer-30b',
+        'direct:nv-gpt-oss-20b': 'openai/gpt-oss-20b',
+        'direct:nv-laguna': 'poolside/laguna-xs-2.1',
+        'direct:nv-minimax-m3': 'minimaxai/minimax-m3',
+        'direct:nv-kimi-k3': 'moonshotai/kimi-k3',
+        'direct:nv-llama-vision': 'meta/llama-3.2-11b-vision-instruct',
+        'direct:nv-diffusiongemma': 'google/diffusiongemma-26b-a4b-it',
+      };
+
+      const targetModel = nvidiaModelMap[modelId] || modelId.replace('direct:nv-', '');
+      const targetUrl = 'http://127.0.0.1:8000/v1/chat/completions';
+
+      // Emit reasoning step
+      emitStep('reason', 'active', 'reasoning');
+
+      const nvidiaBody = {
+        model: targetModel,
+        messages,
+        temperature: typeof temperature === 'number' ? temperature : 0.7,
+        stream: true
+      };
+
+      const nvidiaResponse = await fetch('http://127.0.0.1:8000/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: job.abortController.signal,
+        body: JSON.stringify(nvidiaBody)
+      });
+
+      if (!nvidiaResponse.ok) {
+        const errBody = await nvidiaResponse.text();
+        console.error('[NVIDIA Bridge] Chat completion FAILED:', errBody.slice(0, 800));
+        // Fallback to local provider
+        // Don't return here, let it fall through to local provider
+      } else {
+        const reader = nvidiaResponse.body?.getReader();
+        if (!reader) {
+          job.status = 'failed';
+          job.error = 'Failed to open stream from NVIDIA Bridge';
+          return notifyListeners('error', undefined, job.error);
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          if (job.abortController.signal.aborted) break;
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('data: ')) {
+              const contentStr = trimmed.slice(6);
+              if (contentStr === '[DONE]') break;
+              try {
+                const json = JSON.parse(contentStr);
+                const rawDelta = json.choices?.[0]?.delta?.content ?? null;
+                const { visibleDelta } = processAssistantDelta(job, json, rawDelta);
+
+                // Emit reasoning step when thinking starts
+                if (job.thinkChunks.length === 1 && job._notifiedThinkCount === 0) {
+                  emitStepDone('reason');
+                  emitStep('write', 'active', 'writing');
+                }
+
+                if (visibleDelta) {
+                  job.fullText += visibleDelta;
+                  job.chunks.push(visibleDelta);
+                  notifyListeners('chunk', visibleDelta);
+                }
+                if (job.thinkChunks.length > job._notifiedThinkCount) {
+                  job._notifiedThinkCount = job.thinkChunks.length;
+                  notifyListeners('think');
+                }
+              } catch (e) {
+                // ignore non-json chunk parse
+              }
+            }
+          }
+        }
+
+        flushThinkingCarry(job);
+        emitStepDone('write');
+
+        if (job.status === 'generating') {
+          job.status = 'completed';
+          notifyListeners('done');
+        }
+        return;
+      }
     }
 
     // ------------------------------------------
@@ -727,14 +867,28 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
         }
       });
 
+      emitStep('analyze', 'active', 'analyzing');
+      await new Promise(r => setTimeout(r, 100));
+      emitStepDone('analyze');
+      emitStepDone('search');
+      emitStep('reason', 'active', 'reasoning');
+
       for await (const chunk of stream) {
         if (job.abortController.signal.aborted) break;
         if (chunk.text) {
           job.fullText += chunk.text;
           job.chunks.push(chunk.text);
           notifyListeners('chunk', chunk.text);
+          
+          if (job.thinkChunks.length === 1 && job._notifiedThinkCount === 0) {
+            emitStepDone('reason');
+            emitStep('write', 'active', 'writing');
+          }
         }
       }
+
+      flushThinkingCarry(job);
+      emitStepDone('write');
 
       if (job.status === 'generating') {
         job.status = 'completed';
@@ -751,6 +905,12 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
       const cfApiToken = process.env.CLOUDFLARE_API_TOKEN || apiKey;
 
       if (cfAccountId && cfApiToken) {
+        emitStep('analyze', 'active', 'analyzing');
+        await new Promise(r => setTimeout(r, 100));
+        emitStepDone('analyze');
+        emitStepDone('search');
+        emitStep('reason', 'active', 'reasoning');
+
         const cfResponse = await fetch(
           `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/run/${modelId}`,
           {
@@ -778,12 +938,14 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
         const reader = cfResponse.body?.getReader();
         if (!reader) {
           job.status = 'failed';
-          job.error = 'لم يتم استلام Stream من Cloudflare';
+          job.error = 'فشل فتح تيار البيانات من Cloudflare Workers AI';
           return notifyListeners('error', undefined, job.error);
         }
 
         const decoder = new TextDecoder();
         let buffer = '';
+
+        emitStep('reason', 'active', 'reasoning');
 
         while (true) {
           if (job.abortController.signal.aborted) break;
@@ -795,55 +957,44 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
           buffer = lines.pop() || '';
 
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const dataStr = line.replace('data: ', '').trim();
-              if (dataStr === '[DONE]') continue;
+            const trimmed = line.trim();
+            if (trimmed.startsWith('data: ')) {
+              const contentStr = trimmed.slice(6);
+              if (contentStr === '[DONE]') break;
               try {
-                const parsed = JSON.parse(dataStr);
-                const delta = parsed.response || parsed.choices?.[0]?.delta?.content || '';
-                if (delta) {
-                  job.fullText += delta;
-                  job.chunks.push(delta);
-                  notifyListeners('chunk', delta);
+                const json = JSON.parse(contentStr);
+                if (json.error) {
+                  job.status = 'failed';
+                  job.error = json.error.message || 'خطأ في معالجة طلب Cloudflare Workers AI';
+                  return notifyListeners('error', undefined, job.error);
+                }
+                const deltaObj = json.choices?.[0]?.delta;
+                const rawDelta = deltaObj?.content ?? null;
+                const { visibleDelta } = processAssistantDelta(job, json, rawDelta);
+                
+                if (job.thinkChunks.length === 1 && job._notifiedThinkCount === 0) {
+                  emitStepDone('reason');
+                  emitStep('write', 'active', 'writing');
+                }
+                
+                if (visibleDelta) {
+                  job.fullText += visibleDelta;
+                  job.chunks.push(visibleDelta);
+                  notifyListeners('chunk', visibleDelta);
+                }
+                if (job.thinkChunks.length > job._notifiedThinkCount) {
+                  job._notifiedThinkCount = job.thinkChunks.length;
+                  notifyListeners('think');
                 }
               } catch (e) {
-                if (dataStr) {
-                  job.fullText += dataStr;
-                  job.chunks.push(dataStr);
-                  notifyListeners('chunk', dataStr);
-                }
+                // ignore non-json chunk parse
               }
             }
           }
         }
 
-        if (job.status === 'generating') {
-          job.status = 'completed';
-          notifyListeners('done');
-        }
-        return;
-      }
-
-      if (process.env.GEMINI_API_KEY || apiKey) {
-        const ai = getGeminiClient(apiKey);
-        const stream = await ai.models.generateContentStream({
-          model: 'gemini-3.6-flash',
-          contents: messages
-            .filter((m: any) => m.role !== 'system')
-            .map((m: any) => ({
-              role: m.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: m.content }]
-            }))
-        });
-
-        for await (const chunk of stream) {
-          if (job.abortController.signal.aborted) break;
-          if (chunk.text) {
-            job.fullText += chunk.text;
-            job.chunks.push(chunk.text);
-            notifyListeners('chunk', chunk.text);
-          }
-        }
+        flushThinkingCarry(job);
+        emitStepDone('write');
 
         if (job.status === 'generating') {
           job.status = 'completed';
@@ -851,15 +1002,18 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
         }
         return;
       }
-
-      job.status = 'failed';
-      job.error = 'يتطلب Cloudflare Workers AI إما CLOUDFLARE_API_TOKEN أو GEMINI_API_KEY كمزود افتراضي.';
-      return notifyListeners('error', undefined, job.error);
     }
 
     // ------------------------------------------
     // D) Generic OpenAI-Compatible Provider Streaming
     // ------------------------------------------
+    // Emit initial analysis step for all providers
+    emitStep('analyze', 'active', 'analyzing');
+    await new Promise(r => setTimeout(r, 100));
+    emitStepDone('analyze');
+    emitStepDone('search');
+    emitStep('reason', 'active', 'reasoning');
+    
     let targetUrl = 'http://127.0.0.1:8080/v1/chat/completions';
     let targetModel = 'qwen3.8-27b';
 
@@ -870,15 +1024,11 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
       || !!getLocalModelInfo(modelId);
 
     if (isLocalProvider) {
-      // Resolve against the discovered llama.cpp / Ollama endpoints (with a
-      // force-refresh fallback so a busy/first probe never loses the model).
       const resolved = await resolveLocalTarget(modelId);
       if (resolved) {
         targetUrl = `${resolved.baseUrl}/v1/chat/completions`;
         targetModel = resolved.serverModel;
       } else if (modelId.startsWith('local:')) {
-        // Explicit local model that could not be discovered → fail clearly
-        // instead of silently using whatever is on the default port.
         console.error(`[LocalModel] No endpoint resolved for '${modelId}'`);
         job.status = 'failed';
         job.error = `تعذر العثور على النموذج المحلي '${modelId.replace('local:', '').split('/').pop() || modelId}'. تأكد من تشغيل llama.cpp أو Ollama وأن النموذج محمّل (المنافذ المكتشفة: 8080، 8081، 8083).`;
@@ -900,9 +1050,6 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
     const localBody: any = {
       model: targetModel,
       messages,
-      // Respect the client-supplied sampling temperature (default 0.7) instead
-      // of hardcoding 0 — a frozen temperature made every cloud/local answer
-      // deterministic and repetitive regardless of the user's settings.
       temperature: typeof temperature === 'number' ? temperature : 0.7,
       stream: true
     };
@@ -912,6 +1059,8 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
         localBody.max_tokens = 2048;
       }
     }
+
+    emitStep('reason', 'active', 'reasoning');
 
     const openaiResponse = await fetch(targetUrl, {
       method: 'POST',
@@ -938,6 +1087,8 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
     const decoder = new TextDecoder();
     let buffer = '';
 
+    emitStep('reason', 'active', 'reasoning');
+
     while (true) {
       if (job.abortController.signal.aborted) break;
       const { done, value } = await reader.read();
@@ -956,6 +1107,12 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
             const json = JSON.parse(contentStr);
             const rawDelta = json.choices?.[0]?.delta?.content ?? null;
             const { visibleDelta } = processAssistantDelta(job, json, rawDelta);
+            
+            if (job.thinkChunks.length === 1 && job._notifiedThinkCount === 0) {
+              emitStepDone('reason');
+              emitStep('write', 'active', 'writing');
+            }
+            
             if (visibleDelta) {
               job.fullText += visibleDelta;
               job.chunks.push(visibleDelta);
@@ -973,6 +1130,7 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
     }
 
     flushThinkingCarry(job);
+    emitStepDone('write');
 
     if (job.status === 'generating') {
       job.status = 'completed';
@@ -990,6 +1148,7 @@ async function startLLMGenerationWorker(job: BackgroundJob, payload: any) {
     }
   }
 }
+
 
 // ==========================================
 // 1) API Routes: /api/chat (Background Decoupled Generation)
@@ -1818,44 +1977,100 @@ app.use(['/api/auth', '/api/admin', '/api/sync', '/api/memory', '/api/rag', '/ap
 });
 
 // ==========================================
-// 1.5) API Routes: Image Generation (Pollinations.ai)
+// 1.5) API Routes: Image Generation (Smart Engine with Fallback)
 // ==========================================
 app.post('/api/image/generate', async (req, res) => {
   try {
-    const { prompt, model = 'flux', width = 1024, height = 1024, seed, nologo = true, isPrivate = true, enhance = true, transparent = false } = req.body;
+    const { prompt, model = 'flux', width = 1024, height = 1024, seed, nologo = true, isPrivate = true, enhance = true, transparent = false, negativePrompt, n = 1 } = req.body;
     
     if (!prompt || typeof prompt !== 'string') {
       return res.status(400).json({ error: 'Prompt is required' });
     }
 
-    const params = new URLSearchParams({
-      prompt: prompt.trim(),
-      model,
-      width: String(width),
-      height: String(height),
-      nologo: String(nologo),
-      private: String(isPrivate),
-      enhance: String(enhance),
-      transparent: String(transparent),
-    });
-    if (seed !== undefined && seed !== null) params.set('seed', String(seed));
-
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.trim())}?${params.toString()}`;
+    // Import the smart image generation engine
+    const { generateImageSmart } = await import('./functions/api/imageEngine');
     
-    // Return the image URL directly (Pollinations.ai serves the image at this URL)
-    return res.json({
-      success: true,
-      url: pollinationsUrl,
-      prompt: prompt.trim(),
-      model,
+    // Map frontend model names to engine model IDs
+    const modelMap: Record<string, string> = {
+      'flux': 'flux',
+      'flux-pro': 'flux-pro',
+      'flux-dev': 'flux-dev',
+      'sdxl': 'sdxl',
+      'midjourney': 'midjourney',
+      'dalle3': 'dalle3',
+      'gptimage': 'gptimage',
+      'ideogram': 'ideogram',
+      'playground': 'playground',
+      'mistral': 'mistral-image',
+      'mistral-image': 'mistral-image',
+      'manus': 'manus-image',
+      'manus-image': 'manus-image',
+      'zen': 'zen-image',
+      'zen-pro': 'zen-pro',
+      'zen-3': 'zen-3',
+      'zen-image': 'zen-image',
+    };
+    
+    const engineModelId = modelMap[model] || model;
+    
+    const result = await generateImageSmart(engineModelId, prompt, {
       width,
       height,
+      n: Math.min(Math.max(n || 1, 1), 4),
+      negativePrompt,
+      seed,
+    });
+
+    return res.json({
+      success: true,
+      url: result.url,
+      prompt: prompt.trim(),
+      model: result.model,
+      label: result.label,
+      provider: result.provider,
+      width: result.width,
+      height: result.height,
       seed: seed ?? Math.floor(Math.random() * 1000000),
+      elapsed_ms: result.elapsed_ms,
+      fallback: result.fallback,
       timestamp: Date.now(),
     });
   } catch (err: any) {
     console.error('Image generation error:', err);
-    return res.status(500).json({ error: err.message || 'Image generation failed' });
+    
+    // Fallback to direct Pollinations URL if smart engine fails
+    try {
+      const { prompt, model = 'flux', width = 1024, height = 1024, seed, nologo = true, isPrivate = true, enhance = true, transparent = false } = req.body;
+      const params = new URLSearchParams({
+        prompt: prompt.trim(),
+        model,
+        width: String(width),
+        height: String(height),
+        nologo: String(nologo),
+        private: String(isPrivate),
+        enhance: String(enhance),
+        transparent: String(transparent),
+      });
+      if (seed !== undefined && seed !== null) params.set('seed', String(seed));
+
+      const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.trim())}?${params.toString()}`;
+      
+      return res.json({
+        success: true,
+        url: pollinationsUrl,
+        prompt: prompt.trim(),
+        model,
+        width,
+        height,
+        seed: seed ?? Math.floor(Math.random() * 1000000),
+        timestamp: Date.now(),
+        fallback: true,
+        fallback_reason: err.message || 'Smart engine failed, using Pollinations direct',
+      });
+    } catch (fallbackErr) {
+      console.error('Image generation fallback error:', fallbackErr);
+      return res.status(500).json({ error: err.message || 'Image generation failed' });
+    }
   }
 });
 

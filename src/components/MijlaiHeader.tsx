@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pencil, User, LogIn, Menu, X, Download } from 'lucide-react';
+import { Pencil, User, LogIn, Menu, X, Download, Sun, Moon, Globe } from 'lucide-react';
 import { UserAccount } from '../types';
 
 type ProviderOverall = 'ok' | 'degraded' | 'down' | 'unknown';
@@ -57,6 +57,31 @@ export const MijlaiHeader: React.FC<{
     const t = setInterval(poll, 60000);
     return () => { alive = false; clearInterval(t); };
   }, []);
+
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('theme') as 'light' | 'dark' || 
+        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    }
+    return 'light';
+  });
+  const [lang, setLang] = useState<'ar' | 'en'>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('lang') as 'ar' | 'en' || 'ar';
+    }
+    return 'ar';
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = lang;
+    localStorage.setItem('lang', lang);
+  }, [lang]);
 
   const meta = STATUS_META[status.overall];
 
@@ -130,6 +155,33 @@ export const MijlaiHeader: React.FC<{
               <span>تسجيل الدخول</span>
             </>
           )}
+        </button>
+
+        {/* Theme Toggle */}
+        <button
+          onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
+          className="w-8 h-8 rounded-full bg-surface/90 hover:bg-surface text-main hover:text-accent border border-line/80 shadow-2xs hover:shadow-md flex items-center justify-center transition-all duration-200 backdrop-blur-md active:scale-95 cursor-pointer"
+          title={theme === 'light' ? 'الوضع الداكن' : 'الوضع الفاتح'}
+          aria-label={theme === 'light' ? 'تبديل للوضع الداكن' : 'تبديل للوضع الفاتح'}
+        >
+          {theme === 'light' ? (
+            <Moon className="w-3.5 h-3.5" strokeWidth={2} />
+          ) : (
+            <Sun className="w-3.5 h-3.5" strokeWidth={2} />
+          )}
+        </button>
+
+        {/* Language Toggle */}
+        <button
+          onClick={() => setLang(l => l === 'ar' ? 'en' : 'ar')}
+          className="w-8 h-8 rounded-full bg-surface/90 hover:bg-surface text-main hover:text-accent border border-line/80 shadow-2xs hover:shadow-md flex items-center justify-center transition-all duration-200 backdrop-blur-md active:scale-95 cursor-pointer"
+          title={lang === 'ar' ? 'Switch to English' : 'التحول للعربية'}
+          aria-label={lang === 'ar' ? 'Switch to English' : 'التحول للعربية'}
+        >
+          <Globe className="w-3.5 h-3.5" strokeWidth={2} />
+          <span className="hidden sm:inline text-xs font-bold ms-1">
+            {lang === 'ar' ? 'En' : 'ع'}
+          </span>
         </button>
 
         {/* Sleek Smooth Top-Right Pen Icon (New Chat / Edit Prompt) */}

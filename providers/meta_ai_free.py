@@ -15,7 +15,7 @@ class MetaAIFreeProvider:
     ) -> AsyncGenerator[str, None]:
         key = api_key or os.environ.get("META_AI_API_KEY", "")
         if not key:
-            yield "Meta AI API key required in environment META_AI_API_KEY"
+            # No key: yield nothing so the fallback chain continues.
             return
         headers = {
             "Authorization": f"Bearer {key}",
@@ -48,5 +48,5 @@ class MetaAIFreeProvider:
                                     yield delta
                             except Exception:
                                 pass
-            except Exception as e:
-                yield f"Meta AI Provider Error: {str(e)}"
+            except Exception:
+                return

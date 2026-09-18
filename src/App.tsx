@@ -10,7 +10,6 @@ import { NetworkStatusBanner } from './components/NetworkStatusBanner';
 import { ToastHost, toast } from './components/Toast';
 import { CommandPalette } from './components/CommandPalette';
 import { ArenaPairView } from './components/ArenaPairView';
-import { SkillsBar } from './components/SkillsBar';
 import { AndroidAppBanner } from './components/AndroidAppBanner';
 import { StarterScreen } from './components/StarterScreen';
 import { FollowUpChips } from './components/FollowUpChips';
@@ -30,6 +29,7 @@ import { loadSettings, loadChats, exportBackup, importBackup, hashPassword, safe
 import { tierToModelId, modelIdToTier } from './models/tiers';
 import { useChatEngine } from './hooks/useChatEngine';
 import { useChatPersistence } from './hooks/useChatPersistence';
+import { useGlobalHotkeys } from './hooks/useGlobalHotkeys';
 import { useComposerFocus } from './components/ComposerFocusContext';
 
 import { ChatSession, AppSettings, UserAccount } from './types';
@@ -72,7 +72,6 @@ export default function App() {
 
   // ── Auth / features ──
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [knowledgeEnabled, setKnowledgeEnabled] = useState(false);
 
   // ── Models / boot ──
@@ -129,13 +128,63 @@ export default function App() {
   // ── Chat engine: send/stop/regenerate/edit/arena/queue/attachments ──
   const engine = useChatEngine({
     chats, setChats, activeChatId, setActiveChatId, input, setInput,
-    settings, selectedTier, webSearchEnabled, knowledgeEnabled, currentUser,
+    settings, selectedTier, knowledgeEnabled, currentUser,
     activeGemId, localModels, arenaMode, arenaModelA, arenaModelB,
     onArtifact: handleOpenCanvasArtifact,
     onImageGenerated: (markdown) => { setCanvasContent(markdown); setIsCanvasOpen(true); },
     scrollToBottom,
     chatContainerRef,
   });
+
+  // ── Global Hotkeys ──
+  useGlobalHotkeys([
+    {
+      key: 'k',
+      ctrlKey: true,
+      action: () => {
+        const btn = document.getElementById('model_selector');
+        btn?.click();
+      },
+      description: 'فتح منتقي الموديلات',
+      global: true,
+    },
+    {
+      key: 'p',
+      ctrlKey: true,
+      shiftKey: true,
+      action: () => {
+        // Prompt optimizer is handled in composer; trigger via focus
+        const btn = document.querySelector('[aria-label="تحسين الأمر"]') as HTMLElement;
+        btn?.click();
+      },
+      description: 'تحسين الأمر (Prompt Optimizer)',
+      global: true,
+    },
+    {
+      key: 'n',
+      ctrlKey: true,
+      shiftKey: true,
+      action: () => {
+        handleNewChat();
+      },
+      description: 'محادثة جديدة',
+      global: true,
+    },
+    {
+      key: 'Escape',
+      action: () => {
+        // Close any open popovers/menus
+        document.querySelectorAll('[role="dialog"], [role="listbox"]').forEach(el => {
+          if (el instanceof HTMLElement && el.style.display !== 'none') {
+            const closeBtn = el.querySelector('[aria-label="إغلاق"], [aria-label="close"]') as HTMLElement;
+            closeBtn?.click();
+          }
+        });
+      },
+      description: 'إغلاق النوافذ المنبثقة',
+      global: true,
+    },
+  ]);
 
   // ── Sidebar / chat CRUD ──
   const closeSidebar = () => {
@@ -181,8 +230,7 @@ export default function App() {
   const handlePluginAction = (action: string) => {
     switch (action) {
       case 'web_search':
-        setWebSearchEnabled(v => !v);
-        toast.info(!webSearchEnabled ? 'بحث الويب المباشر مُفعّل — ستُدمج النتائج في الرد' : 'بحث الويب مُعطّل');
+        toast.info('البحث تلقائي الآن — يُفعَّل وحده عند الحاجة لبيانات حديثة');
         break;
       case 'image_gen':
         if (input.trim()) {
@@ -201,26 +249,13 @@ export default function App() {
     }
   };
 
-  const skillsBarElement = (
-    <SkillsBar
-      registry={skillsRegistry}
-      onToggleSkill={handleToggleSkill}
-      onTriggerPlugin={handlePluginAction}
-      onOpenManager={() => setIsSkillsManagerOpen(true)}
-    />
-  );
-
   // ── Composer wiring (single bundle → one MijlaiComposer call site) ──
   const composerUi: ComposerUi = {
     input, setInput,
     selectedTier, onSelectTier: setSelectedTier,
-    webSearchEnabled, setWebSearchEnabled,
     knowledgeEnabled, setKnowledgeEnabled,
     localModels,
     arenaMode, onToggleArena: () => setArenaMode(v => !v),
-    arenaModelA, arenaModelB,
-    onSelectArenaModel: (side, tier) => side === 'a' ? setArenaModelA(tier) : setArenaModelB(tier),
-    skillsBar: skillsBarElement,
     isGuest: currentUser === null,
   };
 

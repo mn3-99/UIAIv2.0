@@ -91,9 +91,9 @@ let manusIdx = 0;
  * 3) Zen (Alibaba qwen-image — يحتاج مفتاح)
  */
 export const VERIFIED_IMAGE_MODELS: ImageModelDef[] = [
-  { id: 'pollinations-flux', label: 'Pollinations Flux', provider: 'pollinations', upstreamModel: 'flux', avgSeconds: 12, tier: 'standard', requiresKey: false },
-  { id: 'mistral', label: 'Mistral Flux', provider: 'mistral', upstreamModel: 'mistral-medium-latest', avgSeconds: 15, tier: 'standard', requiresKey: true },
-  { id: 'manus', label: 'Manus AI', provider: 'manus', upstreamModel: 'manus-1.6', avgSeconds: 30, tier: 'pro', requiresKey: true },
+  { id: 'flux', label: 'Flux (Pollinations)', provider: 'pollinations', upstreamModel: 'flux', avgSeconds: 12, tier: 'standard', requiresKey: false },
+  { id: 'mistral-image', label: 'Mistral Flux', provider: 'mistral', upstreamModel: 'mistral-medium-latest', avgSeconds: 15, tier: 'standard', requiresKey: true },
+  { id: 'manus-image', label: 'Manus AI Image', provider: 'manus', upstreamModel: 'manus-1.6', avgSeconds: 30, tier: 'pro', requiresKey: true },
   { id: 'qi2', label: 'MijlAI صور (Zen)', provider: 'zen', upstreamModel: 'qwen-image-2.0', avgSeconds: 8.7, tier: 'fast', requiresKey: true },
   { id: 'qi2-pro', label: 'MijlAI صور قياسي', provider: 'zen', upstreamModel: 'qwen-image-2.0-pro', avgSeconds: 35.0, tier: 'standard', requiresKey: true },
   { id: 'qi3', label: 'MijlAI صور احترافي', provider: 'zen', upstreamModel: 'qwen-image-3.0', avgSeconds: 65.7, tier: 'pro', requiresKey: true },
@@ -134,6 +134,7 @@ function isValidImageUrl(u: string): boolean {
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
     const host = parsed.hostname.toLowerCase();
     if (!host || host === 'sandbox' || host.includes('sandbox') || host === 'localhost' || host === '127.0.0.1') return false;
+    if (host.includes('manuscdn.com') || host.includes('manus.im')) return true;
     return true;
   } catch {
     return false;
@@ -182,13 +183,13 @@ async function generateViaManusWithKey(key: string, prompt: string, opts: ImageG
   const createRes = await fetch('https://api.manus.ai/v2/task.create', {
     method: 'POST',
     headers: { 'x-manus-api-key': key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: { content: `Generate an image: ${p}. Return ONLY the image URL, nothing else.` }, hide_in_task_list: true }),
+    body: JSON.stringify({ message: { content: `Generate an image: ${p}. Return the image URL.`, hide_in_task_list: true } }),
   });
   if (!createRes.ok) throw new Error(`manus create ${createRes.status}: ${(await createRes.text()).slice(0, 200)}`);
   const created: any = await createRes.json();
   if (!created.ok) throw new Error(`manus: ${created.error?.message || 'task creation failed'}`);
   const taskId = created.task_id;
-  const deadline = Date.now() + 90000;
+  const deadline = Date.now() + 120000;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 3000));
     const msgRes = await fetch(`https://api.manus.ai/v2/task.listMessages?task_id=${taskId}`, {
@@ -198,12 +199,21 @@ async function generateViaManusWithKey(key: string, prompt: string, opts: ImageG
     const msgData: any = await msgRes.json();
     for (const m of msgData?.messages || []) {
       const assistant = m?.assistant_message;
+      if (assistant?.attachments) {
+        // Check attachments first (Manus returns images as attachments)
+        for (const att of assistant.attachments) {
+          if (att.type === 'image' && att.url) {
+            return { url: att.url, width: opts.width || 1024, height: opts.height || 1024 };
+          }
+        }
+      }
       if (assistant?.content) {
-        const urls = (assistant.content.match(/https?:\/\/[^\s)\]}"'>]+/g) || []);
+        // Check content for URLs (including private CDN URLs)
+        const urls = (assistant.content.match(/https?:\/\/[^\s)\]}\"'>]+/g) || []);
         for (const raw of urls) {
           const u = raw.replace(/[.,;:!?]+$/, '');
-          // Skip agent sandbox/local/hallucinated paths — only return a real public image URL.
-          if (isValidImageUrl(u) && !u.includes('manus.im/app')) {
+          // Accept private CDN URLs from manuscdn.com
+          if (isValidImageUrl(u) && (u.includes('manuscdn.com') || u.includes('manus.im') || (!u.includes('manus.im/app') && !u.includes('sandbox')))) {
             return { url: u, width: opts.width || 1024, height: opts.height || 1024 };
           }
         }
@@ -245,7 +255,7 @@ async function generateViaZen(model: string, prompt: string, opts: ImageGenOptio
         n: Math.min(Math.max(opts.n || 1, 1), 6),
         negative_prompt: opts.negativePrompt || '',
         prompt_extend: true, watermark: false,
-        ...(opts.seed != null ? { seed: opts.seed } : {}),
+        ...((opts.seed != null ? { seed: opts.seed } : {})),
       },
     }),
   });
@@ -303,6 +313,11 @@ export async function generateImageSmart(modelId: string, prompt: string, opts: 
     } catch (err: any) {
       console.warn(`[imageEngine] ${m.id} failed:`, err.message);
       lastErr = err;
+      // If Mistral is rate limited, continue to next provider instead of failing
+      if (err.message?.includes('429') || err.message?.includes('rate limit') || err.message?.includes('rate limited')) {
+        console.warn(`[imageEngine] ${m.id} rate limited, trying next provider...`);
+        continue;
+      }
     }
   }
   throw lastErr || new Error('فشل توليد الصورة من كل المزوّدين');

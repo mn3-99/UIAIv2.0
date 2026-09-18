@@ -21,17 +21,11 @@ export interface ComposerUi {
   setInput: (v: string) => void;
   selectedTier: string;
   onSelectTier: (tier: string) => void;
-  webSearchEnabled: boolean;
-  setWebSearchEnabled: (v: boolean) => void;
   knowledgeEnabled: boolean;
   setKnowledgeEnabled: (v: boolean) => void;
   localModels: Array<{ id: string; name: string }>;
   arenaMode: boolean;
   onToggleArena: () => void;
-  arenaModelA: string;
-  arenaModelB: string;
-  onSelectArenaModel: (side: 'a' | 'b', tier: string) => void;
-  skillsBar: React.ReactNode;
   isGuest: boolean;
 }
 
@@ -54,19 +48,13 @@ export const ComposerSlot: React.FC<ComposerSlotProps> = ({ variant, engine, ui 
       onAttachFile={engine.handleAttachFile}
       arenaMode={ui.arenaMode}
       onToggleArena={ui.onToggleArena}
-      arenaModelA={ui.arenaModelA}
-      arenaModelB={ui.arenaModelB}
-      onSelectArenaModel={ui.onSelectArenaModel}
       onGenerateImage={engine.handleGenerateImage}
-      webSearchEnabled={ui.webSearchEnabled}
-      setWebSearchEnabled={ui.setWebSearchEnabled}
       knowledgeEnabled={ui.knowledgeEnabled}
       setKnowledgeEnabled={ui.setKnowledgeEnabled}
       localModels={ui.localModels}
       attachments={engine.attachments}
       onRemoveAttachment={engine.removeAttachment}
       isUploading={engine.isUploading}
-      skillsBar={ui.skillsBar}
       queueCount={engine.messageQueue.length}
       isGuest={ui.isGuest}
     />

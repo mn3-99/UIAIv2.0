@@ -1,15 +1,13 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
-  Plus, Mic, MicOff, ChevronDown, FileText, Image,
-  Camera, Send, Sparkles, Brain, Zap, Square,
-  Globe, GripHorizontal, Cpu, Code, CornerDownLeft, Wand2,
-  X, Loader2, Swords, Rocket, Paperclip
+  Paperclip, Mic, MicOff, Send, Sparkles, X,
+  BookOpen, Swords, MoreHorizontal, ChevronDown, FileText,
+  Image, Camera, Plus, Brain
 } from 'lucide-react';
-import { generateCompletions } from '../utils/completions';
-import { BookOpen } from 'lucide-react';
-import { MoreHorizontal } from 'lucide-react';
-import { TIERS, isGuestTier } from '../models/tiers';
+import { useSpeechRecognition, isSpeechRecognitionSupported } from '../utils/speech';
+import { TIERS, isGuestTier, getCustomTiers } from '../models/tiers';
 import { useComposerFocus } from './ComposerFocusContext';
+import { Kbd } from './Kbd';
 import { toast } from './Toast';
 
 interface MijlaiComposerProps {
@@ -21,28 +19,22 @@ interface MijlaiComposerProps {
   selectedTier: string;
   onSelectTier: (tier: string) => void;
   onAttachFile: (file: File) => void;
-  /** Arena mode (side-by-side model comparison) */
-  arenaMode?: boolean;
-  onToggleArena?: () => void;
-  arenaModelA?: string;
-  arenaModelB?: string;
-  onSelectArenaModel?: (side: 'a' | 'b', tier: string) => void;
   onGenerateImage?: (prompt: string) => void;
-  webSearchEnabled?: boolean;
-  setWebSearchEnabled?: (val: boolean) => void;
   knowledgeEnabled?: boolean;
   setKnowledgeEnabled?: (val: boolean) => void;
   localModels?: Array<{ id: string; name: string }>;
   attachments?: Array<{ id: string; name: string; url: string; mime: string; size?: number }>;
   onRemoveAttachment?: (id: string) => void;
   isUploading?: boolean;
-  /** شريط المهارات والإضافات — يُعرض أسفل حقل الكتابة */
-  skillsBar?: React.ReactNode;
-  /** عدد الرسائل المنتظرة في الطابور */
   queueCount?: number;
-  /** هل المستخدم زائر (غير مسجل) — يُقيّد النماذج المتاحة */
   isGuest?: boolean;
+  arenaMode?: boolean;
+  onToggleArena?: () => void;
 }
+
+const TOOLBAR_HEIGHT = 56;
+const TEXTAREA_MIN_HEIGHT = 56;
+const TEXTAREA_MAX_HEIGHT = 300;
 
 const MobileActionBtn: React.FC<{
   icon: React.ComponentType<{ className?: string }>;
@@ -50,17 +42,53 @@ const MobileActionBtn: React.FC<{
   disabled?: boolean;
   label: string;
   onToggle: () => void;
-}> = ({ icon: Icon, active, disabled, label, onToggle }) => (
+  destructive?: boolean;
+}> = ({ icon: Icon, active, disabled, label, onToggle, destructive }) => (
   <button
     onClick={onToggle}
     disabled={disabled}
-    className={`w-full min-h-[44px] px-3 rounded-xl flex items-center gap-2.5 text-xs font-semibold transition-colors disabled:opacity-40 ${
-      active ? 'bg-accent-soft text-accent' : 'hover:bg-card text-main'
-    }`}
+    className={`
+      w-full min-h-[48px] px-4 rounded-2xl flex items-center gap-3 text-sm font-medium transition-all duration-200
+      focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none tap
+      disabled:opacity-40 disabled:cursor-not-allowed
+      ${active ? 'bg-accent-soft text-accent' : destructive ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-surface/50 text-main hover:bg-surface hover:text-main'}
+    `}
+    aria-pressed={active}
+    aria-disabled={disabled}
   >
-    <Icon className="w-4 h-4 shrink-0" />
-    <span className="flex-1 text-start">{label}</span>
-    {active && <span className="w-2 h-2 rounded-full bg-accent" />}
+    <Icon className="w-5.5 h-5.5 shrink-0" />
+    <span className="flex-1 text-start truncate">{label}</span>
+    {active && <span className="w-2.5 h-2.5 rounded-full bg-accent shrink-0" />}
+  </button>
+);
+
+const ToolbarButton: React.FC<{
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  'aria-label': string;
+  'aria-pressed'?: boolean;
+  'aria-expanded'?: boolean;
+  className?: string;
+  title?: string;
+  id?: string;
+}> = ({ children, onClick, disabled, 'aria-label': ariaLabel, 'aria-pressed': ariaPressed, 'aria-expanded': ariaExpanded, className = '', title, id }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    id={id}
+    className={`
+      h-10 w-10 min-h-[44px] min-w-[44px] rounded-2xl flex items-center justify-center transition-all duration-200
+      focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none tap
+      ${disabled ? 'opacity-40 cursor-not-allowed' : 'text-muted hover:text-accent hover:bg-surface/50'}
+      ${className}
+    `}
+    aria-label={ariaLabel}
+    aria-pressed={ariaPressed}
+    aria-expanded={ariaExpanded}
+    title={title}
+  >
+    {children}
   </button>
 );
 
@@ -74,235 +102,146 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
   onSelectTier,
   onAttachFile,
   onGenerateImage,
-  webSearchEnabled = false,
-  setWebSearchEnabled,
   knowledgeEnabled = false,
   setKnowledgeEnabled,
   localModels = [],
   attachments = [],
   onRemoveAttachment,
   isUploading = false,
+  queueCount = 0,
+  isGuest = false,
   arenaMode = false,
   onToggleArena,
-  arenaModelA = 'flash',
-  arenaModelB = 'pro',
-  onSelectArenaModel,
-  skillsBar,
-  queueCount = 0,
-  isGuest = false
 }) => {
-  const [isAttachOpen, setIsAttachOpen] = useState(false);
+  const { focusComposer } = useComposerFocus();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const [isTierOpen, setIsTierOpen] = useState(false);
+  const [isAttachOpen, setIsAttachOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [moreOpenMobile, setMoreOpenMobile] = useState(false);
+  const [showModelSelector, setShowModelSelector] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // Register a focus helper so the app (starter chips, plugin actions) can focus
-  // the composer via context instead of document.getElementById('main_input').
-  const { registerTextarea, focusComposer } = useComposerFocus();
-  useEffect(() => {
-    return registerTextarea(() => {
-      const ta = textareaRef.current;
-      ta?.focus();
-      ta?.setSelectionRange(ta.value.length, ta.value.length);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  // True while a file is being dragged over the composer (drop-to-attach)
-  const [isDropTarget, setIsDropTarget] = useState(false);
-  const dragDepthRef = useRef(0);
-  const [moreOpen, setMoreOpen] = useState(false);
-
-  // Streaming prediction suggestions (shown while typing, accept with Tab or click)
-  const suggestions = useMemo(() => {
-    if (isGenerating || !input.trim()) return [];
-    return generateCompletions(input);
-  }, [input, isGenerating]);
-  
-  // Custom flexible height state for dragging / manual resizer
-  const [composerHeight, setComposerHeight] = useState<number | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartY = useRef<number>(0);
-  const initialHeight = useRef<number>(0);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const recognitionRef = useRef<any>(null);
-  const composerRootRef = useRef<HTMLDivElement>(null);
-  // Snapshot of the input taken when dictation starts, so interim results
-  // are inserted at the cursor instead of wiping everything the user typed.
-  const voiceBaseRef = useRef<{ before: string; after: string } | null>(null);
-
-  // Close any open dropdown (attach menu / model picker) when clicking outside
-  useEffect(() => {
-    const onDocMouseDown = (e: MouseEvent) => {
-      if (composerRootRef.current && !composerRootRef.current.contains(e.target as Node)) {
-        setIsAttachOpen(false);
-        setIsTierOpen(false);
+  // Speech recognition
+  const {
+    isListening,
+    startListening,
+    stopListening,
+  } = useSpeechRecognition({
+    onResult: (text, isFinal) => {
+      if (isFinal) {
+        setInput(input + text + ' ');
+      } else {
+        // Show interim transcript as placeholder or in a preview
       }
-    };
-    document.addEventListener('mousedown', onDocMouseDown);
-    return () => document.removeEventListener('mousedown', onDocMouseDown);
-  }, []);
+    },
+    onError: (error) => {
+      toast.error(error);
+    },
+    onStart: () => {
+      setIsRecording(true);
+    },
+    onEnd: () => {
+      setIsRecording(false);
+    },
+  });
 
-  // Auto-resize textarea when typing unless user manually dragged height
-  useEffect(() => {
-    if (textareaRef.current && !composerHeight) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(Math.max(textareaRef.current.scrollHeight, 44), 260)}px`;
+  const isSpeechSupported = isSpeechRecognitionSupported();
+
+  const toggleVoiceInput = useCallback(() => {
+    if (isRecording || isListening) {
+      stopListening();
+      setIsRecording(false);
+    } else if (isSpeechSupported) {
+      startListening();
+    } else {
+      toast.error('التعرف على الصوت غير مدعوم في هذا المتصفح — جرّب Chrome أو Edge');
     }
-  }, [input, composerHeight]);
+  }, [isRecording, isListening, isSpeechSupported, startListening, stopListening]);
+
+  const handleOptimizePrompt = useCallback(() => {
+    if (input.trim()) {
+      setIsOptimizing(true);
+      setTimeout(() => setIsOptimizing(false), 2000);
+    }
+  }, [input]);
+
+  // Smart suggestions based on input
+  const suggestions = useMemo(() => {
+    if (!input.trim() || input.length < 2 || isGenerating) return [];
+    const base = input.trim().toLowerCase();
+    const common = [
+      'ابحث عن', 'سعر الدولار', 'كود بايثون', 'شرح', 'ترجم', 'لخّص',
+      'سعر الذهب', 'أخبار اليوم', 'كود javascript', 'دالة typescript',
+      'اكتب كود', 'حل مشكلة', 'خطط لـ', 'قارن بين'
+    ];
+    return common
+      .filter(s => s.toLowerCase().startsWith(base) || base.includes(s.split(' ')[0]))
+      .slice(0, 4)
+      .map(text => ({ text, reason: 'اقتراح ذكي' }));
+  }, [input, isGenerating]);
+
+  // Enhanced auto-resize with smooth animation using ResizeObserver
+  useEffect(() => {
+    if (!textareaRef.current) return;
+    
+    const textarea = textareaRef.current;
+    
+    const updateHeight = () => {
+      textarea.style.height = 'auto';
+      const scrollHeight = textarea.scrollHeight;
+      const newHeight = Math.min(Math.max(scrollHeight, TEXTAREA_MIN_HEIGHT), TEXTAREA_MAX_HEIGHT);
+      textarea.style.height = `${newHeight}px`;
+    };
+    
+    updateHeight();
+    
+    const resizeObserver = new ResizeObserver(() => {
+      requestAnimationFrame(() => {
+        textarea.style.height = 'auto';
+        const scrollHeight = textarea.scrollHeight;
+        const newHeight = Math.min(Math.max(scrollHeight, TEXTAREA_MIN_HEIGHT), TEXTAREA_MAX_HEIGHT);
+        textarea.style.height = `${newHeight}px`;
+      });
+    });
+    
+    resizeObserver.observe(textarea);
+    return () => resizeObserver.disconnect();
+  }, [input]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Accept first suggestion with Tab (streaming prediction)
-    if (e.key === 'Tab' && suggestions.length > 0) {
-      e.preventDefault();
-      setInput(suggestions[0].text);
-      return;
-    }
-    // Escape dismisses open menus first (before bubbling to app-level handlers)
     if (e.key === 'Escape') {
-      if (isAttachOpen || isTierOpen) {
+      if (isAttachOpen || isTierOpen || moreOpen || moreOpenMobile || showModelSelector) {
         e.preventDefault();
         e.stopPropagation();
         setIsAttachOpen(false);
         setIsTierOpen(false);
+        setMoreOpen(false);
+        setMoreOpenMobile(false);
+        setShowModelSelector(false);
       }
       return;
     }
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Tab' && suggestions.length > 0 && !e.shiftKey) {
+      e.preventDefault();
+      setInput(suggestions[0].text);
+      setShowSuggestions(false);
+      return;
+    }
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      const coarseOnly = typeof window !== 'undefined' && !!window.matchMedia?.(
+        '(pointer: coarse) and (not (any-pointer: fine))'
+      ).matches;
+      if (coarseOnly) return;
       e.preventDefault();
       if (input.trim() && !isGenerating) {
         onSend();
       }
-    }
-  };
-
-  // Drag resizer handlers
-  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
-    setIsDragging(true);
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    dragStartY.current = clientY;
-    if (textareaRef.current) {
-      initialHeight.current = textareaRef.current.clientHeight;
-    }
-  };
-
-  useEffect(() => {
-    const handleDragMove = (e: MouseEvent | TouchEvent) => {
-      if (!isDragging) return;
-      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-      const deltaY = dragStartY.current - clientY; // Dragging UP increases height
-      const newHeight = Math.min(Math.max(initialHeight.current + deltaY, 50), 380);
-      setComposerHeight(newHeight);
-    };
-
-    const handleDragEnd = () => {
-      setIsDragging(false);
-    };
-
-    if (isDragging) {
-      window.addEventListener('mousemove', handleDragMove);
-      window.addEventListener('touchmove', handleDragMove);
-      window.addEventListener('mouseup', handleDragEnd);
-      window.addEventListener('touchend', handleDragEnd);
-    }
-
-    return () => {
-      window.removeEventListener('mousemove', handleDragMove);
-      window.removeEventListener('touchmove', handleDragMove);
-      window.removeEventListener('mouseup', handleDragEnd);
-      window.removeEventListener('touchend', handleDragEnd);
-    };
-  }, [isDragging]);
-
-  // Intelligent Prompt Optimizer — REAL AI call to the server-side prompt
-  // engineering endpoint (POST /api/prompt/enhance). Falls back gracefully to a
-  // local structural template when the enhancer is unreachable.
-  const handleOptimizePrompt = async () => {
-    const raw = input.trim();
-    if (!raw || isOptimizing) return;
-    setIsOptimizing(true);
-
-    try {
-      const res = await fetch('/api/prompt/enhance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: raw })
-      });
-      if (!res.ok) throw new Error(`enhance failed: ${res.status}`);
-      const data = await res.json();
-      const enhanced = String(data?.enhanced || '').trim();
-      if (!enhanced) throw new Error('empty enhancement');
-      setInput(enhanced);
-      toast.success('تم تحسين الأمر بالذكاء الاصطناعي ✨');
-    } catch {
-      // Offline/degraded fallback: local structural wrap (better than nothing)
-      setInput(`أجب على الطلب التالي بأسلوب دقيق ومنظم مع نقاط واضحة وأمثلة عملية:\n\n"${raw}"`);
-      toast.info('تعذر الوصول لمحسّن الذكاء الاصطناعي — طُبّق قالب محسّن محلي');
-    } finally {
-      setIsOptimizing(false);
-      textareaRef.current?.focus();
-    }
-  };
-
-  // Speech-To-Text Handler — dictation is inserted at the cursor position and
-  // never destroys existing text (interim results rewrite only the dictated part).
-  const toggleVoiceInput = () => {
-    if (isRecording) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      setIsRecording(false);
-      return;
-    }
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      toast.error('خاصية الإملاء الصوتي غير مدعومة في هذا المتصفح — جرّب Chrome أو Edge');
-      return;
-    }
-
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.lang = 'ar-SA';
-      recognition.continuous = false;
-      recognition.interimResults = true;
-
-      recognition.onstart = () => {
-        setIsRecording(true);
-        // Snapshot current text + cursor so dictation splices in cleanly
-        const ta = textareaRef.current;
-        const pos = ta ? (ta.selectionStart ?? ta.value.length) : input.length;
-        voiceBaseRef.current = { before: input.slice(0, pos), after: input.slice(pos) };
-      };
-
-      recognition.onresult = (event: any) => {
-        let transcript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
-        }
-        if (transcript && voiceBaseRef.current) {
-          const base = voiceBaseRef.current;
-          setInput(base.before + transcript + base.after);
-        }
-      };
-
-      recognition.onerror = () => {
-        setIsRecording(false);
-        toast.warning('تعذّر التعرف على الصوت — تحقق من صلاحيات الميكروفون');
-      };
-
-      recognition.onend = () => {
-        setIsRecording(false);
-        voiceBaseRef.current = null;
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
-    } catch (err) {
-      console.warn('Voice input error:', err);
-      setIsRecording(false);
     }
   };
 
@@ -313,202 +252,136 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
     setIsAttachOpen(false);
   };
 
-  // Model metadata comes from the single source of truth in src/models/tiers.ts
-  // (was a per-render inline map here — recreated on every keystroke before).
-  const verifiedModelsMap = TIERS;
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
-  // للزوار غير المسجلين: إظهار MijlAI-lalo-fast فقط
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      onAttachFile(e.dataTransfer.files[0]);
+    }
+    setIsAttachOpen(false);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (e.clipboardData.files.length > 0) {
+      e.preventDefault();
+      onAttachFile(e.clipboardData.files[0]);
+    }
+  };
+
+  const handleImageClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleCameraClick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.onchange = (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      if (target.files && target.files[0]) {
+        onAttachFile(target.files[0]);
+      }
+    };
+    input.click();
+  };
+
+  // Model metadata from single source of truth
+  const verifiedModelsMap = useMemo(() => ({ ...TIERS, ...getCustomTiers() }), []);
+
   const visibleModelsMap = useMemo(
-    () => Object.fromEntries(Object.entries(TIERS).filter(([, t]) => isGuestTier(t.id) || !isGuest)),
+    () => Object.fromEntries(Object.entries({ ...TIERS, ...getCustomTiers() }).filter(([, t]) => isGuestTier(t.id) || !isGuest)),
     [isGuest]
   );
 
   const isLocalTier = selectedTier.startsWith('local:');
   const localModelName = localModels.find((m) => m.id === selectedTier)?.name;
   const currentTier = isLocalTier
-    ? { label: localModelName || 'نموذج محلي', shortName: 'محلي', icon: Cpu, color: 'text-accent', desc: 'نموذج llama.cpp محلي — خاص وبدون إنترنت' }
+    ? { label: localModelName || 'نموذج محلي', shortName: 'محلي', icon: Brain, color: 'text-emerald-500', desc: 'نموذج llama.cpp محلي — خاص وبدون إنترنت' }
     : (verifiedModelsMap[selectedTier] || verifiedModelsMap['flash']);
 
-  // Arena helpers: resolve any tier id (incl. local:) to a short display name
-  const arenaTierShort = (tier: string) =>
-    verifiedModelsMap[tier]?.shortName
-    || (tier.startsWith('local:') ? (localModels.find((m) => m.id === tier)?.name || 'محلي') : tier);
-  const [arenaPickerOpen, setArenaPickerOpen] = useState<'a' | 'b' | null>(null);
-  const arenaTierList = useMemo(
-    () => [
-      ...Object.keys(verifiedModelsMap),
-      ...localModels.map((m) => m.id)
-    ],
-    [localModels]
-  );
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (composerContainerRef.current && !composerContainerRef.current.contains(e.target as Node)) {
+        setIsTierOpen(false);
+        setIsAttachOpen(false);
+        setMoreOpen(false);
+        setMoreOpenMobile(false);
+        setShowModelSelector(false);
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const hasAttachments = (attachments?.length ?? 0) > 0;
+  const hasInput = input.trim().length > 0;
+  const isDisabled = !hasInput || isGenerating;
+
+  // Show suggestions when typing and has relevant suggestions
+  useEffect(() => {
+    setShowSuggestions(suggestions.length > 0 && hasInput && !isGenerating);
+  }, [suggestions, hasInput, isGenerating]);
 
   return (
-    <div ref={composerRootRef} className="w-full max-w-[760px] md:w-[75%] mx-auto relative select-none px-2">
-      {/* Hidden file inputs */}
+    <div
+      ref={composerContainerRef}
+      className="w-full flex flex-col touch-pan-x"
+      style={{ touchAction: 'pan-x' }}
+    >
       <input
         ref={fileInputRef}
         type="file"
+        accept="image/*,video/*,application/pdf,.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.csv"
         className="hidden"
         onChange={handleFileChange}
-      />
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileChange}
+        multiple
       />
 
-      {/* Main Interactive Input Card — also a drop target for files */}
-      <div
-        className={`w-full bg-surface/95 rounded-3xl border transition-all duration-300 group relative flex flex-col shadow-md hover:shadow-xl hover-lift pb-safe ${
-          isDropTarget
-            ? 'border-accent ring-4 ring-accent/50 shadow-xl scale-[1.01]'
-            : isDragging
-              ? 'border-accent shadow-blue-100 ring-2 ring-accent/35'
-              : 'border-line/90'
-        }`}
-        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-        onDragEnter={(e) => {
-          e.preventDefault();
-          if (e.dataTransfer.types.includes('Files')) {
-            dragDepthRef.current += 1;
-            setIsDropTarget(true);
-          }
-        }}
-        onDragLeave={(e) => {
-          e.preventDefault();
-          dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-          if (dragDepthRef.current === 0) setIsDropTarget(false);
-        }}
-        onDrop={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          dragDepthRef.current = 0;
-          setIsDropTarget(false);
-          const files: File[] = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
-          if (files.length > 0) {
-            files.slice(0, 4).forEach((f: File) => onAttachFile(f));
-            toast.success(files.length > 1 ? `جاري إرفاق ${files.length} ملفات…` : `جاري إرفاق «${files[0].name}»…`);
-          }
-        }}
-      >
-        {/* Drop overlay hint */}
-        {isDropTarget && (
-          <div className="absolute inset-0 z-10 rounded-3xl bg-accent-soft/80 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
-            <span className="text-sm font-bold text-accent flex items-center gap-1.5"><Paperclip className="w-4 h-4" /> أفلت الملف هنا لإرفاقه</span>
-          </div>
-        )}
-
-        {/* Top Dynamic Height Drag Handle Bar */}
-        <div
-          onMouseDown={handleDragStart}
-          onTouchStart={handleDragStart}
-          className="w-full h-3 cursor-row-resize flex items-center justify-center hover:bg-card/80 rounded-t-3xl transition-colors group/drag py-1"
-          title="اسحب لأعلى أو لأسفل لتوسيع أو تصغير مربع الكتابة"
-        >
-          <GripHorizontal className="w-5 h-3 text-faint group-hover/drag:text-muted transition-colors" />
+      {/* Attachments Preview - compact, above composer */}
+      {hasAttachments && (
+        <div className="mx-3 mt-2 flex flex-wrap gap-1.5 animate-in slide-in-from-top-2 duration-200" role="list" aria-label="المرفقات">
+          {attachments.map((att) => (
+            <div key={att.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface/50 border border-line/40 rounded-2xl text-xs text-main animate-in fade-in zoom-in-95 duration-200" role="listitem">
+              {(att.mime?.startsWith('image/') ? (
+                <img src={att.url} alt={att.name} className="w-7 h-7 rounded-xl object-cover" />
+              ) : (
+                <FileText className="w-4.5 h-4.5 text-muted shrink-0" />
+              ))}
+              <span className="truncate max-w-[160px]">{att.name}</span>
+              <span className="text-[10px] text-faint shrink-0">({(att.size ?? 0) / 1024 > 1024 ? `${(att.size! / 1024 / 1024).toFixed(1)}MB` : `${(att.size ?? 0) / 1024}KB`})</span>
+              <button
+                onClick={() => onRemoveAttachment?.(att.id)}
+                className="w-5 h-5 rounded-xl flex items-center justify-center text-faint hover:text-red-500 hover:bg-red-50/50 transition-colors tap"
+                aria-label={`إزالة ${att.name}`}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
         </div>
+      )}
 
-        {/* Attachment chips (uploaded files awaiting send) */}
-        {(attachments.length > 0 || isUploading) && (
-          <div className="mx-3 mb-1 flex flex-wrap items-center gap-1.5">
-            {attachments.map(a => (
-              <span key={a.id} className="group relative flex items-center gap-1.5 px-2 py-1 rounded-xl border border-line bg-card text-[11px] text-muted max-w-[220px]">
-                {a.mime.startsWith('image/') && (
-                  <img src={a.url} alt={a.name} className="w-5 h-5 rounded object-cover shrink-0" />
-                )}
-                <span className="truncate">{a.name}</span>
-                {onRemoveAttachment && (
-                  <button
-                    onClick={() => onRemoveAttachment(a.id)}
-                    aria-label={`إزالة ${a.name}`}
-                    className="shrink-0 p-0.5 rounded-lg text-faint hover:text-red-500 transition-colors"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </span>
-            ))}
-            {isUploading && (
-              <span className="flex items-center gap-1.5 px-2 py-1 rounded-xl border border-accent/35 bg-accent-soft text-[11px] text-accent">
-                <Loader2 className="w-3 h-3 animate-spin" /> جاري الرفع...
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Main Input Textarea Container */}
-        <div className="px-3 pt-1 pb-2 flex items-stretch gap-2">
-          
-          {/* Attachment (+) Button & Menu */}
-          <div className="relative self-end mb-1">
-            <button
-              id="attachment_menu"
-              onClick={() => setIsAttachOpen(!isAttachOpen)}
-              className="w-10 h-10 min-w-[40px] rounded-full flex items-center justify-center text-muted hover:bg-card transition-colors ms-0.5"
-              title="إرفاق ملف أو وسائط"
-            >
-              <Plus className="w-5 h-5" strokeWidth={2} />
-            </button>
-
-            {isAttachOpen && (
-              <div className="absolute start-0 bottom-12 w-60 max-w-[calc(100vw-2rem)] bg-surface rounded-2xl shadow-2xl border border-line p-2 space-y-1 z-50 text-xs font-medium text-main animate-in fade-in zoom-in-95 duration-150">
-                <button
-                  id="upload_file"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-card rounded-xl text-start transition-colors"
-                >
-                  <FileText className="w-4 h-4 text-accent" />
-                  <span>رفع مستند أو ملف</span>
-                </button>
-
-                <button
-                  id="upload_image"
-                  onClick={() => imageInputRef.current?.click()}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-card rounded-xl text-start transition-colors"
-                >
-                  <Image className="w-4 h-4 text-accent" />
-                  <span>رفع صورة لتحليلها</span>
-                </button>
-
-                <button
-                  id="camera"
-                  onClick={() => {
-                    if (imageInputRef.current) {
-                      imageInputRef.current.setAttribute('capture', 'environment');
-                      imageInputRef.current.click();
-                    }
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-card rounded-xl text-start transition-colors"
-                >
-                  <Camera className="w-4 h-4 text-purple-600" />
-                  <span>التقاط صورة مباشرة</span>
-                </button>
-
-                <button
-                  id="generate_image"
-                  onClick={() => {
-                    setIsAttachOpen(false);
-                    if (input.trim()) {
-                      onGenerateImage?.(input.trim());
-                    } else {
-                      // No description yet — guide the user instead of a blocking prompt()
-                      setInput('توليد صورة: ');
-                      toast.info('اكتب وصف الصورة التي تريدها ثم أرسلها للتوليد');
-                      requestAnimationFrame(() => focusComposer());
-                    }
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-card rounded-xl text-start transition-colors"
-                >
-                  <Wand2 className="w-4 h-4 text-pink-600" />
-                  <span>توليد صورة بالذكاء الاصطناعي</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Textarea */}
+      {/* Main Composer - Fluid, Full-width with Smart Interactions */}
+      <div
+        className="relative flex flex-col bg-surface/60 backdrop-blur-2xl border border-line/30 rounded-3xl transition-all duration-300 shadow-xl touch-pan-x"
+        style={{ 
+          touchAction: 'pan-x',
+          boxShadow: '0 4px 24px -4px rgba(0,0,0,0.08), 0 8px 32px -8px rgba(0,0,0,0.04)'
+        }}
+        role="form"
+        aria-label="مؤلف الرسالة"
+      >
+        
+        {/* Textarea - Full Width Hero Element with Fluid Interactions */}
+        <div className="relative flex-1 min-h-[56px] max-h-[320px]">
           <textarea
             id="main_input"
             ref={textareaRef}
@@ -516,88 +389,207 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="اسأل MijlAi أي شيء..."
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onPaste={handlePaste}
+            onFocus={() => setShowSuggestions(suggestions.length > 0 && hasInput && !isGenerating)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+            placeholder={isGenerating ? 'MijlAI يفكر...' : 'اسأل MijlAi أي شيء...'}
             rows={1}
-            className="flex-1 bg-transparent outline-none border-none text-[15px] md:text-[16px] text-main placeholder:text-faint font-normal px-2 py-2 resize-none overflow-y-auto leading-relaxed transition-all duration-200 focus:placeholder:text-faint"
+            className={`
+              w-full h-full bg-transparent outline-none border-none resize-none
+              text-[16px] md:text-[17px] text-main placeholder:text-faint font-normal leading-relaxed
+              px-5 py-4 pe-14
+              transition-all duration-300 ease-out
+              font-sans
+              selection:bg-accent-soft
+            `}
             style={{
-              fontFamily: 'Inter, "Google Sans", sans-serif',
-              height: composerHeight ? `${composerHeight}px` : undefined
+              fontFamily: 'Inter, "Google Sans", "Noto Sans Arabic", system-ui, sans-serif',
+              height: 'auto',
+              minHeight: `${TEXTAREA_MIN_HEIGHT}px`,
+              maxHeight: `${TEXTAREA_MAX_HEIGHT}px`,
             }}
+            role="textbox"
+            aria-multiline="true"
+            aria-label="اكتب رسالتك لـ MijlAi"
+            autoComplete="off"
+            autoCapitalize="sentences"
+            spellCheck={false}
+            inputMode="text"
           />
 
-          {/* ===== Row 1 inline actions: model selector · arena pickers · send/stop ===== */}
-          {!arenaMode && (
-            <div className="relative self-end mb-0.5 shrink-0">
-              <button
-                id="model_selector"
-                onClick={() => setIsTierOpen(!isTierOpen)}
-                className="h-10 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-main hover:bg-card transition-colors border border-line/60 bg-card/50"
-                title="اختر النموذج الفعال"
-              >
-                <span className="w-4 h-4 rounded-full bg-accent-soft flex items-center justify-center">
-                  <Sparkles className="w-2.5 h-2.5 text-accent" strokeWidth={2.4} />
-                </span>
-                <span className="text-xs font-semibold">{currentTier.shortName}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-muted" strokeWidth={2} />
-              </button>
+          {/* Smart Suggestions - Gemini Style */}
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute bottom-full start-4 end-4 mb-2 z-20 animate-in slide-in-from-bottom-2 duration-200" role="list" aria-label="اقتراحات ذكية">
+              <div className="bg-surface/95 backdrop-blur-xl border border-line/30 rounded-2xl shadow-2xl p-1.5">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={`${s.text}-${i}`}
+                    onClick={() => { setInput(s.text); setShowSuggestions(false); }}
+                    className="w-full group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-main hover:bg-accent-soft/50 transition-all duration-150 tap"
+                    title={`${s.reason} — Tab للقبول`}
+                    role="listitem"
+                  >
+                    <div className="w-7 h-7 rounded-xl bg-accent-soft/50 flex items-center justify-center shrink-0 group-hover:bg-accent-soft group-hover:text-accent transition-colors">
+                      <Sparkles className="w-4 h-4 text-accent/70" strokeWidth={2} />
+                    </div>
+                    <span className="flex-1 text-start truncate" dir="auto">{s.text}</span>
+                    <kbd className="hidden sm:flex items-center justify-center w-5 h-5 rounded text-[9px] font-bold bg-blue-600/10 group-hover:bg-white/20 text-blue-600">
+                      <ChevronDown className="w-3 h-3" />
+                    </kbd>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-              {isTierOpen && (
-                <div
-                  className="absolute end-0 bottom-12 w-80 max-w-[calc(100vw-2rem)] bg-surface rounded-2xl shadow-2xl border border-line p-2 space-y-1 z-50 text-start animate-in fade-in zoom-in-95 duration-150 overflow-y-auto scroll-smooth"
-                  style={{ maxHeight: 'min(420px, 55vh)', overscrollBehavior: 'contain', scrollbarWidth: 'thin' }}
-                  onWheel={(e) => {
-                    const el = e.currentTarget;
-                    const atTop = el.scrollTop <= 0;
-                    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
-                    if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) return;
-                    e.stopPropagation();
-                  }}
+          {/* Attachments inline preview - positioned below textarea */}
+          {isAttachOpen && hasAttachments && (
+            <div className="absolute bottom-full start-0 end-0 mb-2 z-10 animate-in slide-in-from-bottom-2 duration-200" style={{ pointerEvents: 'auto' }}>
+              <div className="mx-4 mb-2 flex flex-wrap gap-2 animate-in slide-in-from-top-2 duration-200" role="list" aria-label="مرفقات جاهزة للإرسال">
+                {attachments.map((att) => (
+                  <div key={att.id} className="inline-flex items-center gap-2 px-3 py-2 bg-surface/70 border border-line/40 rounded-2xl text-sm text-main animate-in fade-in zoom-in-95 duration-200" role="listitem">
+                    {(att.mime?.startsWith('image/') ? (
+                      <img src={att.url} alt={att.name} className="w-8 h-8 rounded-xl object-cover" />
+                    ) : (
+                      <FileText className="w-5 h-5 text-muted shrink-0" />
+                    ))}
+                    <span className="truncate max-w-[200px]">{att.name}</span>
+                    <span className="text-[11px] text-faint shrink-0">({(att.size ?? 0) / 1024 > 1024 ? `${(att.size! / 1024 / 1024).toFixed(1)}MB` : `${(att.size ?? 0) / 1024}KB`})</span>
+                    <button
+                      onClick={() => onRemoveAttachment?.(att.id)}
+                      className="w-6 h-6 rounded-xl flex items-center justify-center text-faint hover:text-red-500 hover:bg-red-50/50 transition-colors tap"
+                      aria-label={`إزالة ${att.name}`}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Live Voice Recording Bar - Gemini Style Overlay */}
+          {isListening && (
+            <div className="absolute bottom-full start-4 end-4 mb-2 z-20 animate-in fade-in scale-in-95 duration-200" style={{ pointerEvents: 'auto' }}>
+              <div className="mx-4 px-4 py-3 bg-gradient-to-r from-red-50 to-red-100 border border-red-200/60 rounded-2xl flex items-center justify-between backdrop-blur-xl shadow-xl">
+                <div className="flex items-center gap-3 text-sm font-semibold text-red-700">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" style={{ animationDelay: '150ms' }} />
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" style={{ animationDelay: '300ms' }} />
+                  </div>
+                  <span>جاري الاستماع لصوتك والتحويل إلى نص...</span>
+                </div>
+                <button
+                  onClick={toggleVoiceInput}
+                  className="w-9 h-9 rounded-xl bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors tap"
+                  aria-label="إيقاف التسجيل"
                 >
-                  <div className="px-2 py-1 text-[11px] font-bold text-faint sticky top-0 bg-surface/90 backdrop-blur-sm">
-                    {isGuest ? 'نموذج مجاني متاح — سجّل للحصول على المزيد' : 'نماذج MijlAI — مُقاسة ومرتبة حسب الأداء الفعلي'}
+                  <MicOff className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Smart Divider with Subtle Gradient */}
+        <div className="h-px bg-gradient-to-r from-transparent via-line/40 to-transparent mx-4" aria-hidden="true" />
+
+        {/* Bottom Toolbar - Fluid, Responsive, Gemini-Inspired */}
+        <div className={`
+          flex items-center justify-between px-4 py-3 border-t border-line/30
+          bg-gradient-to-b from-transparent to-surface/40 backdrop-blur-sm rounded-b-3xl
+          transition-all duration-300 ease-out
+          ${isGenerating ? 'bg-amber-50/20 border-amber-200/40' : ''}
+          ${isRecording ? 'bg-red-50/20 border-red-200/40' : ''}
+        `} role="toolbar" aria-label="أدوات المحادثة">
+          
+          {/* Left Side - Primary Actions */}
+          <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap">
+            
+            {/* Model Selector - Smart Dropdown */}
+            {!arenaMode && !showModelSelector && (
+              <button
+                onClick={() => setShowModelSelector(true)}
+                className="h-10 px-4 rounded-2xl flex items-center gap-2.5 text-sm font-medium text-main hover:bg-surface/50 transition-all duration-200 border border-line/30 bg-surface/50 focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none tap"
+                title="اختر النموذج (Ctrl+K)"
+                aria-label="اختر النموذج"
+                aria-haspopup="listbox"
+              >
+                <span className="w-5 h-5 rounded-full bg-gradient-to-br from-accent/20 to-accent/40 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-3 h-3 text-accent" strokeWidth={2.5} />
+                </span>
+                <span className="truncate max-w-[120px] hidden sm:inline">{currentTier.shortName}</span>
+                <ChevronDown className="w-4 h-4 text-muted shrink-0" strokeWidth={2} />
+              </button>
+            )}
+
+            {showModelSelector && (
+              <>
+                <button
+                  onClick={() => setShowModelSelector(false)}
+                  className="h-10 px-4 rounded-2xl flex items-center gap-2.5 text-sm font-medium text-accent bg-accent-soft/50 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none tap"
+                  aria-label="إغلاق اختيار النموذج"
+                >
+                  <span className="w-5 h-5 rounded-full bg-gradient-to-br from-accent/30 to-accent/50 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-3 h-3 text-accent" strokeWidth={2.5} />
+                  </span>
+                  <span className="truncate max-w-[120px] hidden sm:inline">{currentTier.shortName}</span>
+                  <ChevronDown className="w-4 h-4 text-accent shrink-0 rotate-180" strokeWidth={2} />
+                </button>
+                <div className="absolute bottom-full start-0 mb-2 w-72 max-w-[calc(100vw-2rem)] bg-surface rounded-2xl shadow-2xl border border-line p-2 space-y-1 z-50 text-start animate-in fade-in zoom-in-95 duration-200 overflow-y-auto" style={{ maxHeight: 'min(380px, 50vh)' }}>
+                  <div className="px-3 py-2 text-[11px] font-bold text-faint sticky top-0 bg-surface/95 backdrop-blur-sm z-10 border-b border-line/50">
+                    {isGuest ? 'نموذج مجاني — سجّل للمزيد' : 'نماذج MijlAI'}
                   </div>
                   {Object.entries(visibleModelsMap).map(([key, item], idx) => {
                     const Icon = item.icon;
                     const isSelected = selectedTier === key;
+                    // تصنيف الموديل: سريع أو تفكير عميق (حسب الشارة)
+                    const badge = item.badge || '';
+                    const isFast = badge.includes('سريع') || badge.includes('الأسرع') || badge.includes('فائق السرعة') || (badge.includes('⚡') && !badge.includes('استدلال') && !badge.includes('تفكير'));
+                    const isDeepThinking = badge.includes('تفكير') || badge.includes('استدلال') || badge.includes('🧠');
+                    const tag = isDeepThinking ? 'تفكير عميق' : isFast ? 'سريع' : null;
+                    const tagClass = isDeepThinking
+                      ? 'text-purple-600 dark:text-purple-400'
+                      : 'text-emerald-600 dark:text-emerald-400';
                     return (
                       <button
                         key={key}
-                        onClick={() => { onSelectTier(key); setIsTierOpen(false); }}
-                        className={`w-full text-start p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${isSelected ? 'bg-accent-soft text-accent font-semibold' : 'hover:bg-card text-main'}`}
+                        role="option"
+                        aria-selected={isSelected}
+                        onClick={() => { onSelectTier(key); setShowModelSelector(false); }}
+                        className={`w-full text-start px-3 py-2.5 rounded-xl flex items-center gap-3 transition-colors duration-150 ${isSelected ? 'bg-accent-soft text-accent font-semibold' : 'hover:bg-surface/50 text-main'}`}
                       >
-                        <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${item.color}`} />
+                        <Icon className={`w-5 h-5 shrink-0 ${item.color}`} />
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs font-bold flex items-center justify-between gap-2">
-                            <span>{item.label}</span>
-                            {idx === 0 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent-soft text-accent font-bold shrink-0">الأسرع تدفقاً</span>}
-                            {key === 'coder' && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-100 text-cyan-700 font-bold shrink-0">أسرع استجابة</span>}
-                          </div>
-                          <div className="text-[10px] text-muted font-normal">{item.desc}</div>
-                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-card text-muted font-mono" dir="ltr">{item.realModel}</span>
-                            <span className="text-[9px] text-faint">{item.badge}</span>
-                          </div>
+                          <div className="text-sm font-semibold">{item.label}</div>
+                          {tag && (
+                            <div className={`text-[10px] font-medium mt-0.5 ${isSelected ? 'text-accent' : tagClass}`}>
+                              {tag}
+                            </div>
+                          )}
                         </div>
                       </button>
                     );
                   })}
                   {localModels.length > 0 && (
                     <>
-                      <div className="px-2 py-1 text-[11px] font-bold text-faint border-t border-line mt-1 pt-2 flex items-center gap-1">
-                        <Cpu className="w-3 h-3" /> نماذج محلية (llama.cpp)
+                      <div className="px-3 py-2 text-[11px] font-bold text-faint border-t border-line mt-1 pt-2 flex items-center gap-2">
+                        <Brain className="w-4 h-4 text-emerald-500" /> نماذج محلية
                       </div>
                       {localModels.map((m) => {
                         const isSelected = selectedTier === m.id;
                         return (
                           <button
                             key={m.id}
-                            onClick={() => { onSelectTier(m.id); setIsTierOpen(false); }}
-                            className={`w-full text-start p-2.5 rounded-xl flex items-start gap-2.5 transition-colors ${isSelected ? 'bg-accent-soft text-accent font-semibold' : 'hover:bg-card text-main'}`}
+                            onClick={() => { onSelectTier(m.id); setShowModelSelector(false); }}
+                            className={`w-full text-start px-3 py-2.5 rounded-xl flex items-center gap-3 transition-colors ${isSelected ? 'bg-accent-soft text-accent font-semibold' : 'hover:bg-surface/50 text-main'}`}
                           >
-                            <Cpu className={`w-4 h-4 mt-0.5 shrink-0 ${isSelected ? 'text-accent' : 'text-emerald-500'}`} />
+                            <Brain className={`w-5 h-5 shrink-0 ${isSelected ? 'text-accent' : 'text-emerald-500'}`} />
                             <div>
-                              <div className="text-xs font-bold">{m.name}</div>
-                              <div className="text-[10px] text-muted font-normal">يعمل محلياً على جهازك — خصوصية كاملة</div>
+                              <div className="text-sm font-bold">{m.name}</div>
                             </div>
                           </button>
                         );
@@ -605,236 +597,231 @@ export const MijlaiComposer: React.FC<MijlaiComposerProps> = ({
                     </>
                   )}
                 </div>
-              )}
-            </div>
-          )}
+              </>
+            )}
 
-          {arenaMode && (
-            <div className="flex items-center gap-1 self-end mb-0.5 shrink-0">
-              {(['a', 'b'] as const).map((side) => {
-                const value = side === 'a' ? arenaModelA : arenaModelB;
-                const open = arenaPickerOpen === side;
-                return (
-                  <div className="relative" key={side}>
-                    <button
-                      onClick={() => setArenaPickerOpen(open ? null : side)}
-                      className={`h-10 min-h-[42px] sm:min-h-0 px-2 rounded-full flex items-center gap-1 text-[11px] font-bold border transition-colors ${side === 'a' ? 'bg-accent-soft text-accent border-accent/35' : 'bg-purple-50 text-purple-700 border-purple-200'}`}
-                      title={`نموذج ${side === 'a' ? 'الأول (أ)' : 'الثاني (ب)'} في المقارنة`}
-                      aria-expanded={open}
-                    >
-                      <span>{side === 'a' ? 'أ' : 'ب'}: {arenaTierShort(value)}</span>
-                      <ChevronDown className="w-3 h-3" />
-                    </button>
-                    {open && (
-                      <div className="absolute start-0 bottom-12 w-56 max-h-64 overflow-y-auto bg-surface rounded-2xl shadow-2xl border border-line p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
-                        {arenaTierList.map((tier) => (
-                          <button
-                            key={tier}
-                            onClick={() => { onSelectArenaModel?.(side, tier); setArenaPickerOpen(null); }}
-                            className={`w-full text-start px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${value === tier ? 'bg-accent-soft text-accent' : 'text-main hover:bg-card'}`}
-                          >
-                            {arenaTierShort(tier)}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {isGenerating ? (
-            <button
-              onClick={onStop}
-              className="stop-btn w-10 h-10 min-h-[42px] sm:min-h-0 rounded-full text-white flex items-center justify-center transition-all press-effect self-end mb-0.5 shrink-0"
-              title="النموذج يعمل — اضغط للإيقاف"
-              aria-label="النموذج يعمل حالياً، اضغط للإيقاف"
+            {/* Attachment Button - Primary Action */}
+            <ToolbarButton
+              onClick={() => setIsAttachOpen(!isAttachOpen)}
+              aria-label={isAttachOpen ? 'إغلاق المرفقات' : 'إرفاق ملف أو صورة'}
+              aria-expanded={isAttachOpen}
+              aria-pressed={isAttachOpen}
+              title={isAttachOpen ? 'إغلاق المرفقات' : 'إرفاق ملف أو صورة (Ctrl+U)'}
+              className={isAttachOpen ? 'bg-accent-soft text-accent' : ''}
             >
-              <span className="busy-indicator-dot" aria-hidden="true" />
-              <Square className="w-3.5 h-3.5 fill-current" />
-            </button>
-          ) : (
-            input.trim() && (
+              <Paperclip className="w-5 h-5" strokeWidth={2.2} />
+            </ToolbarButton>
+
+            {/* RAG Toggle */}
+            <ToolbarButton
+              onClick={() => setKnowledgeEnabled?.(!knowledgeEnabled)}
+              aria-label="مستنداتي (RAG)"
+              aria-pressed={knowledgeEnabled}
+              title="الإجابة من مستنداتك المفهرسة (RAG محلي)"
+              className={knowledgeEnabled ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : ''}
+            >
+              <BookOpen className="w-5 h-5" />
+            </ToolbarButton>
+
+            {/* Prompt Enhancer - Contextual */}
+            {hasInput && !isGenerating && (
+              <ToolbarButton
+                onClick={handleOptimizePrompt}
+                disabled={isOptimizing}
+                aria-label="تحسين الأمر"
+                title="تحسين وتوسيع الصياغة بالذكاء الاصطناعي (Shift+P)"
+                className="bg-amber-50 text-amber-700 border border-amber-200/60 hover:bg-amber-100"
+              >
+                <Sparkles className={`w-5 h-5 text-amber-600 ${isOptimizing ? 'animate-spin' : ''}`} strokeWidth={2.2} />
+              </ToolbarButton>
+            )}
+
+            {/* Arena Toggle */}
+            {onToggleArena && (
+              <ToolbarButton
+                onClick={onToggleArena}
+                aria-label="ساحة المقارنة"
+                aria-pressed={arenaMode}
+                title="ساحة المقارنة: أرسل السؤال لنموذجين وقارن الإجابتين"
+                className={arenaMode ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30' : ''}
+              >
+                <Swords className="w-5 h-5" strokeWidth={2.2} />
+              </ToolbarButton>
+            )}
+          </div>
+
+          {/* Right Side - Voice + Send/Stop */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            
+            {/* Voice Button - Prominent */}
+            <ToolbarButton
+              id="voice_input"
+              onClick={toggleVoiceInput}
+              aria-label={isListening ? 'إيقاف التسجيل' : 'الإملاء الصوتي'}
+              aria-pressed={isListening}
+              title={isListening ? 'إيقاف التسجيل' : 'الإملاء الصوتي'}
+              className={isListening ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/30' : ''}
+            >
+              {isListening ? <MicOff className="w-5.5 h-5.5" strokeWidth={2.2} /> : <Mic className="w-5.5 h-5.5" strokeWidth={2.2} />}
+            </ToolbarButton>
+
+            {/* Queue Counter */}
+            {queueCount > 0 && (
+              <span className="h-10 px-4 rounded-2xl flex items-center gap-2 text-sm font-bold bg-amber-50 text-amber-700 border border-amber-200/70 animate-in fade-in duration-200" role="status" aria-live="polite">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                <span className="hidden sm:inline">{queueCount}</span>
+              </span>
+            )}
+
+            {/* Send / Stop Button - Hero Action */}
+            {isGenerating ? (
+              <button
+                onClick={onStop}
+                className="stop-btn h-10 w-10 min-h-[48px] min-w-[48px] rounded-2xl text-white flex items-center justify-center transition-all duration-200 press-effect tap shadow-lg"
+                title="إيقاف التوليد"
+                aria-label="إيقاف التوليد"
+                aria-pressed="true"
+              >
+                <span className="busy-indicator-dot" aria-hidden="true" />
+                <X className="w-5 h-5" strokeWidth={2.5} />
+              </button>
+            ) : (
               <button
                 id="send_btn"
                 onClick={onSend}
-                className="send-btn w-10 h-10 min-h-[42px] sm:min-h-0 rounded-full text-white flex items-center justify-center transition-all press-effect scale-in-bounce self-end mb-0.5 shrink-0"
-                title="إرسال"
+                disabled={isDisabled}
+                className={`
+                  send-btn h-10 w-10 min-h-[48px] min-w-[48px] rounded-2xl flex items-center justify-center transition-all duration-200 press-effect scale-in-bounce tap shadow-lg shadow-accent/40
+                  ${isDisabled
+                    ? 'opacity-40 cursor-not-allowed'
+                    : 'text-white bg-gradient-to-br from-accent to-accent-hover hover:from-accent-hover hover:to-accent'
+                  }
+                `}
+                title="إرسال (Enter)"
                 aria-label="إرسال الرسالة"
+                aria-disabled={isDisabled}
               >
-                <Send className="w-3.5 h-3.5" />
+                <Send className="w-6 h-6" strokeWidth={2.2} />
               </button>
-            )
-          )}
-
-          {/* Mobile: secondary utilities live in a "more" popover (row 2 hidden <640px) */}
-          <div className="relative self-end mb-0.5 shrink-0 sm:hidden">
-            <button
-              onClick={() => setMoreOpen((o) => !o)}
-              className="w-11 h-11 rounded-full bg-card/80 border border-line/70 text-muted hover:text-accent flex items-center justify-center transition-colors"
-              aria-label="خيارات إضافية"
-              title="المزيد"
-            >
-              <MoreHorizontal className="w-5 h-5" />
-            </button>
-            {moreOpen && (
-              <>
-                <div className="fixed inset-0 z-30" onClick={() => setMoreOpen(false)} />
-                <div className="absolute bottom-14 end-0 z-40 w-56 bg-surface rounded-2xl shadow-2xl border border-line p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
-                  <MobileActionBtn icon={BookOpen} active={knowledgeEnabled} label="مستنداتي (RAG)" onToggle={() => { setKnowledgeEnabled?.(!knowledgeEnabled); setMoreOpen(false); }} />
-                  <MobileActionBtn icon={Globe} active={webSearchEnabled} label="البحث بالويب" onToggle={() => { setWebSearchEnabled?.(!webSearchEnabled); setMoreOpen(false); }} />
-                  {input.trim() && (
-                    <MobileActionBtn icon={Sparkles} disabled={isOptimizing} label={isOptimizing ? 'جاري التحسين…' : 'تحسين الأمر'} onToggle={() => { setMoreOpen(false); handleOptimizePrompt(); }} />
-                  )}
-                  {onToggleArena && (
-                    <MobileActionBtn icon={Swords} active={arenaMode} label="ساحة المقارنة" onToggle={() => { setMoreOpen(false); onToggleArena(); }} />
-                  )}
-                  <MobileActionBtn icon={isRecording ? MicOff : Mic} active={isRecording} label={isRecording ? 'إيقاف الإملاء الصوتي' : 'الإملاء الصوتي'} onToggle={() => { setMoreOpen(false); toggleVoiceInput(); }} />
-                </div>
-              </>
             )}
+
+            {/* More Menu - Three Dots with Full Actions (mobile + desktop) */}
+            <div className="relative">
+              <ToolbarButton
+                onClick={() => setMoreOpenMobile(!moreOpenMobile)}
+                aria-label="خيارات إضافية"
+                aria-expanded={moreOpenMobile}
+                aria-haspopup="menu"
+                title="المزيد من الخيارات"
+              >
+                <MoreHorizontal className="w-5.5 h-5.5" strokeWidth={2.2} />
+              </ToolbarButton>
+              {moreOpenMobile && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setMoreOpenMobile(false)} />
+                  <div className="absolute bottom-full end-full right-auto mb-2 z-40 w-64 bg-surface rounded-2xl shadow-2xl border border-line p-2 space-y-1 animate-in fade-in zoom-in-95 duration-200">
+                    {/* File Attachment */}
+                    <MobileActionBtn 
+                      icon={FileText} 
+                      label="إرفاق ملف" 
+                      onToggle={() => { fileInputRef.current?.click(); setMoreOpenMobile(false); }} 
+                    />
+                    {/* Image Attachment */}
+                    <MobileActionBtn 
+                      icon={Image} 
+                      label="إرفاق صورة" 
+                      onToggle={() => { handleImageClick(); setMoreOpenMobile(false); }} 
+                    />
+                    {/* Camera */}
+                    <MobileActionBtn 
+                      icon={Camera} 
+                      label="الكاميرا" 
+                      onToggle={() => { handleCameraClick(); setMoreOpenMobile(false); }} 
+                    />
+                    <hr className="border-line my-1" />
+                    {/* RAG Toggle */}
+                    <MobileActionBtn 
+                      icon={BookOpen} 
+                      active={knowledgeEnabled} 
+                      label="مستنداتي (RAG)" 
+                      onToggle={() => { setKnowledgeEnabled?.(!knowledgeEnabled); setMoreOpenMobile(false); }} 
+                    />
+                    {/* Prompt Enhancer */}
+                    {hasInput && (
+                      <MobileActionBtn 
+                        icon={Sparkles} 
+                        disabled={isOptimizing} 
+                        label={isOptimizing ? 'جاري التحسين…' : 'تحسين الأمر'} 
+                        onToggle={() => { setMoreOpenMobile(false); handleOptimizePrompt(); }} 
+                      />
+                    )}
+                    {/* Arena Toggle */}
+                    {onToggleArena && (
+                      <MobileActionBtn 
+                        icon={Swords} 
+                        active={arenaMode} 
+                        label="ساحة المقارنة" 
+                        onToggle={() => { setMoreOpenMobile(false); onToggleArena(); }} 
+                      />
+                    )}
+                    {/* Voice Toggle */}
+                    <MobileActionBtn 
+                      icon={isListening ? MicOff : Mic} 
+                      active={isListening} 
+                      label={isListening ? 'إيقاف الإملاء' : 'الإملاء الصوتي'} 
+                      onToggle={() => { setMoreOpenMobile(false); toggleVoiceInput(); }} 
+                    />
+                    <hr className="border-line my-1" />
+                    {/* New Chat */}
+                    <MobileActionBtn 
+                      icon={Plus} 
+                      label="محادثة جديدة" 
+                      onToggle={() => { setMoreOpenMobile(false); onSend(); }} 
+                    />
+                    {/* Clear Context */}
+                    <MobileActionBtn 
+                      icon={X} 
+                      destructive
+                      label="مسح السياق" 
+                      onToggle={() => { setMoreOpenMobile(false); setInput(''); }} 
+                    />
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
-
-        {/* Streaming Prediction Suggestions Bar */}
-        {suggestions.length > 0 && (
-          <div className="mx-3 mb-1 flex flex-wrap items-center gap-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
-            {suggestions.map((s, i) => (
-              <button
-                key={`${s.text}-${i}`}
-                onClick={() => setInput(s.text)}
-                className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all bg-accent-soft/70 text-accent border-accent/35 hover:bg-accent hover:text-white hover:border-accent"
-                title={`${s.reason} — انقر للقبول`}
-              >
-                {i === 0 && (
-                  <kbd className="hidden sm:flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold bg-blue-600/10 group-hover:bg-white/20">
-                    <CornerDownLeft className="w-2.5 h-2.5" />
-                  </kbd>
-                )}
-                <span className="max-w-[260px] truncate" dir="auto">{s.text}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Live Voice Recording Soundwave Bar (Shows when mic active) */}
-        {isRecording && (
-          <div className="mx-4 mb-2 px-3 py-1.5 bg-red-50/80 border border-red-200/60 rounded-xl flex items-center justify-between animate-in fade-in duration-200">
-            <div className="flex items-center gap-2 text-xs font-semibold text-red-600">
-              <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
-              <span>جاري الاستماع لصوتك والتحويل إلى نص...</span>
-            </div>
-            <div className="flex items-center gap-1 h-4">
-              <span className="w-1 h-3 bg-red-500 rounded-full animate-bounce [animation-delay:0ms]" />
-              <span className="w-1 h-4 bg-red-500 rounded-full animate-bounce [animation-delay:150ms]" />
-              <span className="w-1 h-2 bg-red-500 rounded-full animate-bounce [animation-delay:300ms]" />
-              <span className="w-1 h-4 bg-red-500 rounded-full animate-bounce [animation-delay:450ms]" />
-            </div>
-          </div>
-        )}
-
-        {/* Row 2: Utility bar (desktop ≥640px) — mobile uses the "more" popover */}
-        <div className="hidden sm:flex px-3 pb-2 pt-2 border-t border-line/80 items-center justify-between gap-2 flex-wrap">
-          
-          {/* Left Controls: Web Search Grounding & Prompt Optimizer */}
-          <div className="flex items-center gap-1.5 shrink-0 max-sm:flex-nowrap">
-            {/* Personal Knowledge (RAG) Toggle */}
-            <button
-              onClick={() => setKnowledgeEnabled?.(!knowledgeEnabled)}
-              className={`h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-medium transition-all ${
-                knowledgeEnabled
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'bg-card/80 text-muted hover:bg-elevated/80'
-              }`}
-              title="الإجابة من مستنداتك المفهرسة (RAG محلي)"
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">مستنداتي</span>
-            </button>
-
-            {/* Web Search Toggle Button */}
-            <button
-              onClick={() => setWebSearchEnabled?.(!webSearchEnabled)}
-              className={`h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-medium transition-all ${
-                webSearchEnabled
-                  ? 'bg-accent text-white shadow-sm'
-                  : 'bg-card/80 text-muted hover:bg-elevated/80'
-              }`}
-              title="تفعيل/تعطيل البحث المباشر عبر الويب"
-            >
-              <Globe className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">البحث بالويب</span>
-            </button>
-
-            {/* Prompt Enhancer / Optimizer Button */}
-            {input.trim() && (
-              <button
-                onClick={handleOptimizePrompt}
-                disabled={isOptimizing}
-                className="h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200/60 flex items-center gap-1.5 text-xs font-semibold transition-all"
-                title="تحسين وتوسيع الصياغة بالذكاء الاصطناعي"
-              >
-                <Sparkles className={`w-3.5 h-3.5 text-amber-600 ${isOptimizing ? 'animate-spin' : ''}`} />
-                <span>{isOptimizing ? 'جاري التحسين...' : 'تحسين الأمر'}</span>
-              </button>
-            )}
-
-            {/* Arena Mode Toggle */}
-            {onToggleArena && (
-              <button
-                onClick={onToggleArena}
-                className={`h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-medium transition-all ${
-                  arenaMode
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'bg-card/80 text-muted hover:bg-elevated/80'
-                }`}
-                title="ساحة المقارنة: أرسل السؤال لنموذجين وقارن الإجابتين جنباً إلى جنب"
-                aria-pressed={arenaMode}
-              >
-                <Swords className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">ساحة</span>
-              </button>
-            )}
-          </div>
-
-          {/* Right Controls: Voice input · status pills */}
-          <div className="flex items-center gap-1 shrink-0 max-sm:flex-nowrap">
-            {/* Mic Dictation Button */}
-            <button
-              id="voice_input"
-              onClick={toggleVoiceInput}
-              className={`w-8 h-8 min-h-[42px] sm:min-h-0 rounded-full flex items-center justify-center transition-colors ${
-                isRecording
-                  ? 'bg-red-100 text-red-600 animate-pulse'
-                  : 'text-muted hover:bg-card'
-              }`}
-              title={isRecording ? 'إيقاف التسجيل' : 'الإملاء الصوتي'}
-            >
-              {isRecording ? <MicOff className="w-4 h-4 text-red-600" /> : <Mic className="w-4 h-4" />}
-            </button>
-
-            {/* Queue counter chip — الرسائل المنتظرة في الطابور */}
-            {queueCount > 0 && (
-              <span
-                className="h-8 min-h-[42px] sm:min-h-0 px-2.5 rounded-full flex items-center gap-1 text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200/70 animate-in fade-in duration-200"
-                title="رسائل في الطابور ستُرسل تلقائياً بالتسلسل"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                {queueCount}
-              </span>
-            )}
-          </div>
-
-        </div>
-
-        {/* Row 3: Skills & plugins bar — its own flex row (no nesting inside the action bar) */}
-        {skillsBar && (
-          <div className="px-3 pb-2 pt-0.5">
-            {skillsBar}
-          </div>
-        )}
       </div>
+
+      {/* Keyboard Hints - Desktop Only, Subtle */}
+      <div id="composer-hints" className="hidden sm:flex mx-4 mt-2 px-3 py-1.5 text-[10px] text-faint flex items-center justify-center gap-3 border-t border-line/30 rounded-b-3xl bg-surface/30 backdrop-blur-sm" aria-hidden="true">
+        <span className="flex items-center gap-1.5 px-2 py-0.5 bg-surface/50 rounded-lg"><Kbd>Enter</Kbd><span>إرسال</span></span>
+        <span className="flex items-center gap-1.5 px-2 py-0.5 bg-surface/50 rounded-lg"><Kbd>Shift</Kbd>+<Kbd>Enter</Kbd><span>سطر جديد</span></span>
+        <span className="flex items-center gap-1.5 px-2 py-0.5 bg-surface/50 rounded-lg"><Kbd>Ctrl</Kbd>+<Kbd>K</Kbd><span>موديلات</span></span>
+        <span className="flex items-center gap-1.5 px-2 py-0.5 bg-surface/50 rounded-lg"><Kbd>Shift</Kbd>+<Kbd>P</Kbd><span>تحسين</span></span>
+        <span className="flex items-center gap-1.5 px-2 py-0.5 bg-surface/50 rounded-lg"><Kbd>Ctrl</Kbd>+<Kbd>U</Kbd><span>إرفاق</span></span>
+        <span className="flex items-center gap-1.5 px-2 py-0.5 bg-surface/50 rounded-lg"><Kbd>Esc</Kbd><span>إغلاق</span></span>
+      </div>
+
+      {/* Touch Hint */}
+      <div className="sm:hidden mx-4 mt-2 px-3 py-1.5 text-[11px] text-faint text-center border-t border-line/30 rounded-b-3xl bg-surface/30 backdrop-blur-sm" aria-hidden="true">
+        <span className="flex items-center justify-center gap-3">
+          <span className="flex items-center gap-1.5 px-2 py-0.5 bg-surface/50 rounded-lg">Enter = سطر جديد</span>
+          <span className="w-1 h-2 rounded bg-slate-300" />
+          <span className="flex items-center gap-1.5 px-2 py-0.5 bg-surface/50 rounded-lg">زر الإرسال = إرسال</span>
+        </span>
+      </div>
+      
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,video/*,application/pdf,.txt,.md,.js,.ts,.jsx,.tsx,.py,.json,.csv"
+        className="hidden"
+        onChange={handleFileChange}
+        multiple
+      />
     </div>
   );
 };
+
+export default MijlaiComposer;

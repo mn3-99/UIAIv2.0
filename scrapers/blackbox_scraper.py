@@ -43,7 +43,7 @@ class BlackboxScraper:
                             text = line_str.split("$@$v=v1.13-rv1$")[-1]
                             if text:
                                 yield text
-                        elif line_str:
+                        elif line_str and not line_str.startswith("<"):
                             yield line_str
-            except Exception as e:
-                yield f"Blackbox Scraper Exception: {str(e)}"
+            except Exception:
+                return

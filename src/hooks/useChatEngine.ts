@@ -10,6 +10,30 @@ import { triggerHaptic } from '../utils/nativeAdapter';
 import { tierToModelId } from '../models/tiers';
 import { toast } from '../components/Toast';
 
+/** Implicit routing (2026 pattern): the composer no longer asks users to
+ *  flip a search switch — freshness-demanding prompts trigger live search
+ *  automatically, everything else skips it. Mirrors the backend gate. */
+const FRESH_RE = /اليوم|الآن|حاليا|الحالي|آخر|أحدث|أخبار|سعر|أسعار|الطقس|النتيجة|من فاز|جديد|today|now|current|latest|recent|news|price|weather|who won|score|2026|2025/i;
+const shouldAutoSearch = (text: string): boolean =>
+  text.trim().length >= 12 && FRESH_RE.test(text);
+
+/** Custom-provider tiers (`custom:<providerId>:<model>`) carry their
+ *  connection details in the send body — the backend relays server-side
+ *  (browser-direct would die on CORS). Returns {} for built-in tiers. */
+export function resolveCustomFields(modelId: string, settings: AppSettings): Record<string, string> {
+  if (!modelId.startsWith('custom:')) return {};
+  const [, pid, ...mrest] = modelId.split(':');
+  const prov = settings.customProviders?.find((p) => p.id === pid);
+  if (!prov?.baseURL) return {};
+  const out: Record<string, string> = {
+    custom_base_url: prov.baseURL,
+    custom_model: mrest.join(':'),
+  };
+  const key = settings.apiKeys?.[pid] || prov.apiKey;
+  if (key) out.custom_api_key = key;
+  return out;
+}
+
 type LocalModel = { id: string; name: string };
 
 export interface ChatEngineDeps {
@@ -21,7 +45,6 @@ export interface ChatEngineDeps {
   setInput: (v: string) => void;
   settings: AppSettings;
   selectedTier: string;
-  webSearchEnabled: boolean;
   knowledgeEnabled: boolean;
   currentUser: UserAccount | null;
   activeGemId: string | null;
@@ -52,7 +75,7 @@ export interface ChatEngineDeps {
 export function useChatEngine(deps: ChatEngineDeps) {
   const {
     chats, setChats, activeChatId, setActiveChatId, input, setInput,
-    settings, selectedTier, webSearchEnabled, knowledgeEnabled, currentUser,
+    settings, selectedTier, knowledgeEnabled, currentUser,
     activeGemId, localModels, arenaMode, arenaModelA, arenaModelB,
     onArtifact, onImageGenerated, scrollToBottom, chatContainerRef,
   } = deps;
@@ -212,7 +235,7 @@ export function useChatEngine(deps: ChatEngineDeps) {
       let searchSources: { title: string; url: string; snippet?: string }[] | undefined;
       let deepSearchMeta: any = undefined;
 
-      if (webSearchEnabled) {
+      if (shouldAutoSearch(textToSend)) {
         try {
           const chatMsgs = chats.find((c) => c.id === targetChatId)?.messages || [];
           const history = chatMsgs.slice(-10).map((m) => ({
@@ -331,7 +354,8 @@ export function useChatEngine(deps: ChatEngineDeps) {
           model: tierToModelId(selectedTier),
           user_id: currentUser?.id || 'guest',
           email: currentUser?.email || 'guest@mijlai.com',
-          ...(styleInstructions ? { system_prompt: styleInstructions } : {})
+          ...(styleInstructions ? { system_prompt: styleInstructions } : {}),
+          ...resolveCustomFields(tierToModelId(selectedTier), settings)
         })
       });
 
@@ -593,7 +617,8 @@ export function useChatEngine(deps: ChatEngineDeps) {
             model: tierToModelId(tier),
             user_id: currentUser?.id || 'guest',
             email: currentUser?.email || 'guest@mijlai.com',
-            ...(styleInstructions ? { system_prompt: styleInstructions } : {})
+            ...(styleInstructions ? { system_prompt: styleInstructions } : {}),
+            ...resolveCustomFields(tierToModelId(tier), settings)
           })
         });
         if (!sendRes.ok) throw new Error(`HTTP ${sendRes.status}`);

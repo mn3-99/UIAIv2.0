@@ -38,4 +38,4 @@ class YouScraper:
                             except Exception:
                                 pass
             except Exception as e:
-                yield f"You.com Scraper Exception: {str(e)}"
+                return

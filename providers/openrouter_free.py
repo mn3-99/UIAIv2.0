@@ -44,7 +44,7 @@ class OpenRouterFreeProvider:
     ) -> AsyncGenerator[str, None]:
         key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
         if not key:
-            yield "OpenRouter API key required in environment OPENROUTER_API_KEY"
+            # No key: yield nothing so the fallback chain continues.
             return
         headers = {
             "Authorization": f"Bearer {key}",
@@ -79,5 +79,5 @@ class OpenRouterFreeProvider:
                                     yield delta
                             except Exception:
                                 pass
-            except Exception as e:
-                yield f"OpenRouter Provider Error: {str(e)}"
+            except Exception:
+                return

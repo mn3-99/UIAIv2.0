@@ -15,7 +15,7 @@ class TogetherFreeProvider:
     ) -> AsyncGenerator[str, None]:
         key = api_key or os.environ.get("TOGETHER_API_KEY", "")
         if not key:
-            yield "Together AI key required in TOGETHER_API_KEY"
+            # No key: yield nothing so the fallback chain continues.
             return
         headers = {
             "Authorization": f"Bearer {key}",
@@ -48,5 +48,5 @@ class TogetherFreeProvider:
                                     yield delta
                             except Exception:
                                 pass
-            except Exception as e:
-                yield f"Together Provider Error: {str(e)}"
+            except Exception:
+                return

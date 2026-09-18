@@ -83,7 +83,7 @@ export const ReadingModePane: React.FC<ReadingModePaneProps> = React.memo(({ con
       </div>
 
       <div
-        className="space-y-4 max-h-[55vh] overflow-y-auto pr-1 pl-1 reading-pane-scroll"
+        className="space-y-4 max-h-[55vh] overflow-y-auto pe-1 ps-1 reading-pane-scroll"
         style={{ fontSize: `${Math.round(15 * fontScale)}px`, lineHeight: 2 }}
       >
         {paragraphs.length === 0 && <p className="text-muted text-sm">{content}</p>}

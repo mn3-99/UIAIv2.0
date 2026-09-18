@@ -151,15 +151,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     e.preventDefault();
     if (!newProvName || !newProvBaseURL || !newProvModelId) return;
 
+    const pid = `custom-${Date.now()}`;
     const newProv: ProviderConfig = {
-      id: `custom-${Date.now()}`,
+      id: pid,
       name: newProvName,
       baseURL: newProvBaseURL,
       apiKey: newProvKey || undefined,
       isBuiltIn: false,
       requiresApiKey: !!newProvKey,
       models: [
-        { id: newProvModelId, name: newProvModelId, provider: newProvName }
+        { id: `custom:${pid}:${newProvModelId}`, name: newProvModelId, provider: newProvName }
       ]
     };
 

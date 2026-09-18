@@ -70,7 +70,10 @@ if FASTAPI_AVAILABLE:
 
 async def run_send_message(prompt: str, messages: Optional[list], chat_id: Optional[str],
                            model: Optional[str], user_id: Optional[str], email: Optional[str],
-                           system_prompt: Optional[str] = None):
+                           system_prompt: Optional[str] = None,
+                           custom_base_url: Optional[str] = None,
+                           custom_api_key: Optional[str] = None,
+                           custom_model: Optional[str] = None):
     """Shared decoupled send logic used by both FastAPI routes and the fallback HTTP server."""
     user_prompt = prompt
     if not user_prompt and messages:
@@ -118,7 +121,10 @@ async def run_send_message(prompt: str, messages: Optional[list], chat_id: Optio
             messages,
             user_id=user_id or "guest",
             custom_system_prompt=system_prompt,
-            chat_id=chat_id
+            chat_id=chat_id,
+            custom_base_url=custom_base_url,
+            custom_api_key=custom_api_key,
+            custom_model=custom_model
         )
     )
 
@@ -167,7 +173,7 @@ async def stream_task_events(task_id: str, offset: int = 0):
     # 300s guard so slow local models (big GGUF, first-token latency) can finish;
     # long idle gaps are also forgiven by resetting elapsed whenever tokens arrive.
     timeout_seconds = 300
-    poll_interval = 0.03
+    poll_interval = 0.02
     elapsed = 0.0
 
     while elapsed < timeout_seconds:
@@ -215,6 +221,9 @@ if FASTAPI_AVAILABLE and app is not None:
         user_id: Optional[str] = None
         email: Optional[str] = None
         system_prompt: Optional[str] = None
+        custom_base_url: Optional[str] = None
+        custom_api_key: Optional[str] = None
+        custom_model: Optional[str] = None
 
     class LoginRequest(BaseModel):
         username_or_email: str
@@ -255,7 +264,10 @@ if FASTAPI_AVAILABLE and app is not None:
         data, status_code = await run_send_message(
             payload.prompt, payload.messages, payload.chat_id,
             payload.model, payload.user_id, payload.email,
-            system_prompt=payload.system_prompt
+            system_prompt=payload.system_prompt,
+            custom_base_url=payload.custom_base_url,
+            custom_api_key=payload.custom_api_key,
+            custom_model=payload.custom_model
         )
         if status_code != 200:
             raise HTTPException(status_code=status_code, detail=data.get("error", "Prompt cannot be empty"))

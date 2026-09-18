@@ -78,6 +78,17 @@ export const OrbitPulse: React.FC = () => (
   </div>
 );
 
+// ── 4) نقاط "وردة Gemini" — دوران + فتح/انضمام حول نواة نابضة ──
+// نفس لغة التصميم التي تراها في gemini.google.com أثناء التفكير/الكتابة:
+// ثلاث نقاط تدور بزوايا 120° حول نقطة نابضة (فتح وانضمام بتلات الوردة).
+export const GeminiBloom: React.FC = () => (
+  <span className="gemini-dots" role="img" aria-label="جاري التفكير">
+    <i />
+    <i />
+    <i />
+  </span>
+);
+
 /**
  * العرض الموحّد أثناء الانتظار: توقيع EKG أساساً + الثلاث خطوط تحته.
  */

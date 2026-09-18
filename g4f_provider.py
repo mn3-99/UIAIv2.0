@@ -284,6 +284,23 @@ def _llm7_key() -> Optional[str]:
     return None
 
 
+def _zai_key() -> Optional[str]:
+    """Read the Zhipu Z.ai API key from env, falling back to .env."""
+    key = os.getenv("ZAI_API_KEY")
+    if key:
+        return key.strip().strip('"').strip("'")
+    try:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        with open(env_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("ZAI_API_KEY="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return None
+
+
 _MIJLAI_PWR_URL = "https://l3y3mfzeo7nw5yxxenvf7xbw.agents.do-ai.run/api/v1/chat/completions"
 
 
@@ -293,7 +310,6 @@ def _mijlai_url(env_name: str) -> str:
 
 # Real NIM slugs (used only when NVIDIA_API_KEY is configured).
 _NV_ALIAS_TO_SLUG = {
-    "nv-kimi-k3": "moonshotai/kimi-k3",
     "nv-gpt-oss-20b": "openai/gpt-oss-20b",
     "nv-nemotron-lightning": "nvidia/nemotron-3.5-lightning-30b-a3b",
     "nv-muse-glimmer": "meta/muse-glimmer-30b",
@@ -302,6 +318,8 @@ _NV_ALIAS_TO_SLUG = {
     "nv-laguna": "poolside/laguna-xs-2.1",
     "nv-minimax-m3": "minimaxai/minimax-m3",
     "nv-diffusiongemma": "google/diffusiongemma-26b-a4b-it",
+    "nv-kimi-k3": "moonshotai/kimi-k3",
+    "nv-llama-vision": "meta/llama-3.2-11b-vision-instruct",
 }
 
 # Keyless bridge model served through Kilo.ai when no NVIDIA_API_KEY exists.
@@ -329,7 +347,7 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         # OpenAI-compatible SSE, several models emit `reasoning` deltas.
         # Canonical keyless bridge — SAME upstream/model as the NVIDIA
         # "gpt-oss-20b" keyless tier so the kilo tier always replies.
-        "models": ["kilo-auto/free", "stepfun/step-3.7-flash:free", "tencent/hy3:free",
+        "models": ["kilo", "kilo-auto/free", "stepfun/step-3.7-flash:free", "tencent/hy3:free",
                    "poolside/laguna-s-2.1:free", "meituan/longcat-2.0-free"],
         "default_model": _KEYLESS_NV_MODEL,
         "model_map": {
@@ -339,6 +357,57 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
             "poolside/laguna-s-2.1:free": _KEYLESS_NV_MODEL,
             "meituan/longcat-2.0-free": _KEYLESS_NV_MODEL,
         },
+    },
+    {
+        # NVIDIA real keyless path — hCaptcha-minting browser bridge on :8000
+        # (kimi-repos/nvidia-kimi-bridge). Opens build.nvidia.com playground page,
+        # mints hCaptcha tokens, POSTs to buildapi.ngc.nvidia.com, streams SSE
+        # (reasoning_content first, then content). No NVIDIA_API_KEY needed.
+        # When this bridge is down the endpoints BELOW still catch every nv-* tier
+        # (nvidia-nim → kilo keyless) so the user never gets stuck.
+        "name": "nvidia-captcha-bridge",
+        "url": "http://127.0.0.1:8000/v1/chat/completions",
+        "api_key": None,
+        "models": list(_NV_ALIAS_TO_SLUG.keys()),
+        "default_model": "moonshotai/kimi-k3",
+        "model_map": dict(_NV_ALIAS_TO_SLUG),
+        # bridge is a separate process; keep its circuit short so a cold bridge
+        # falls through quickly instead of stalling the whole request.
+        "connect_timeout": 5,
+        "total_timeout": 180,
+    },
+    {
+        # Session bridges — web-session models (NO official keys) via the local
+        # OpenAI-compatible gateway on 127.0.0.1:8791 (deepseek-unified-gateway:
+        # DeepSeek web + Qwen web + duck.ai UI bridges, user session tokens).
+        # Same relay mechanism as every other direct:* tier (OpenAI SSE).
+        # UI ids sorted fastest→slowest; keep in sync with SESSION_MODELS /
+        # SESSION_TIERS. UI bridges are slow — generous total timeout.
+        "name": "session-bridge",
+        "url": "http://127.0.0.1:8791/v1/chat/completions",
+        "api_key": None,
+        "models": ["sb-deepseek-chat", "sb-deepseek-reasoner", "sb-duck-oss",
+                   "sb-duck-mistral", "sb-duck-gpt-mini", "sb-duck-gemma",
+                   "sb-duck-haiku", "sb-duck-luna", "sb-qwen",
+                   "sb-kimi-k3", "sb-kimi-k2.6", "sb-kimi-code"],
+        "default_model": "deepseek-chat",
+        "model_map": {
+            "sb-deepseek-chat": "deepseek-chat",
+            "sb-deepseek-reasoner": "deepseek-reasoner",
+            "sb-duck-oss": "duck-oss",
+            "sb-duck-mistral": "duck-mistral",
+            "sb-duck-gpt-mini": "duck-gpt-mini",
+            "sb-duck-gemma": "duck-gemma",
+            "sb-duck-haiku": "duck-haiku",
+            "sb-duck-luna": "duck-luna",
+            "sb-qwen": "qwen3.7-plus",
+            # Kimi web bridge (www.kimi.ai) — same 8791 gateway
+            "sb-kimi-k3": "k2d6-chat",
+            "sb-kimi-k2.6": "k2d6-chat",
+            "sb-kimi-code": "k2d6-chat",
+        },
+        "connect_timeout": 5,
+        "total_timeout": 300,
     },
     {
         "name": "pollinations",
@@ -357,26 +426,33 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         "default_model": "Qwen3-Coder-30B-A3B-Instruct",
     },
     {
-        "name": "llm7",
-        "url": "https://api.llm7.io/v1/chat/completions",
-        "api_key": _llm7_key(),
-        "models": ["deepseek-v4-flash", "deepseek-v4-pro", "L3-8B-Lunaris-v1-Turbo", "gpt-4o-mini", "gemini-flash", "deepseek-r1"],
-        "default_model": "deepseek-v4-flash",
+        # apitoken tunnel (Ollama LFM 2.5 8B, keyless, verified live):
+        # fixed first-class endpoint so the UI tier answers via the bridge
+        # (browser-direct would die on CORS — no ACAO headers upstream).
+        "name": "apitoken",
+        "url": "https://apitoken.mhmodijla.com/v1/chat/completions",
+        "api_key": None,
+        "models": ["lfm", "lfm2.5-8b:latest", "apitoken-lfm"],
+        "default_model": "lfm2.5-8b:latest",
+        "model_map": {"lfm": "lfm2.5-8b:latest", "apitoken-lfm": "lfm2.5-8b:latest"},
     },
     {
         # MijlAI-lalo-fast: Guest-only model — visible to unregistered visitors.
-        # Was keyed on LLM7.io (insufficient balance). Now wired to the SAME
-        # keyless bridge that the NVIDIA "gpt-oss-20b" tier uses (kilo-auto/free)
-        # so the guest default always replies. Visible name/label is unchanged.
+        # Routed to the SAME local session bridge used by DS Chat
+        # (session-bridge @ 127.0.0.1:8791, upstream model `deepseek-chat`) so it
+        # answers keyless. The visible name/label stays "MijlAI-lalo-fast" and
+        # the model id is kept unique (direct:mijlai-lalo-fast).
         "name": "mijlai-lalo-fast",
-        "url": "https://api.kilo.ai/api/gateway/v1/chat/completions",
+        "url": "http://127.0.0.1:8791/v1/chat/completions",
         "api_key": None,
         "models": ["mijlai-lalo-fast", "L3-8B-Lunaris-v1-Turbo"],
-        "default_model": _KEYLESS_NV_MODEL,
+        "default_model": "deepseek-chat",
         "model_map": {
-            "mijlai-lalo-fast": _KEYLESS_NV_MODEL,
-            "L3-8B-Lunaris-v1-Turbo": _KEYLESS_NV_MODEL,
+            "mijlai-lalo-fast": "deepseek-chat",
+            "L3-8B-Lunaris-v1-Turbo": "deepseek-chat",
         },
+        "connect_timeout": 5,
+        "total_timeout": 300,
     },
     {
         # MijlAI-PWR: was a dedicated DigitalOcean GenAI agent — that agent host
@@ -418,84 +494,20 @@ DIRECT_ENDPOINTS: List[Dict[str, Any]] = [
         "model_map": {"mijlai-pro": _KEYLESS_NV_MODEL},
     },
     {
-        # Meta AI (Muse Spark): Free Meta AI API with Llama models.
-        # json_only: Meta's SSE endpoint never emits content deltas (only a
-        # final "stop" frame) — the answer arrives only in the non-stream JSON
-        # body. So fetch JSON and forward it as a single SSE chunk.
-        "name": "meta-ai",
-        "url": "https://api.meta.ai/v1/chat/completions",
-        "api_key": _meta_ai_key(),
-        "models": ["muse-spark-1.2", "muse-spark-1.1", "muse-spark-1.2-contributor"],
-        "default_model": "muse-spark-1.2",
-        "json_only": True,
-        # Meta budgets reasoning tokens first; keep a generous cap so content
-        # isn't truncated to null by long CoT.
-        "max_tokens": 4096,
-    },
-    {
-        # MijlAI-Qwen-lalo: Meta AI Muse Spark endpoint (custom name).
-        "name": "mijlai-qwen-lalo",
-        "url": "https://api.meta.ai/v1/chat/completions",
-        "api_key": _meta_ai_key(),
-        "models": ["mijlai-qwen-lalo", "muse-spark-1.2"],
-        "default_model": "muse-spark-1.2",
-        "json_only": True,
-        "max_tokens": 4096,
-    },
-    {
-        # OpenRouter Free: 21+ free models including Gemma, Nemotron, MiniMax
-        "name": "openrouter-free",
-        "url": "https://openrouter.ai/api/v1/chat/completions",
-        "api_key": _openrouter_key(),
-        "models": [
-            "google/gemma-4-31b-it:free",
-            "google/gemma-4-26b-a4b-it:free",
-            "nvidia/nemotron-3-ultra-550b-a55b:free",
-            "nvidia/nemotron-3-super-120b-a12b:free",
-            "nvidia/nemotron-3.5-lightning:free",
-            "minimax/minimax-m3:free",
-            "minimax/minimax-m2.7:free",
-            "liquid/lfm-2.5-2.6b:free",
-            "poolside/laguna-s-2.1:free",
-            "z-ai/glm-5.2:free",
-        ],
-        "default_model": "google/gemma-4-31b-it:free",
-    },
-    {
-        # NVIDIA NIM — the "Kimi/NVIDIA model layer" aggregated from the
-        # nvidia-kimi-mcp / nvidia-kimi-bridge / kimi-super-agent-hybrid repos.
-        # PRIMARY: OpenAI-compatible NIM on build.nvidia.com (free API key). The
-        # headline model is Moonshot Kimi K3 (moonshotai/kimi-k3); the rest are
-        # the curated NVIDIA build slugs those repos proxy (Nemotron, MiniMax-M3,
-        # Poolside Laguna, OpenAI gpt-oss, Muse Glimmer, Llama vision, etc.).
-        # `models` holds unique short aliases (direct:nv-*); `model_map` maps them
-        # to the real slug sent upstream — avoids substring collisions with the
-        # openrouter-free entries above.
-        #
-        # KEYLESS MODE: build.nvidia.com returns HTTP 401 without NVIDIA_API_KEY,
-        # so with no key configured the whole NVIDIA tier used to answer "model
-        # did not respond". To keep the layer alive without a key we bridge to the
-        # free keyless Kilo.ai gateway (kilo-auto/free) — same mechanism that made
-        # these tiers respond on localhost via the keyless fallback stack. When a
-        # real NVIDIA_API_KEY is present the original NIM slugs are used instead.
-        "name": "nvidia-nim",
-        "url": "https://integrate.api.nvidia.com/v1/chat/completions"
-        if _nvidia_key()
-        else "https://api.kilo.ai/api/gateway/v1/chat/completions",
-        "api_key": _nvidia_key(),
-        "models": [
-            "nv-kimi-k3",
-            "nv-gpt-oss-20b",
-            "nv-nemotron-lightning",
-            "nv-muse-glimmer",
-            "nv-nemotron-3-ultra",
-            "nv-nemotron-3-super",
-            "nv-laguna",
-            "nv-minimax-m3",
-            "nv-diffusiongemma",
-        ],
-        "default_model": "nv-kimi-k3",
-        "model_map": _nv_model_map(),
+        # meta-rescue: api.meta.ai is geo/anti-bot-blocked from datacenter IPs
+        # (verified: empty/blocked responses from this server). The muse UI tier
+        # must STILL answer, so its aliases resolve here FIRST to the proven
+        # keyless Kilo gateway. The real "meta-ai" entry below stays for
+        # environments where Meta allows the egress IP.
+        "name": "meta-rescue",
+        "url": "https://api.kilo.ai/api/gateway/v1/chat/completions",
+        "api_key": None,
+        "models": ["muse-spark", "muse-spark-1.1", "muse-spark-1.2",
+                   "muse-spark-1.2-contributor", "mijlai-qwen-lalo", "meta-ai"],
+        "default_model": _KEYLESS_NV_MODEL,
+        "model_map": {m: _KEYLESS_NV_MODEL for m in [
+            "muse-spark", "muse-spark-1.1", "muse-spark-1.2",
+            "muse-spark-1.2-contributor", "mijlai-qwen-lalo", "meta-ai"]},
     },
 ]
 
@@ -595,16 +607,27 @@ class EndpointCircuitBreaker:
 endpoint_breaker = EndpointCircuitBreaker()
 
 
+# Statuses worth ONE backoff retry (transient upstream throttling/errors).
+_RETRYABLE_STATUSES = frozenset((429, 500, 502, 503, 504))
+_BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+               "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+
+
 async def attempt_direct_chat(request, messages, temperature, stream,
                               preferred_name: Optional[str] = None,
-                              preferred_model: Optional[str] = None) -> Optional[web.Response]:
+                              preferred_model: Optional[str] = None,
+                              _retried: bool = False) -> Optional[web.Response]:
     """
     Independent fallback layer over keyless OpenAI-compatible endpoints.
     Returns a ready Response on success, or None if every endpoint failed.
     Supports both SSE streaming and plain JSON responses.
     When preferred_name is set, only that endpoint is tried with preferred_model.
+    One automatic backoff retry happens when every failure was transient
+    (429/5xx) so brief upstream throttling doesn't immediately fail the tier.
     """
     import aiohttp
+
+    _retryable_hit = False
 
     endpoints = DIRECT_ENDPOINTS
     if preferred_name:
@@ -638,7 +661,7 @@ async def attempt_direct_chat(request, messages, temperature, stream,
         }
         if ep.get("max_tokens"):
             body["max_tokens"] = int(ep["max_tokens"])
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", "User-Agent": _BROWSER_UA}
         if ep["api_key"]:
             headers["Authorization"] = f"Bearer {ep['api_key']}"
 
@@ -650,6 +673,8 @@ async def attempt_direct_chat(request, messages, temperature, stream,
                 async with client.stream("POST", ep["url"], json=body, headers=headers) as upstream:
                     if upstream.status_code != 200:
                         logger.debug(f"[direct:{ep['name']}] HTTP {upstream.status_code}")
+                        if upstream.status_code in _RETRYABLE_STATUSES:
+                            _retryable_hit = True
                         endpoint_breaker.record_failure(ep["name"])
                         continue
 
@@ -744,6 +769,20 @@ async def attempt_direct_chat(request, messages, temperature, stream,
                             await response.write(
                                 f"data: {json.dumps({'t': 'think', 'd': reasoning}, ensure_ascii=False)}\n\n".encode("utf-8")
                             )
+                            # ALSO ship reasoning inside an OpenAI delta so the
+                            # upstream engine (which reads delta.reasoning_content)
+                            # surfaces live thinking to the UI.
+                            reason_payload = {
+                                "id": chat_id,
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": f"direct:{ep['name']}:{payload_model}",
+                                "choices": [{"index": 0, "delta": {"reasoning_content": reasoning}, "finish_reason": None}]
+                            }
+                            await response.write(
+                                f"data: {json.dumps(reason_payload, ensure_ascii=False)}\n\n".encode("utf-8")
+                            )
+                            await asyncio.sleep(0)
 
                         if delta:
                             sent_any = True
@@ -780,6 +819,8 @@ async def attempt_direct_chat(request, messages, temperature, stream,
                     async with session.post(ep["url"], json=body, headers=headers) as upstream:
                         if upstream.status != 200:
                             logger.debug(f"[direct:{ep['name']}] HTTP {upstream.status}")
+                            if upstream.status in _RETRYABLE_STATUSES:
+                                _retryable_hit = True
                             endpoint_breaker.record_failure(ep["name"])
                             continue
 
@@ -892,6 +933,217 @@ async def attempt_direct_chat(request, messages, temperature, stream,
             endpoint_breaker.record_failure(ep["name"])
             continue
 
+    if _retryable_hit and not _retried:
+        # Every failure was transient throttling — one backoff retry of the
+        # whole sweep before giving up to the next fallback layer.
+        await asyncio.sleep(6.0)
+        return await attempt_direct_chat(request, messages, temperature, stream,
+                                         preferred_name=preferred_name,
+                                         preferred_model=preferred_model,
+                                         _retried=True)
+    return None
+
+
+# Guaranteed endpoints (each with its OWN default working model) tried in order
+# whenever the requested model's own pinned endpoint AND the generic direct sweep
+# both fail. Keeps the user moving to the next channel until an answer arrives
+# instead of ever dropping the request.
+GUARANTEED_FALLBACK_ORDER = [
+    "pollinations",           # openai-fast (keyless)
+    "ovhcloud",               # Qwen3-Coder (keyless EU)
+    "meta-rescue",            # kilo keyless via the muse alias (Meta is geo-blocked)
+    "kilo",                   # kilo-auto/free (keyless)
+]
+
+
+# Junk-content guard (mirrors the engine stream guard): raw upstream text that
+# is an error page / key complaint / stack trace must NEVER be relayed as an
+# answer — skip the endpoint so the next bridge in the chain answers instead.
+_JUNK_MARKERS = (
+    "قنوات الاحتياط متعطلة", "لم يستجب وجميع",
+    "api key required", "key required",
+    "exception", "traceback", "scraper", "httperror",
+    "not available", "no available",
+    "page not found", "not found",
+    "<!doctype", "<html", "text/html", "invalid",
+)
+
+
+def _is_junk_content(text: Any) -> bool:
+    if not text:
+        return True
+    t = str(text).strip().lower()
+    if not t:
+        return True
+    return any(m in t for m in _JUNK_MARKERS)
+
+
+async def pipe_guaranteed_fallback(request, messages, temperature, chat_id,
+                                   write_fn, order=None, headers=None) -> bool:
+    """Relay the first working guaranteed endpoint into an already-prepared SSE
+    stream. `write_fn(obj)` writes one JSON frame. Returns True if any content
+    was relayed, False if every endpoint failed. Identity/style system messages
+    are preserved (folded first where the endpoint rejects the system role)."""
+    client = get_httpx_client()
+    for ep_name in (order or GUARANTEED_FALLBACK_ORDER):
+        ep = next((e for e in DIRECT_ENDPOINTS if e["name"] == ep_name), None)
+        if ep is None or endpoint_breaker.is_open(ep["name"]):
+            continue
+        payload_model = ep["default_model"]
+        if ep.get("model_map") and payload_model in ep["model_map"]:
+            payload_model = ep["model_map"][payload_model]
+        ep_messages = fold_system_messages_for_agent(messages) if ep.get("no_system_role") else messages
+        json_only = bool(ep.get("json_only"))
+        body = {
+            "model": payload_model,
+            "messages": ep_messages,
+            "temperature": max(0.0, min(temperature, 1.5)),
+            "stream": not json_only,
+        }
+        if ep.get("max_tokens"):
+            body["max_tokens"] = int(ep["max_tokens"])
+        req_headers = {"Content-Type": "application/json"}
+        if ep["api_key"]:
+            req_headers["Authorization"] = f"Bearer {ep['api_key']}"
+        try:
+            async with client.stream("POST", ep["url"], json=body, headers=req_headers) as up:
+                if up.status_code != 200:
+                    endpoint_breaker.record_failure(ep["name"])
+                    continue
+                sent = False
+                model_tag = f"direct:{ep['name']}:{payload_model}"
+                if json_only:
+                    raw = await up.aread()
+                    try:
+                        data = json.loads(raw.decode("utf-8", "ignore"))
+                    except Exception:
+                        data = {}
+                    try:
+                        content = (data.get("choices", [{}])[0].get("message", {}) or {}).get("content", "") or ""
+                    except Exception:
+                        content = ""
+                    if not content.strip() or _is_junk_content(content):
+                        endpoint_breaker.record_failure(ep["name"])
+                        continue
+                    await write_fn({
+                        "id": f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}",
+                        "object": "chat.completion.chunk", "created": int(time.time()),
+                        "model": model_tag,
+                        "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}],
+                    })
+                    sent = True
+                else:
+                    async for line in up.aiter_lines():
+                        line = line.strip()
+                        if not line.startswith("data:"):
+                            continue
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            obj = json.loads(data_str)
+                        except Exception:
+                            continue
+                        try:
+                            delta = obj.get("choices", [{}])[0].get("delta", {}) or {}
+                        except Exception:
+                            continue
+                        reason = delta.get("reasoning") or delta.get("reasoning_content") or ""
+                        content = delta.get("content") or ""
+                        if reason:
+                            try:
+                                await write_fn({"t": "think", "d": reason})
+                                await write_fn({
+                                    "id": f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}",
+                                    "object": "chat.completion.chunk", "created": int(time.time()),
+                                    "model": model_tag,
+                                    "choices": [{"index": 0, "delta": {"reasoning_content": reason}, "finish_reason": None}],
+                                })
+                            except Exception:
+                                pass
+                        if content and not _is_junk_content(content):
+                            await write_fn({
+                                "id": f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}",
+                                "object": "chat.completion.chunk", "created": int(time.time()),
+                                "model": model_tag,
+                                "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}],
+                            })
+                            sent = True
+                if sent:
+                    endpoint_breaker.record_success(ep["name"])
+                    return True
+                endpoint_breaker.record_failure(ep["name"])
+        except Exception as err:
+            logger.debug(f"[guaranteed-fallback:{ep_name}] failed: {err}")
+            endpoint_breaker.record_failure(ep["name"])
+            continue
+    return False
+
+
+async def collect_guaranteed_fallback(messages, temperature, order=None) -> Optional[Dict[str, Any]]:
+    """Non-stream variant: return the first successful OpenAI-style completion."""
+    client = get_httpx_client()
+    for ep_name in (order or GUARANTEED_FALLBACK_ORDER):
+        ep = next((e for e in DIRECT_ENDPOINTS if e["name"] == ep_name), None)
+        if ep is None or endpoint_breaker.is_open(ep["name"]):
+            continue
+        payload_model = ep["default_model"]
+        if ep.get("model_map") and payload_model in ep["model_map"]:
+            payload_model = ep["model_map"][payload_model]
+        ep_messages = fold_system_messages_for_agent(messages) if ep.get("no_system_role") else messages
+        json_only = bool(ep.get("json_only"))
+        body = {
+            "model": payload_model,
+            "messages": ep_messages,
+            "temperature": max(0.0, min(temperature, 1.5)),
+            "stream": not json_only,
+        }
+        if ep.get("max_tokens"):
+            body["max_tokens"] = int(ep["max_tokens"])
+        req_headers = {"Content-Type": "application/json"}
+        if ep["api_key"]:
+            req_headers["Authorization"] = f"Bearer {ep['api_key']}"
+        try:
+            async with client.stream("POST", ep["url"], json=body, headers=req_headers) as up:
+                if up.status_code != 200:
+                    endpoint_breaker.record_failure(ep["name"])
+                    continue
+                raw = await up.aread()
+                try:
+                    data = json.loads(raw.decode("utf-8", "ignore"))
+                except Exception:
+                    data = {}
+                msg = {}
+                try:
+                    msg = data.get("choices", [{}])[0].get("message", {}) or {}
+                except Exception:
+                    pass
+                content = (msg.get("content") or "").strip()
+                if not content:
+                    # gather from streamed-style raw if present
+                    parts = []
+                    for ch in (data.get("choices") or []):
+                        d = (ch.get("delta") or ch.get("message") or {})
+                        parts.append(d.get("content") or "")
+                    content = "".join(parts).strip()
+                if not content or _is_junk_content(content):
+                    endpoint_breaker.record_failure(ep["name"])
+                    continue
+                endpoint_breaker.record_success(ep["name"])
+                out_msg = {"role": "assistant", "content": content}
+                reason = (msg.get("reasoning_content") or msg.get("reasoning") or "")
+                if reason:
+                    out_msg["reasoning_content"] = reason
+                return {
+                    "id": f"chatcmpl-{ep['name']}-{int(time.time() * 1000)}",
+                    "object": "chat.completion", "created": int(time.time()),
+                    "model": f"direct:{ep['name']}:{payload_model}",
+                    "choices": [{"index": 0, "message": out_msg, "finish_reason": "stop"}],
+                }
+        except Exception as err:
+            logger.debug(f"[collect-guaranteed:{ep_name}] failed: {err}")
+            endpoint_breaker.record_failure(ep["name"])
+            continue
     return None
 
 
@@ -922,6 +1174,97 @@ async def handle_models(request: web.Request) -> web.Response:
     return web.json_response({"models": models})
 
 
+def _is_public_https_url(url: str) -> Optional[str]:
+    """SSRF guard for user-supplied custom provider URLs. Returns error or None."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+    try:
+        parts = urlparse(url)
+    except Exception:
+        return "bad URL"
+    if parts.scheme != "https":
+        return "only https:// allowed"
+    if not (parts.hostname or ""):
+        return "no hostname"
+    try:
+        infos = socket.getaddrinfo(parts.hostname, 443, type=socket.SOCK_STREAM)
+    except Exception:
+        return "DNS failed"
+    ips = {i[4][0] for i in infos}
+    if not ips:
+        return "no address"
+    for ip in ips:
+        try:
+            addr = ipaddress.ip_address(ip)
+        except Exception:
+            return "bad address"
+        if (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_multicast or addr.is_reserved or addr.is_unspecified):
+            return f"non-public IP {ip}"
+    return None
+
+
+async def attempt_custom_chat(request, messages, temperature, stream,
+                              base_url: str, api_key: Optional[str],
+                              model: str) -> Optional[web.Response]:
+    """User-added custom provider (from the UI) relayed server-side.
+
+    Browser-direct calls die on CORS (no ACAO headers upstream), so the
+    bridge proxies. SSRF-guarded (public https only) + junk-guarded like
+    the fixed endpoints. Returns a ready Response, or None so the engine
+    falls back to the next layer.
+    """
+    err = _is_public_https_url(base_url or "")
+    if err:
+        logger.warning(f"[custom] rejected base_url: {err}")
+        return None
+    import aiohttp
+    url = base_url.rstrip("/") + "/chat/completions"
+    body = {"model": model, "messages": messages,
+            "temperature": max(0.0, min(temperature, 1.5)), "stream": False}
+    headers = {"Content-Type": "application/json", "User-Agent": _BROWSER_UA}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        timeout = aiohttp.ClientTimeout(total=90, connect=12)
+        async with aiohttp.ClientSession(timeout=timeout) as sess:
+            async with sess.post(url, json=body, headers=headers) as resp:
+                if resp.status != 200:
+                    logger.debug(f"[custom] HTTP {resp.status}")
+                    return None
+                try:
+                    data = await resp.json()
+                except Exception:
+                    return None
+        try:
+            content = (data.get("choices", [{}])[0].get("message", {}) or {}).get("content", "") or ""
+        except Exception:
+            content = ""
+        content = content.strip()
+        if not content or _is_junk_content(content):
+            return None
+        if stream:
+            sse = web.StreamResponse(
+                status=200, reason="OK",
+                headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache",
+                         "Connection": "keep-alive", "X-Accel-Buffering": "no"})
+            await sse.prepare(request)
+            chat_id = f"chatcmpl-custom-{int(time.time() * 1000)}"
+            await sse.write(f"data: {json.dumps({'id': chat_id, 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': model, 'choices': [{'index': 0, 'delta': {'content': content}, 'finish_reason': None}]}, ensure_ascii=False)}\n\n".encode("utf-8"))
+            await sse.write(b"data: [DONE]\n\n")
+            await sse.write_eof()
+            return sse
+        return web.json_response({
+            "id": f"chatcmpl-custom-{int(time.time() * 1000)}",
+            "object": "chat.completion", "created": int(time.time()), "model": model,
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": content},
+                         "finish_reason": "stop"}]})
+    except Exception as e:
+        logger.debug(f"[custom] failed: {e}")
+        return None
+
+
 async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
     """
     OpenAI-compatible chat completions proxy with full SSE streaming (stream=True).
@@ -939,6 +1282,19 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
         raw_model = raw_model.replace("direct:", "", 1)
         ep = resolve_direct_endpoint(raw_model)
         preferred_direct = ep["name"] if ep else None
+    # custom: providers added from the UI — relayed server-side (CORS-proof).
+    if raw_model.startswith("custom:"):
+        _rest = raw_model.replace("custom:", "", 1)
+        _, _, _cmodel = _rest.partition(":")
+        _cbase = (body.get("custom_base_url") or "").strip()
+        _ckey = (body.get("custom_api_key") or "").strip() or None
+        if _cmodel and _cbase:
+            custom_res = await attempt_custom_chat(request, messages, temperature, stream,
+                                                   _cbase, _ckey, _cmodel)
+            if custom_res is not None:
+                return custom_res
+            logger.info(f"[custom] unavailable for '{_cmodel}' — falling back to g4f chain")
+        raw_model = _cmodel or raw_model
     model_id = raw_model.replace("g4f:", "") if raw_model.startswith("g4f:") else raw_model
     messages = list(body.get("messages", []))
     
@@ -1018,9 +1374,12 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
         stream_started = False
         error_message = None
 
-        # direct:* tiers: skip the slow g4f-mirror chain and go straight to the
-        # keyless direct sweep once their pinned endpoint fails.
-        for current_model, current_provider in (build_attempts() if not preferred_direct else []):
+        # direct:* tiers skip the slow g4f-mirror chain and go straight to the
+        # keyless direct sweep once their pinned endpoint fails. The scraper
+        # chain (g4f AutoRouter) runs ONLY for explicit "g4f:<model>" requests —
+        # otherwise leaked error/HTML text from scrapers would be served as answers.
+        allow_scrape_chain = model_id.startswith("g4f:") and not preferred_direct
+        for current_model, current_provider in (build_attempts() if allow_scrape_chain else []):
             try:
                 client = AsyncClient(provider=current_provider)
                 res_coro = client.chat.completions.create(
@@ -1037,7 +1396,12 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
 
                 # Guard against rate-limit/ad pages masquerading as answers
                 JUNK_MARKERS = ("aichatos", "限流", "请求过多", "微信", "kelemm220",
-                                "请访问", "付费使用")
+                                "请访问", "付费使用", "API key required",
+                                "key required in", "Page not found", "Not Found",
+                                "Exception", "Traceback", "HTTPError", "Scraper",
+                                "huggingchat scraper", "not available", "no available",
+                                "Cerebras API key", "Together AI key", "Blackbox",
+                                "<!doctype", "<html", "text/html")
                 first_chunk = True
 
                 async for chunk in res_stream:
@@ -1091,11 +1455,24 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
             if direct_res is not None:
                 return direct_res
 
+            # Layer 3: guaranteed fallback — relay the first working endpoint's
+            # DEFAULT model so the user always receives a real answer and the
+            # request never dead-ends at "model did not respond".
+            try:
+                fallback_ok = await pipe_guaranteed_fallback(
+                    request, messages, temperature, chat_id, send_sse)
+            except Exception as fb_err:
+                logger.debug(f"guaranteed fallback error: {fb_err}")
+                fallback_ok = False
+            if fallback_ok:
+                await response.write(b"data: [DONE]\n\n")
+                return response
+
             # Clear notice that THIS exact model failed so the user knows if it works or not
             notice = (
-                f"⚠️ **النموذج المحدد ({model_id}) لم يستجب:**\n"
-                f"```\n{error_message or 'لا يوجد استجابة من مزودي g4f للنموذج المطلوب.'}\n```\n"
-                f"الرجاء اختيار نموذج آخر متاح مثل **GPT-4o** أو **DeepSeek V3**."
+                f"⚠️ **النموذج المحدد ({model_id}) لم يستجب وجميع قنوات الاحتياط متعطلة حالياً:**\n"
+                f"```\n{error_message or 'لا يوجد استجابة من أي مزود.'}\n```\n"
+                f"يرجى إعادة المحاولة بعد قليل."
             )
             err_payload = {
                 "id": chat_id,
@@ -1119,7 +1496,8 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
     else:
         # Non-streaming routed request
         last_error = None
-        for current_model, current_provider in (build_attempts() if not preferred_direct else []):
+        allow_scrape_chain_ns = model_id.startswith("g4f:") and not preferred_direct
+        for current_model, current_provider in (build_attempts() if allow_scrape_chain_ns else []):
             try:
                 client = AsyncClient(provider=current_provider)
                 res_coro = client.chat.completions.create(
@@ -1165,9 +1543,18 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
         if direct_res is not None:
             return direct_res
 
+        # Guaranteed non-stream fallback: first working default model wins.
+        try:
+            fb = await collect_guaranteed_fallback(messages, temperature)
+        except Exception as fb_err:
+            logger.debug(f"collect guaranteed fallback error: {fb_err}")
+            fb = None
+        if fb is not None:
+            return web.json_response(fb)
+
         return web.json_response({
             "error": {
-                "message": f"النموذج المحدد ({model_id}) غير متاح حالياً: {str(last_error)}",
+                "message": f"النموذج المحدد ({model_id}) غير متاح حالياً وجميع قنوات الاحتياط متعطلة: {str(last_error)}",
                 "type": "g4f_direct_error"
             }
         }, status=500)
@@ -1365,8 +1752,11 @@ async def main():
         await site.start()
 
         # Launch background health check discovery & live verification pipeline worker loop
+        # WORKER_INTERVAL_S env (default 300): longer intervals protect shared
+        # anonymous free-tier quotas (kilo/pollinations/ovh) from self-inflicted 429s.
         asyncio.create_task(discover_active_models(force=True))
-        asyncio.create_task(schedule_worker(interval_seconds=300))
+        asyncio.create_task(schedule_worker(
+            interval_seconds=int(os.getenv("WORKER_INTERVAL_S", "300"))))
         asyncio.create_task(start_background_monitor_loop(interval_seconds=3600))
 
         # Keep server running forever

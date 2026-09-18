@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 import json
 import logging
@@ -14,7 +15,222 @@ except ImportError:
 logger = logging.getLogger("engine")
 logging.basicConfig(level=logging.INFO)
 
+
+async def _idle_reader(stream, idle_seconds: float = 55.0):
+    """Yield upstream SSE chunks, but end (return) if NO chunk arrives for
+    `idle_seconds`. Used by the model chain: a channel that queues/hangs with
+    zero tokens for ~55s is abandoned so the next fallback model answers fast
+    instead of making the user wait minutes."""
+    it = stream.__aiter__()
+    while True:
+        try:
+            yield await asyncio.wait_for(it.__anext__(), timeout=idle_seconds)
+        except StopAsyncIteration:
+            return
+        except asyncio.TimeoutError:
+            logger.warning(f"[engine] no upstream chunk for {idle_seconds:.0f}s — abandoning this channel")
+            return
+        except Exception:
+            return
+
+
+# ---------------------------------------------------------------------------
+# MijlAi Answer-Methodology Layer (enforced for EVERY model / EVERY request).
+# Distilled from the owner's "high-tuning" spec: multi-level intent modelling,
+# tool-need decision, iterative research w/ saturation stop, uncertainty
+# calibration, cross-source fact-checking, adaptive structure, executed
+# step-by-step writing, post-generation checks + type-dependent applicability.
+# Grounded in verification-first techniques (chain-of-verification style).
+# It never weakens the identity core: priority = MijlAi identity/safety first,
+# then this protocol, then user style overrides.
+# ---------------------------------------------------------------------------
+METHODOLOGY_SYSTEM_PROMPT = (
+    "منهجية الإجابة الإلزامية (وكيل بحث وتنفيذ عميق) — تُطبَّق على كل موديل وكل رسالة:\n"
+    "أنت وكيل بحث وتنفيذ عميق متخصص في تحليل المشكلات وإنجاز المهام بأعلى دقة. "
+    "تتصرف وفق منهجية صارمة تعتمد على التفكير المنظم والشفافية، ودون تعارض مع هويتك (MijlAi) وقواعدها.\n\n"
+    "المبادئ الأساسية:\n"
+    "1. لا تعتمد على معرفتك الداخلية فقط في المسائل التي تتطلب بيانات حديثة أو دقيقة أو قابلة للتحقق — "
+    "استخدم أدوات البحث/الاسترجاع المتاحة في بيئتك، وإن لم تتوفر فاعتمد على معرفتك مع وسم واضح لكل ما قد يكون تغيّر.\n"
+    "2. التزم بالهيكل التالي قبل تقديم أي إجابة نهائية.\n\n"
+    "هيكل الإجابة الإلزامي (اعرضه بعناوين واضحة وبنفس لغة المستخدم):\n"
+    "1. تحليل الطلب: الهدف الأساسي للمستخدم، طبيعة الاستعلام (بحث خارجي / تحليل منطقي / تنفيذ عملي / غيره)، والقيود والشروط الخاصة.\n"
+    "2. خطة العمل: خطة مرقمة من 3 إلى 5 خطوات واضحة ومحددة.\n"
+    "3. تنفيذ الخطة: نفّذ كل خطوة واعرضها بالشكل: الخطوة [X]: [اسم الخطوة] / الإجراء والأداة / النتيجة والملاحظات.\n"
+    "4. التحقق والتقييم: لخّص النقاط المفصلية، وقيّم موثوقية المصادر ومدى الثقة في النتيجة.\n"
+    "5. الإجابة النهائية: إجابة شاملة مرتبة مباشرة تفي بطلب المستخدم تماماً.\n\n"
+    "القواعد:\n"
+    "- كن شفافاً واعرض خطوات التفكير بوضوح.\n"
+    "- التزم بلغة المستخدم نفسها.\n"
+    "- إذا كان هناك نقص في المعطيات يمنع إجابة دقيقة، اطلب التوضيح بعد مرحلة التحليل.\n"
+    "- للأسئلة البسيطة (تحية، رد بكلمة) اختصر الهيكل إلى الحد الأدنى دون إخلال بالوضوح.\n"
+    "- ممنوع اختلاق مصادر أو أرقام أو مراجع؛ ما لا يمكن التحقق منه يُوسَم بثقة منخفضة.\n\n"
+    "ترتيب الأولوية عند أي تعارض: هوية MijlAi وقواعدها وسلامة المستخدم أولاً، ثم هذه المنهجية، ثم تعليمات الأسلوب الإضافية من المستخدم."
+)
+
+# ---------------------------------------------------------------------------
+# Freshness-triggered web augmentation: when the prompt demands current data,
+# fetch live results from the local keyless search tool (:5050/search) and
+# inject them as context so the methodology's "research tools" step uses REAL
+# tools instead of relying on model memory. Quality-gated: irrelevant results
+# are discarded rather than injected.
+# ---------------------------------------------------------------------------
+_FRESH_HINTS = (
+    "اليوم", "الآن", "حاليا", "الحالي", "الحالية", "آخر", "أحدث", "أخبار",
+    "خبر", "سعر", "أسعار", "الطقس", "النتيجة", "من فاز", "جديد",
+    "today", "now", "current", "latest", "recent", "news",
+    "price", "weather", "who won", "score", "2026", "2025",
+)
+
+
+async def _fetch_search_context(prompt: str) -> str:
+    text = (prompt or "").strip()
+    if len(text) < 12:
+        return ""
+    low = text.lower()
+    if not any(h in text or h in low for h in _FRESH_HINTS):
+        return ""
+    try:
+        import aiohttp as _aio
+        timeout = _aio.ClientTimeout(total=25, connect=8)
+        async with _aio.ClientSession(timeout=timeout) as sess:
+            async with sess.post(
+                "http://127.0.0.1:5050/search",
+                json={"query": text[:500], "max_results": 5},
+            ) as resp:
+                if resp.status != 200:
+                    return ""
+                data = await resp.json()
+        results = data.get("results") or []
+        if not results:
+            return ""
+        # Quality gate: at least one query keyword must appear in the results.
+        keywords = [w for w in low.split() if len(w) > 3][:8]
+        blob = " ".join(
+            f"{r.get('title', '')} {r.get('snippet', '')}" for r in results
+        ).lower()
+        if keywords and not any(k in blob for k in keywords):
+            return ""
+        lines = []
+        for i, r in enumerate(results[:5], 1):
+            title = (r.get("title") or "").strip()
+            snip = (r.get("snippet") or "").strip()[:280]
+            url = (r.get("url") or "").strip()
+            lines.append(f"{i}. {title} — {snip} ({url})")
+        return (
+            "[نتائج بحث ويب حيّة — استخدمها لتأسيس إجابتك عن الجزء المحدّث من السؤال "
+            "واذكر أنها معلومات محدثة من البحث]:\n" + "\n".join(lines)
+        )
+    except Exception:
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# Session tools — defined WITH the models, auto-linked in EVERY session.
+# The methodology requires research/execution; these are the real tools:
+#   web_search     : live web (auto on freshness-demanding prompts)
+#   python_exec    : sandboxed python (auto on explicit exec request + fence)
+#   workspace files: !read <path> / !files [dir] for code/file study
+# Manifest is injected as a system message every request (after methodology).
+# ---------------------------------------------------------------------------
+TOOLS_MANIFEST = (
+    "[أدوات الجلسة — مربوطة تلقائيًا مع كل موديل في كل جلسة]:\n"
+    "1. web_search: بحث ويب حي — يعمل تلقائيًا عندما يطلب السؤال بيانات حديثة، وتُرفق نتائجه في سياق منفصل.\n"
+    "2. python_exec: تنفيذ كود بايثون في ساندبوكس معزول (nobody + حدود موارد + 15 ثانية) — يعمل تلقائيًا عندما يطلب المستخدم التنفيذ صراحة مع كتلة ```python (للمستخدمين المسجلين)، وتُرفق المخرجات في سياق منفصل.\n"
+    "3. workspace_files: قراءة ملفات مساحة العمل لدراسة الأكواد والمرفقات — تُرفق تلقائيًا عند كتابة !read <المسار> أو !files [مجلد] في الرسالة.\n"
+    "عند وجود سياق أداة مرفق اعتمد مخرجاته حرفيًا في إجابتك واذكر أن النظام نفّذ الأداة."
+)
+
+_EXEC_HINTS = ("نفذ", "نفّذ", "شغل", "شغّل", "نفذ الكود", "شغل الكود",
+               "execute", "run the code", "run this code")
+
+_WORKSPACES_ROOT = "/home/lalo/UIAIv2.0/workspaces"
+
+
+def _safe_workspace(chat_id: str) -> str:
+    import re
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "", chat_id or "default")[:64] or "default"
+    return "/home/lalo/UIAIv2.0/workspaces/" + safe
+
+
+def _extract_python_fence(text: str) -> str:
+    import re
+    m = re.search(r"```python\s*\n(.*?)```", text or "", re.S)
+    return (m.group(1) if m else "").strip()[:20000]
+
+
+def _run_sandboxed(code: str, workdir: str) -> str:
+    """Run python as nobody+prlimit (mirrors /api/python/run limits)."""
+    import subprocess
+    os.makedirs(workdir, exist_ok=True)
+    # nobody must traverse + write here (mirror /api/python/run semantics)
+    for _p in (workdir,):
+        try:
+            os.chmod(_p, 0o777)
+        except Exception:
+            pass
+    cell = os.path.join(workdir, f"cell_{int(time.time() * 1000)}.py")
+    with open(cell, "w", encoding="utf-8") as fh:
+        fh.write(code)
+    try:
+        os.chmod(cell, 0o644)
+    except Exception:
+        pass
+    try:
+        p = subprocess.run(
+            ["sudo", "-n", "-u", "nobody", "prlimit", "--cpu=10",
+             "--as=536870912", "--nproc=32", "--fsize=5242880", "--nofile=64",
+             "/usr/bin/python3", "-u", cell],
+            cwd=workdir, capture_output=True, text=True, timeout=15,
+            env={"PATH": "/usr/bin:/bin", "HOME": workdir,
+                 "PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"})
+        out = (p.stdout or "")[-4000:]
+        err = (p.stderr or "")[-2000:]
+        return (f"[مخرجات تنفيذ الكود — exit={p.returncode}]:\n{out}"
+                + (f"\n[أخطاء]:\n{err}" if err.strip() else ""))
+    except subprocess.TimeoutExpired:
+        return "[مخرجات تنفيذ الكود]: انتهت المهلة (15 ثانية) — أُوقف التنفيذ."
+    except Exception as e:
+        return f"[مخرجات تنفيذ الكود]: تعذر التنفيذ ({e})."
+
+
+def _read_workspace_files(prompt: str, workdir: str) -> str:
+    """Handle !read <path> / !files [dir] markers inside the session workspace."""
+    import re
+    blocks = []
+    for m in re.finditer(r"!read\s+([^\s\n]+)", prompt or ""):
+        rel = m.group(1).strip()
+        target = os.path.normpath(os.path.join(workdir, rel))
+        if not target.startswith(os.path.normpath(workdir) + os.sep):
+            blocks.append(f"[!read {rel}]: مسار مرفوض (خارج مساحة العمل).")
+            continue
+        try:
+            if not os.path.isfile(target):
+                blocks.append(f"[!read {rel}]: الملف غير موجود في مساحة العمل.")
+                continue
+            if os.path.getsize(target) > 51200:
+                blocks.append(f"[!read {rel}]: الملف كبير (>50KB) — رُفض.")
+                continue
+            with open(target, encoding="utf-8", errors="replace") as fh:
+                content = fh.read()
+            blocks.append(f"[محتوى الملف {rel}]:\n{content}")
+        except Exception as e:
+            blocks.append(f"[!read {rel}]: تعذر القراءة ({e}).")
+    for m in re.finditer(r"!files(?:\s+([^\s\n]+))?", prompt or ""):
+        rel = (m.group(1) or "").strip()
+        target = os.path.normpath(os.path.join(workdir, rel)) if rel else workdir
+        if not target.startswith(os.path.normpath(workdir) + os.sep) and target != os.path.normpath(workdir):
+            blocks.append("[!files]: مسار مرفوض.")
+            continue
+        try:
+            names = sorted(os.listdir(target))[:100]
+            blocks.append(f"[ملفات {rel or '/'}]: " + (", ".join(names) if names else "(فارغ)"))
+        except Exception as e:
+            blocks.append(f"[!files]: تعذر السرد ({e}).")
+    return "\n".join(blocks)
+
+
 class TaskStore:
+
     """
     Dual-layer persistent storage manager using Redis with in-memory fallback.
     Saves LLM response chunks and offsets for zero-latency resumption.
@@ -202,6 +418,48 @@ def sanitize_identity_outside_code(text: str) -> str:
             .replace("شركة Microsoft", "محمود نمر العجلة (Mhmod Nemr Alijla)")
             .replace("شركة مايكروسوفت", "محمود نمر العجلة (Mhmod Nemr Alijla)")
             .replace("مايكروسوفت", "محمود نمر العجلة (Mhmod Nemr Alijla)")
+            # Remove third-party provider/model references from responses
+            .replace("OpenRouter", "MijlAi")
+            .replace("openrouter", "MijlAi")
+            .replace("OpenAI", "MijlAi")
+            .replace("Google", "MijlAi")
+            .replace("Gemini", "MijlAi")
+            .replace("gemini", "MijlAi")
+            .replace("Claude", "MijlAi")
+            .replace("Anthropic", "MijlAi")
+            .replace("Meta AI", "MijlAi")
+            .replace("Meta", "MijlAi")
+            .replace("NVIDIA", "MijlAi")
+            .replace("Nemotron", "MijlAi")
+            .replace("كيمياي", "MijlAi")
+            .replace("Nemotron 3 Ultra", "MijlAi")
+            .replace("Nemotron 3 Super", "MijlAi")
+            .replace("Nemotron 3.5 Lightning", "MijlAi")
+            .replace("Nemotron Ultra", "MijlAi")
+            .replace("Nemotron Super", "MijlAi")
+            .replace("Nemotron Lightning", "MijlAi")
+            .replace("GPT-OSS", "MijlAi")
+            .replace("GPT-OSS 20B", "MijlAi")
+            .replace("GPT", "MijlAi")
+            .replace("Llama", "MijlAi")
+            .replace("Mistral", "MijlAi")
+            .replace("Mixtral", "MijlAi")
+            .replace("Qwen", "MijlAi")
+            .replace("DeepSeek", "MijlAi")
+            .replace("MiniMax", "MijlAi")
+            .replace("Poolside", "MijlAi")
+            .replace("Laguna", "MijlAi")
+            .replace("Muse Glimmer", "MijlAi")
+            .replace("Kimi", "MijlAi")
+            .replace("Moonshot", "MijlAi")
+            .replace("Z.ai", "MijlAi")
+            .replace("GLM", "MijlAi")
+            .replace("Cohere", "MijlAi")
+            .replace("Command", "MijlAi")
+            .replace("Jamba", "MijlAi")
+            .replace("AI21", "MijlAi")
+            .replace("Grok", "MijlAi")
+            .replace("xAI", "MijlAi")
         )
 
     parts = _CODE_SEGMENT_RE.split(text)
@@ -293,7 +551,10 @@ class LLMEngine:
         messages: Optional[list] = None,
         user_id: Optional[str] = None,
         custom_system_prompt: Optional[str] = None,
-        chat_id: Optional[str] = None
+        chat_id: Optional[str] = None,
+        custom_base_url: Optional[str] = None,
+        custom_api_key: Optional[str] = None,
+        custom_model: Optional[str] = None
     ) -> None:
         await self.store.create_task(task_id, prompt)
         self._running[task_id] = asyncio.current_task()
@@ -339,6 +600,7 @@ class LLMEngine:
             "1. عند سؤالك \"من أنت\" أو \"Who are you\" أو عن هويتك أو صانعك أو مالكك، يجب أن تعرّف نفسك دائماً وبوضوح بأنك \"MijlAi (مجلاي)\"، نظام ذكاء اصطناعي صُمم وطُوّر خصيصاً لمنصة MijlAi، وأن مالك هذه الأداة ومطورها هو محمود نمر العجلة (Mhmod Nemr Alijla).\n"
             "2. يُمنع منعاً باتاً وبشكل مطلق أن تذكر أو تُعزي تطويرك أو مصدرك إلى أي شركات أو جهات أو منظمات خارجية (مثل OpenAI أو ChatGPT أو Anthropic أو MijlAI أو Google أو Copilot أو Microsoft أو غيرها) بأي حال من الأحوال. كل العلامات والتطوير والملكية تعود حصراً لمنصة MijlAi ومطورها.\n"
             "3. قدّم مساعدة سريعة ودقيقة وموجزة في البرمجة والكتابة والمهام العامة مع إخراج فوري ومباشر.\n"
+            "3b. ردّ دائماً وبشكل إلزامي بلغة المستخدم نفسها التي كتب بها سؤاله (عربية أو إنجليزية أو غيرها) — لا تنتقل للغة أخرى إلا إذا طلب ذلك صراحةً.\n"
             "4. التزم حرفياً بهذه الأمثلة عند سؤالك عن هويتك أو صانعك:\n"
             "س: من أنت؟\n"
             "ج: أنا MijlAi (مجلاي)، مساعد ذكاء اصطناعي صُمم وطُوّر حصرياً لمنصة MijlAi (mijlai.duckdns.org).\n"
@@ -349,6 +611,12 @@ class LLMEngine:
         )
 
         chat_messages = [{"role": "system", "content": system_prompt}]
+
+        # Enforced MijlAi Answer-Methodology Layer: injected for EVERY model and
+        # EVERY request, right after the identity core (and before optional user
+        # style overrides) so answer quality/structure rules always apply without
+        # ever weakening the MijlAi identity guardrails above.
+        chat_messages.append({"role": "system", "content": METHODOLOGY_SYSTEM_PROMPT})
 
         # User-level customization layer (app Settings system prompt + active
         # Gem persona instructions). Applied AFTER the identity core so it can
@@ -406,6 +674,41 @@ class LLMEngine:
                     chat_messages[_i] = {**_m, "content": _m["content"] + memory_block}
                     break
 
+        # Freshness augmentation: live web context for current-data questions
+        # (methodology "research tools" step backed by the real search tool).
+        try:
+            _search_ctx = await _fetch_search_context(prompt)
+        except Exception:
+            _search_ctx = ""
+        if _search_ctx:
+            chat_messages.append({"role": "system", "content": _search_ctx})
+
+        # Session tools manifest — defined WITH the models, auto-linked
+        # in EVERY session (search / execution / code study).
+        chat_messages.append({"role": "system", "content": TOOLS_MANIFEST})
+
+        # python_exec auto-tool: explicit request + ```python fence + signed-in user.
+        try:
+            _exec_ctx = ""
+            _ptext = prompt or ""
+            if (user_id and user_id != "guest" and "```python" in _ptext
+                    and any(h in _ptext or h in _ptext.lower() for h in _EXEC_HINTS)):
+                _code = _extract_python_fence(_ptext)
+                if _code:
+                    _exec_ctx = _run_sandboxed(_code, _safe_workspace(chat_id or "default"))
+        except Exception:
+            _exec_ctx = ""
+        if _exec_ctx:
+            chat_messages.append({"role": "system", "content": _exec_ctx})
+
+        # workspace file tools (!read <path> / !files [dir]) for code study.
+        try:
+            _files_ctx = _read_workspace_files(prompt, _safe_workspace(chat_id or "default"))
+        except Exception:
+            _files_ctx = ""
+        if _files_ctx:
+            chat_messages.append({"role": "system", "content": _files_ctx})
+
         # Clean model ID
         raw_model = (model_id or "gpt-4o").replace("g4f:", "").replace("MijlAI ", "").strip()
 
@@ -446,9 +749,19 @@ class LLMEngine:
         # it owns provider routing, direct keyless endpoints (Kilo/OVH/...),
         # and the junk/quality guard. This keeps ONE hardened brain.
         G4F_SERVICE_URL = "http://127.0.0.1:5050/chat/completions"
+        # Fallback chain: only REAL direct endpoints (kilo/pollinations/ovh/NVIDIA),
+        # NEVER the g4f scraper providers — those leak error/HTML text as answers.
+        # Each of these resolves to a keyless direct endpoint inside the g4f service.
         models_to_try = list(dict.fromkeys([
-            target_model, "gpt-4o-mini", "gemini", "sonar", "command-a"
+            target_model,
+            "direct:kilo",
+            "direct:Qwen3-Coder-30B-A3B-Instruct",
+            "direct:openai-fast",
+            "direct:nv-gpt-oss-20b",
         ]))
+        # Drop any entry equal to the target (avoid immediate duplicate round-trip).
+        if len(models_to_try) > 1:
+            models_to_try = [target_model] + [m for m in models_to_try[1:] if m != target_model]
 
         token_offset = 0
         received_content = False
@@ -464,18 +777,23 @@ class LLMEngine:
                         logger.info(f"Attempting LLM generation for task {task_id} with model '{current_model}' via g4f service...")
                         checkpoint_buffer = ""
                         buffer_counter = 0
+                        attempt_dead = False   # true when g4f returned the all-channels-down notice
+                        dead_probe = ""
 
                         async with http.post(G4F_SERVICE_URL, json={
                             "model": current_model,
                             "messages": chat_messages,
                             "stream": True,
-                            "temperature": 0.7
+                            "temperature": 0.7,
+                            "custom_base_url": custom_base_url,
+                            "custom_api_key": custom_api_key,
+                            "custom_model": custom_model
                         }) as resp:
                             if resp.status != 200:
                                 logger.warning(f"g4f service returned {resp.status} for '{current_model}'")
                                 continue
 
-                            async for raw in resp.content:
+                            async for raw in _idle_reader(resp.content):
                                 line = raw.decode("utf-8", errors="ignore").strip()
                                 if not line.startswith("data:"):
                                     continue
@@ -499,6 +817,28 @@ class LLMEngine:
 
                                 text_chunk = delta.get("content") or ""
                                 if text_chunk:
+                                    # g4f's "all channels down" notice is NOT an answer,
+                                    # and neither is leaked scraper/provider ERROR text:
+                                    # detect them early, drain the rest silently, and let
+                                    # the outer model chain try the next fallback model.
+                                    if len(dead_probe) < 300:
+                                        dead_probe += text_chunk
+                                        _dp = dead_probe
+                                        if ("قنوات الاحتياط متعطلة" in _dp or "لم يستجب وجميع" in _dp
+                                                or "API key required" in _dp
+                                                or "key required" in _dp
+                                                or "Exception" in _dp or "Traceback" in _dp
+                                                or "Scraper" in _dp or "HTTPError" in _dp
+                                                or "not available" in _dp or "no available" in _dp
+                                                or "Page not found" in _dp
+                                                or "Not Found" in _dp
+                                                or _dp[:9].lower() == "<!doctype" 
+                                                or _dp[:5].lower() == "<html"
+                                                or "text/html" in _dp
+                                                or "invalid" in _dp.lower()):
+                                            attempt_dead = True
+                                    if attempt_dead:
+                                        continue
                                     received_content = True
                                     parts = think_extractor.feed(text_chunk)
                                     if parts["think"]:

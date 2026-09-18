@@ -39,5 +39,5 @@ class HuggingChatScraper:
                                     yield data["token"]["text"]
                             except Exception:
                                 pass
-            except Exception as e:
-                yield f"HuggingChat Scraper Exception: {str(e)}"
+            except Exception:
+                return

@@ -15,7 +15,8 @@ class GroqFreeProvider:
     ) -> AsyncGenerator[str, None]:
         key = api_key or os.environ.get("GROQ_API_KEY", "")
         if not key:
-            yield "Groq API key required in environment GROQ_API_KEY"
+            # No key: yield nothing so the fallback chain continues
+            # (never leak key-complaint text as a model answer).
             return
         headers = {
             "Authorization": f"Bearer {key}",
@@ -48,5 +49,5 @@ class GroqFreeProvider:
                                     yield delta
                             except Exception:
                                 pass
-            except Exception as e:
-                yield f"Groq Provider Error: {str(e)}"
+            except Exception:
+                return

@@ -56,8 +56,8 @@ class DuckDuckGoAIScraper:
                                 yield obj["message"]
                         except Exception:
                             pass
-        except Exception as e:
-            yield f"DuckDuckGo Scraper Exception: {str(e)}"
+        except Exception:
+            return
         finally:
             if close_session:
                 await session.close()

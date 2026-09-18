@@ -2,10 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Copy, Check, RotateCcw, Edit3, User, AlertCircle, Sparkles, TerminalSquare, Globe, Loader2, RefreshCw, FileText, Volume2, Square, Lightbulb, BookOpenText } from 'lucide-react';
 import { ChatMessage } from '../types';
 import { RichMarkdown } from './RichMarkdown';
-import { ThinkingPanel } from './ThinkingPanel';
-import { ThinkingSteps } from './ThinkingSteps';
 import { DeepSearchPanel } from './DeepSearchPanel';
-import { WaitingIndicator, WaitingLines } from './WaitingAnimations';
+import { AgentPipelineView } from './AgentPipelineView';
+import { WaitingLines, GeminiBloom } from './WaitingAnimations';
 import { ReadingModePane } from './ReadingModePane';
 import { MessageReactions } from './MessageReactions';
 import { copyText } from '../utils/clipboard';
@@ -43,6 +42,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [showActions, setShowActions] = useState(false);
   const [editText, setEditText] = useState(message.content);
   const [pyResults, setPyResults] = useState<Record<number, PythonRunResult>>({});
   const [reactions, setReactions] = useState<Record<string, boolean>>({});
@@ -88,6 +88,8 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
   const isReadable = !isUser && !isError && message.status === 'complete'
     && typeof message.content === 'string' && message.content.length > 1500;
   const contentStr = typeof message.content === 'string' ? message.content : '';
+  // Strip thinking tags from content — thinking goes only to AgentPipelineView
+  const cleanContentStr = contentStr.replace(/<thinking[\s\S]*?<\/thinking>/gi, '').trim();
   // أثناء البث الطويل جداً نتجنّب إعادة تحليل ماركداون ثقيل إطاراً بإطار
   // (سبب رئيسي للتجميد/الخطأ #310) — نعرض نصاً خاماً سريعاً حتى يكتمل الرد.
   const heavyStreaming = isStreaming && contentStr.length > 20000;
@@ -237,6 +239,84 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>
               )}
+
+              {/* Thread Actions Menu (⋯) — غير المستخدم/مساعد */}
+              {!isUser && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowActions(!showActions)}
+                    className="tap p-1.5 rounded-xl hover:bg-card text-muted hover:text-accent transition-colors"
+                    title="خيارات الرسالة"
+                    aria-haspopup="menu"
+                    aria-expanded={showActions}
+                    aria-controls="message-actions-menu"
+                    aria-label="خيارات الرسالة"
+                  >
+                    <span className="w-3.5 h-3.5 text-faint flex items-center justify-center">⋯</span>
+                  </button>
+
+                  {showActions && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowActions(false)}
+                        aria-hidden="true"
+                      />
+                      <div
+                        id="message-actions-menu"
+                        role="menu"
+                        aria-label="خيارات الرسالة"
+                        className="absolute end-0 bottom-full mb-1 z-50 w-48 bg-surface rounded-xl shadow-2xl border border-line p-1 animate-in fade-in zoom-in-95 duration-150"
+                      >
+                        <button
+                          role="menuitem"
+                          onClick={() => { onRegenerate(); setShowActions(false); }}
+                          className="w-full text-start px-3 py-2 rounded-lg text-sm font-medium text-main hover:bg-card transition-colors flex items-center gap-2"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          <span>إعادة التوليد</span>
+                        </button>
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            navigator.clipboard.writeText(message.content);
+                            toast.success('تم النسخ');
+                            setShowActions(false);
+                          }}
+                          className="w-full text-start px-3 py-2 rounded-lg text-sm font-medium text-main hover:bg-card transition-colors flex items-center gap-2"
+                        >
+                          <Copy className="w-4 h-4" />
+                          <span>نسخ الرد</span>
+                        </button>
+                        {onEditPrompt && (
+                          <button
+                            role="menuitem"
+                            onClick={() => { onEditPrompt(message.id, message.content); setShowActions(false); }}
+                            className="w-full text-start px-3 py-2 rounded-lg text-sm font-medium text-main hover:bg-card transition-colors flex items-center gap-2"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                            <span>تعديل السؤال</span>
+                          </button>
+                        )}
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            toast.info('ميزة التفرع ستتوفر قريباً');
+                            setShowActions(false);
+                          }}
+                          className="w-full text-start px-3 py-2 rounded-lg text-sm font-medium text-main hover:bg-card transition-colors flex items-center gap-2"
+                        >
+                          <div className="w-4 h-4 relative">
+                            <div className="absolute inset-0 border-2 border-accent rounded-full" />
+                            <div className="absolute inset-1 border-2 border-transparent rounded-full" />
+                          </div>
+                          <span>تفرع من هنا</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -268,12 +348,15 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
           ) : (
             /* Rendered Content */
             <div dir="auto" className="relative text-sm leading-relaxed">
-              {/* Agentic Thinking Panel */}
-              {!isUser && message.thinking && (
-                <ThinkingPanel
+              {/* Agent Pipeline View — unified rendering for all phases */}
+              {!isUser && !isEditing && (
+                <AgentPipelineView
+                  status={message.status}
                   thinking={message.thinking}
-                  isThinking={isThinkingActive}
-                  durationMs={message.thinkingDurationMs}
+                  contentStr={cleanContentStr || ''}
+                  searchCount={(message.searchSources?.length || message.deepSearch?.references?.length) || 0}
+                  thinkChars={message.thinking ? message.thinking.length : 0}
+                  caretMode={caretMode}
                 />
               )}
 
@@ -321,8 +404,8 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                 </div>
               ) : message.isImage && !isUser ? (
                 <div className="relative">
-                  <MarkdownBoundary content={message.content}>
-                    <RichMarkdown content={message.content} isStreaming={isStreaming} isUser={isUser} />
+                  <MarkdownBoundary content={cleanContentStr}>
+                    <RichMarkdown content={cleanContentStr} isStreaming={isStreaming} isUser={isUser} />
                   </MarkdownBoundary>
                 </div>
               ) : isUser ? (
@@ -349,7 +432,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                       )}
                     </div>
                   )}
-                  <div className="whitespace-pre-wrap font-normal text-white text-[15px] leading-relaxed" style={{ unicodeBidi: 'plaintext' }}>{message.content}</div>
+                  <div className="whitespace-pre-wrap font-normal text-white text-[15px] leading-relaxed" style={{ unicodeBidi: 'plaintext' }}>{cleanContentStr}</div>
                 </div>
               ) : isQueued ? (
                 /* رسالة منتظرة في الطابور — حركة الثلاث خطوط + شريحة الحالة */
@@ -361,43 +444,26 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = React.memo(({
                   <WaitingLines variant="pulse" />
                 </div>
               ) : (isStreaming || isThinking) && !message.content ? (
-                /* انتظار أول توكن — Thinking State: مؤشر "جاري التفكير…" بنقاط نابضة
-                   (آخر عنصر في المحادثة أثناء التوليد، يختفي فور بدء طباعة الرد) */
+                /* انتظار أول توكن — Thinking State: مؤشر "جاري التفكير…" بنقاط
+                   وردة Gemini (دوران + فتح/انضمام) بدل المؤثرات الكثيفة السابقة */
                 <div className="py-1 space-y-2" aria-live="polite">
-                  <div className="flex items-center gap-2" dir="rtl">
-                    <span className="relative flex items-center justify-center w-6 h-6 shrink-0">
-                      <span className="absolute inset-0 rounded-full bg-accent/25 animate-ping" aria-hidden="true" />
-                      <span
-                        className="relative w-3 h-3 rounded-full"
-                        style={{ background: 'linear-gradient(135deg, var(--accent-grad-a), var(--accent-grad-b))' }}
-                      />
-                    </span>
+                  <div className="flex items-center gap-2.5" dir="rtl">
+                    <GeminiBloom />
                     <span className="text-[13px] font-bold gradient-text">
                       {isThinking ? 'جاري التفكير' : 'يجهّز الرد'}
                     </span>
-                    <span className="think-dots" aria-hidden="true">
-                      <span className="think-dot" />
-                      <span className="think-dot" />
-                      <span className="think-dot" />
-                    </span>
                   </div>
-                  <WaitingIndicator />
-                  <ThinkingSteps
-                    status={message.status}
-                    hasThinkingText={!!message.thinking}
-                    hasContent={!!message.content}
-                  />
                 </div>
               ) : readingMode && isReadable ? (
-                <RenderErrorBoundary fallback={<div className="whitespace-pre-wrap text-main text-sm">{contentStr}</div>}>
-                  <ReadingModePane content={contentStr} onClose={() => setReadingMode(false)} />
+                <RenderErrorBoundary fallback={<div className="whitespace-pre-wrap text-main text-sm">{cleanContentStr}</div>}>
+                  <ReadingModePane content={cleanContentStr} onClose={() => setReadingMode(false)} />
                 </RenderErrorBoundary>
               ) : heavyStreaming ? (
-                <pre className="whitespace-pre-wrap break-words text-sm text-main font-sans leading-relaxed" dir="auto">{contentStr}</pre>
+                <pre className="whitespace-pre-wrap break-words text-sm text-main font-sans leading-relaxed" dir="auto">{cleanContentStr}</pre>
               ) : (
-                <RenderErrorBoundary fallback={<div className="whitespace-pre-wrap text-main text-sm">{contentStr}</div>}>
-                  <MarkdownBoundary content={contentStr}>
-                    <RichMarkdown content={contentStr} isStreaming={isStreaming} isUser={isUser} onRunPython={handleRunPython} onOpenCanvas={onOpenCanvas} />
+                <RenderErrorBoundary fallback={<div className="whitespace-pre-wrap text-main text-sm">{cleanContentStr}</div>}>
+                  <MarkdownBoundary content={cleanContentStr}>
+                    <RichMarkdown content={cleanContentStr} isStreaming={isStreaming} isUser={isUser} onRunPython={handleRunPython} onOpenCanvas={onOpenCanvas} />
                   </MarkdownBoundary>
                 </RenderErrorBoundary>
               )}
